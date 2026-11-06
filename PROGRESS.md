@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
 Terakhir diperbarui: 7 November 2026
-Status: **Fase 0 selesai. Fase 1 berjalan:** teknologi diputuskan (Rust + Kotlin/Java), inti Rust T1.1a dan T1.1c selesai. Berikutnya T1.1b (proyek Android).
+Status: **Fase 0 selesai. Fase 1 berjalan:** teknologi diputuskan (Rust + Kotlin/Java), inti Rust T1.1a dan T1.1c selesai. T1.1b (proyek Android) selesai dan lolos uji di HP. Berikutnya T1.2.
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -23,6 +23,7 @@ Status: **Fase 0 selesai. Fase 1 berjalan:** teknologi diputuskan (Rust + Kotlin
 | T1.0 | Keputusan teknologi: Rust untuk logika/backend di HP, Kotlin/Java hanya klien. PRD v1.2 (bagian 10 baru) | Selesai |
 | T1.1a | Workspace Rust `core/` (crate `scalping-core`): model `myTrades`, HMAC-SHA256, klien REST baca saja, gabung per order + anti-dobel `tradeId`, modal efektif, TP/SL, profit jual. 9 tes lolos; hasil pada 18 trade nyata sama dengan skrip Python | Selesai |
 | T1.1c | Parser `/api/v2/account` (`core/src/account.rs`): saldo IDR (tersedia+terkunci), cek key baca saja, `IndodaxClient::ambil_akun()`. 12 tes lolos. Penyimpanan snapshot menunggu lapisan penyimpanan (T1.2) | Selesai |
+| T1.1b | Proyek Android `app/` (AGP 9.2.1, Kotlin bawaan AGP, tanpa Compose, UI dari kode, minSdk 30), crate `ffi/` (UniFFI 0.31), crate `uniffi-bindgen/`, `tools/bangun_android.sh`. Layar koneksi: simpan key terenkripsi (Android Keystore), tes `/account`, tolak simpan bila key punya izin trade/withdraw. Build APK berhasil (Gradle 9.8.2). Uji di HP lolos: tes koneksi tersambung, IDR ada, izin baca saja, kunci tetap tersimpan setelah aplikasi dibuka ulang | Selesai |
 
 ### Hasil pencocokan dengan struk (ICNT, 5 November 2026)
 
@@ -36,6 +37,14 @@ Status: **Fase 0 selesai. Fase 1 berjalan:** teknologi diputuskan (Rust + Kotlin
 | Jual: nilai terisi | 66.113 | `quoteQty` 66113 | Ya |
 | Jual: biaya | 207 | `commission` 207 (idr) | Ya |
 | Jual: Total Diterima | 65.906 | `quoteQty` - `commission` = 65.906 | Ya |
+
+### Catatan T1.1b
+- Versi dipilih dari dokumentasi resmi (dicari 7 Nov 2026): AGP 9.2.x butuh Gradle minimal 9.4.1, JDK 17, build-tools 36.0.0 (semua terpenuhi di lingkunganmu). AGP 9 membawa Kotlin sendiri, jadi plugin `org.jetbrains.kotlin.android` tidak dipakai.
+- UniFFI 0.31.x, JNA 5.17.0 (aar). Binding Kotlin dibuat dari build host lalu dikompilasi bersama; `jniLibs/` dan `java/uniffi/` dibuat otomatis dan tidak di-commit.
+- `minSdk = 30` (dugaan dari adb nirkabel); cek dengan `adb shell getprop ro.build.version.sdk`.
+- Hanya ABI arm64-v8a yang dibangun.
+- Peringatan build yang aman diabaikan: `Unable to strip libjnidispatch.so` (library bawaan JNA) dan deprecation Gradle 10 (berasal dari plugin Android).
+- Bila ada lebih dari satu perangkat adb, pakai `bash tools/bangun_android.sh --hanya-pasang <serial>` (serial dari `adb devices`).
 
 ### Catatan T1.1a
 - Tes Rust memakai angka struk ICNT 5 Nov (modal efektif 4.006,07, TP 4.046, SL 3.966, hasil +380 / +0,58%).
@@ -66,6 +75,7 @@ Status: **Fase 0 selesai. Fase 1 berjalan:** teknologi diputuskan (Rust + Kotlin
 | "Jumlah Order" (65.529) beda dengan uang yang keluar (65.526) | Jumlah Order = anggaran order. Yang dipakai: "Order Terisi" | Terselesaikan |
 | Format respons `/api/v2/account` belum diketahui | Skrip lama hanya memeriksa HTTP 200 | Terselesaikan (T1.1c): `balances[{asset,free,locked}]`, flag `canTrade/canWithdraw/canWithdrawFiat` |
 | Apakah aset IDR selalu ada di `balances` | Daftar tampilan terpotong | Belum dikonfirmasi; parser memberi error bila IDR tidak ada (`cek_koneksi` menampilkan ya/TIDAK) |
+| `adb: more than one device/emulator` saat memasang APK | Lebih dari satu perangkat adb tersambung | Terselesaikan: `tools/bangun_android.sh` menerima serial dan menampilkan daftar bila ambigu |
 | Selisih 1 rupiah antara hasil jual dan modal beli berikutnya (data 3 Nov) | Diduga pembulatan | Belum dikonfirmasi, tidak berdampak |
 | Apakah sisa 3 IDR (anggaran tak terpakai) kembali ke saldo | Belum dicek di saldo | Belum dikonfirmasi. Tidak memengaruhi rumus karena saldo diambil dari API |
 
@@ -83,7 +93,6 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya se
 | Task | Isi | Syarat |
 | --- | --- | --- |
 | T0.6 | Skrip tes token WebSocket privat dengan key v2 (`generate_token`). Ini satu-satunya ketidakpastian PRD yang tersisa | Key sudah ada |
-| T1.1b | Proyek Android (`app/`, build lewat CLI Gradle), UniFFI Rust-Kotlin, penyimpanan kunci aman (FR-01, FR-02 di layar) | Butuh file gradle (versi AGP/Kotlin) dari proyek Android yang sudah jalan |
 | T1.2 | Rekonsiliasi REST dengan anti-dobel berdasarkan `tradeId` (FR-09, FR-10), termasuk lapisan penyimpanan lokal dan snapshot saldo awal (FR-03) | T1.1b |
 | T1.3 | Hitung posisi, modal efektif, TP/SL (FR-11 sampai FR-13) | T1.2 |
 | T1.4 | Layanan latar dan WebSocket realtime (FR-06 sampai FR-08) | T1.3 |
@@ -118,6 +127,12 @@ Kebutuhan: Python 3.8+, git, dan Rust (rustup). Skrip Python tidak butuh `pip in
 6. Tarik trade: `python tools/fase0_validasi.py icntidr --hari 7`
 7. Hasil mentah tersimpan di `data/raw_<simbol>_<waktu>.json`.
 
+Build Android (setelah T1.1b):
+```
+cargo update            # sekali saja, sesuaikan dependensi ke Rust-mu
+bash tools/bangun_android.sh --pasang
+```
+
 Tes inti Rust:
 ```
 cargo test -p scalping-core
@@ -146,6 +161,9 @@ catatan-scalping/
 │   └── .gitkeep
 ├── Cargo.toml                       (workspace Rust)
 ├── Cargo.lock
+├── ffi/                             (crate scalping-ffi, UniFFI)
+├── uniffi-bindgen/                  (pembuat binding Kotlin)
+├── app/                             (proyek Gradle Android, modul :aplikasi)
 ├── core/                            (crate scalping-core)
 │   ├── Cargo.toml
 │   ├── src/  lib.rs error.rs model.rs sign.rs calc.rs client.rs account.rs
@@ -156,13 +174,13 @@ catatan-scalping/
 │       └── Catatan_trading__prototype_UI.html
 └── tools/
     ├── fase0_validasi.py            (hanya baca; SHA256; --diagnosa)
+    ├── bangun_android.sh            (Rust -> binding -> APK -> adb)
     ├── fase0_akun.py                (bentuk respons /account, angka disamarkan)
     └── cek_lingkungan.py            (laporan versi Rust/Android/adb)
 ```
 
 ### Rencana
 ```
-app/        proyek Android Kotlin (T1.1b)
 core/       Rust (sudah ada)
 docs/       PRD, prototype, catatan hasil validasi
 tools/      skrip bantu (validasi data, tes WebSocket)
@@ -172,5 +190,6 @@ tools/      skrip bantu (validasi data, tes WebSocket)
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T1.1b: `T1.1b: proyek Android, jembatan UniFFI, layar koneksi` (hash: ...)
 - T1.1c: `T1.1c: parser /account dan cek key baca saja` (hash: ...)
 - T1.1a/T1.0: `T1.1a: inti Rust (klien Indodax, kalkulasi posisi), keputusan teknologi, PRD v1.2`
