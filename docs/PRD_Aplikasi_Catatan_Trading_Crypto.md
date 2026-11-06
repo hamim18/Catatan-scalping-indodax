@@ -1,6 +1,6 @@
 # PRD: Aplikasi Catatan Trading Crypto
 
-Versi 1.0 · 6 November 2026 · Pemilik produk: Raya Abdullah Ar Rasyid · Status: draf untuk ditinjau
+Versi 1.1 · 6 November 2026 (revisi setelah validasi data Fase 0) · Pemilik produk: Raya Abdullah Ar Rasyid · Status: draf untuk ditinjau
 
 ## 1. Ringkasan
 
@@ -19,7 +19,7 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 - Sulit melihat total profit atau loss setelah fee, dari hari ke hari.
 - Tidak ada target yang terukur, harian maupun mingguan.
 - Keputusan SL dan TP dibuat spontan, tanpa perhitungan yang menyertakan fee.
-- Fee beli dan jual berbeda dan menggerus profit trade kecil. Contoh nyata: dari modal ±65 ribu, total fee 340 IDR memakan hampir seluruh profit 377 IDR.
+- Fee beli dan jual berbeda dan menggerus profit trade kecil. Contoh nyata: dari modal ±65 ribu, total fee 340 IDR menggerus hampir separuh profit kotor (±720 IDR), tersisa +380 IDR.
 
 ## 3. Tujuan dan non-tujuan
 
@@ -40,7 +40,7 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 
 ## 4. Pengguna dan konteks
 
-- Satu pengguna: trader individu, gaya scalping, memakai market order untuk beli dan limit order untuk jual.
+- Satu pengguna: trader individu, gaya scalping, beli dengan market order atau limit order (kedua jenis ditemukan di data nyata), jual dengan limit order.
 - Platform trading: Indodax. Target perangkat: HP Android (asumsi).
 - Semua target dan batas dinyatakan dalam persen.
 
@@ -48,7 +48,7 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 
 | Istilah | Arti |
 | --- | --- |
-| Modal efektif | Total IDR yang keluar untuk beli, dibagi koin yang benar-benar diterima (fee beli otomatis ikut terhitung). Dihitung per koin. |
+| Modal efektif | Total IDR yang benar-benar keluar untuk beli (nilai trade + fee, sama dengan "Order Terisi" di struk), dibagi koin yang diterima. Dihitung per koin. |
 | Posisi | Koin yang sudah dibeli dan belum terjual. Satu posisi per koin, dirata-rata. |
 | Saldo (versi aplikasi) | Saldo IDR (tersedia + terkunci) + nilai open posisi pada modal efektif. |
 | Setoran bersih | Total deposit IDR dikurangi withdraw IDR pada suatu periode. |
@@ -116,7 +116,7 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 
 | Besaran | Rumus |
 | --- | --- |
-| Modal efektif per koin | IDR keluar ÷ koin diterima. Untuk posisi hasil beberapa kali beli: total IDR keluar ÷ total koin diterima. |
+| Modal efektif per koin | IDR keluar (quoteQty + commission, = "Order Terisi" di struk) ÷ koin diterima (qty). Untuk posisi hasil beberapa kali beli: total IDR keluar ÷ total koin diterima. |
 | Harga TP | Modal efektif × (1 + TP%) |
 | Harga SL | Modal efektif × (1 − SL%) |
 | Profit atau loss jual | IDR diterima − (modal efektif × jumlah koin yang dijual) |
@@ -135,12 +135,12 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 
 | Langkah | Data |
 | --- | --- |
-| Beli (market) 16:54 | Jumlah order 65.529 IDR, koin diterima 16,35667833, fee 133 |
-| Modal efektif | 65.529 ÷ 16,35667833 ≈ 4.006,25 per koin (harga rata-rata 3.998; selisihnya karena fee) |
+| Beli (market) 16:54 | Jumlah order 65.529 IDR (anggaran), order terisi 65.526 IDR (sudah termasuk fee 133), koin diterima 16,35667833 |
+| Modal efektif | 65.526 ÷ 16,35667833 ≈ 4.006,07 per koin (harga rata-rata 3.998; selisihnya karena fee) |
 | TP 1% | ≈ 4.046 |
 | SL 1% | ≈ 3.966 |
 | Jual (limit) 17:06 | Total diterima 65.906 IDR, fee 207 |
-| Hasil bersih | 65.906 − 65.529 = **+377 IDR (+0,58%)** |
+| Hasil bersih | 65.906 − 65.526 = **+380 IDR (+0,58%)** |
 | Total fee | 340 IDR (≈ 0,5% dari modal) |
 
 Catatan: bila TP 1% tercapai, profit bersih ±0,7% karena fee jual. Bila SL 1% tercapai, rugi bersih ±1,3%.
@@ -170,7 +170,9 @@ Berdasarkan dokumentasi resmi Indodax (repo btcid/indodax-official-api-docs) per
 - TAPI v2 butuh API key khusus v2 (dibuat di indodax.com/trade\_api). Key lama tidak bisa dipakai.
 - Gunakan izin baca saja. Pembatasan IP untuk izin baca bersifat opsional. Karena IP jaringan seluler sering berubah, sebaiknya jangan diaktifkan agar koneksi tidak gagal.
 - Rekonsiliasi riwayat harus berputar per koin dan per rentang 7 hari.
-- Ketidakpastian yang harus divalidasi: (a) apakah fee dalam IDR atau dipotong dari koin yang diterima, (b) apakah total biaya di struk sama dengan nilai commission dari API, (c) apakah key v2 dapat dipakai untuk token WebSocket.
+- Terjawab di Fase 0 (6 November 2026, trade ICNT 3 dan 5 November): (a) fee dalam IDR (`commissionAsset` = idr), koin yang diterima tidak dipotong; (b) `commission` dari API sama dengan "Biaya Transaksi" di struk; (c) `quoteQty` sama dengan "Total Diterima" (IDR) pada struk beli. Tanda tangan v2 memakai HMAC-SHA256.
+- Masih harus divalidasi: apakah key v2 dapat dipakai untuk token WebSocket privat.
+- Tarif fee tidak tetap (beli limit ±0,10%, beli market ±0,20%, jual limit ±0,31% pada data nyata), jadi selalu pakai nilai `commission` dari API.
 
 ## 10. Model data
 
@@ -232,8 +234,8 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 
 ## 15. Pertanyaan terbuka
 
-1. Fee beli dipotong dari koin atau dari IDR di API? Ini menentukan detail rumus modal efektif (diselesaikan di Fase 0).
-2. Apakah total biaya di struk sama dengan commission dari API (diselesaikan di Fase 0)?
+1. ~~Fee beli dipotong dari koin atau dari IDR di API?~~ **Terjawab: dari IDR.** Ini menentukan detail rumus modal efektif (diselesaikan di Fase 0).
+2. ~~Apakah total biaya di struk sama dengan commission dari API~~ **Terjawab: sama.** (lihat bagian 9) (diselesaikan di Fase 0)?
 3. Fungsi tombol Jual di Open Posisi: karena aplikasi tidak membuat order, apakah tombol hanya membuka aplikasi Indodax, atau dihapus dan penjualan murni terdeteksi otomatis?
 4. Apakah baris kecil “estimasi hasil bersih” (memperhitungkan fee jual) ditampilkan di bawah TP dan SL, atau dibiarkan polos?
 5. Setelan TP/SL baru: berlaku untuk posisi baru saja, atau boleh diubah per posisi yang sedang terbuka?
