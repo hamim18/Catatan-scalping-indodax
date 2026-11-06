@@ -1,6 +1,6 @@
 # PRD: Aplikasi Catatan Trading Crypto
 
-Versi 1.1 · 6 November 2026 (revisi setelah validasi data Fase 0) · Pemilik produk: Raya Abdullah Ar Rasyid · Status: draf untuk ditinjau
+Versi 1.2 · 7 November 2026 (keputusan teknologi: Rust + Kotlin/Java) · Pemilik produk: Raya Abdullah Ar Rasyid · Status: draf untuk ditinjau
 
 ## 1. Ringkasan
 
@@ -90,7 +90,7 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 - **FR-11** Satu posisi per koin. Beli berikutnya pada koin yang sama merata-ratakan modal efektif dan menghitung ulang TP/SL.
 - **FR-12** Saat posisi dibuat atau diperbarui, aplikasi menghitung modal efektif, harga TP, dan harga SL dari persen di setelan.
 - **FR-13** Jual sebagian mengurangi jumlah koin posisi, posisi tetap terbuka. Jual penuh menutup posisi dan memindahkannya ke riwayat.
-- **FR-14** Layar Open Posisi menampilkan per posisi: koin, jumlah koin, modal efektif, TP, SL, waktu beli. Fungsi tombol Jual perlu diputuskan (lihat bagian 15).
+- **FR-14** Layar Open Posisi menampilkan per posisi: koin, jumlah koin, modal efektif, TP, SL, waktu beli. Fungsi tombol Jual perlu diputuskan (lihat bagian 16).
 
 ### 7.5 Notifikasi
 
@@ -174,7 +174,15 @@ Berdasarkan dokumentasi resmi Indodax (repo btcid/indodax-official-api-docs) per
 - Masih harus divalidasi: apakah key v2 dapat dipakai untuk token WebSocket privat.
 - Tarif fee tidak tetap (beli limit ±0,10%, beli market ±0,20%, jual limit ±0,31% pada data nyata), jadi selalu pakai nilai `commission` dari API.
 
-## 10. Model data
+## 10. Arsitektur dan teknologi (keputusan 7 November 2026)
+
+- **Rust** adalah bahasa utama untuk seluruh logika dan "backend" yang berjalan di dalam HP: klien Indodax (REST v2, nanti WebSocket), anti-dobel, perhitungan modal efektif, TP/SL, posisi, dan penyimpanan lokal. Semua perhitungan uang memakai Decimal.
+- **Kotlin/Java** hanya sebagai klien Android: tampilan, foreground service, notifikasi, dan penyimpanan kunci di penyimpanan aman perangkat. Tidak ada logika bisnis di sisi Kotlin.
+- Tidak ada server terpisah dan tidak ada akun cloud (sesuai non-tujuan).
+- Jembatan Rust ke Kotlin direncanakan memakai UniFFI (belum dipasang; dikerjakan di T1.1b).
+- Kode Rust ada di `core/` (crate `scalping-core`), kode Android di `app/`.
+
+## 11. Model data
 
 | Entitas | Isi utama |
 | --- | --- |
@@ -188,7 +196,7 @@ Berdasarkan dokumentasi resmi Indodax (repo btcid/indodax-official-api-docs) per
 
 Penyimpanan lokal di perangkat. Data disimpan sebagai catatan, bukan angka saldo mentah, sehingga mengoreksi satu catatan dapat menghitung ulang semuanya.
 
-## 11. Kebutuhan non-fungsional
+## 12. Kebutuhan non-fungsional
 
 - **Keandalan**: koneksi realtime otomatis tersambung kembali, disusul rekonsiliasi REST agar tidak ada trade yang terlewat.
 - **Kecepatan**: target notifikasi muncul dalam beberapa detik setelah order DONE (target awal, perlu diukur).
@@ -198,7 +206,7 @@ Penyimpanan lokal di perangkat. Data disimpan sebagai catatan, bukan angka saldo
 - **Ketepatan**: aplikasi menyediakan tombol koreksi saldo. Selisih terhadap saldo Indodax dicatat sebagai penyesuaian, bukan dihapus diam-diam.
 - **Zona waktu dan periode**: WIB, minggu dimulai hari Senin (asumsi).
 
-## 12. Kasus khusus
+## 13. Kasus khusus
 
 | Kasus | Penanganan yang diusulkan |
 | --- | --- |
@@ -213,7 +221,7 @@ Penyimpanan lokal di perangkat. Data disimpan sebagai catatan, bukan angka saldo
 | Token WebSocket kedaluwarsa | Minta token baru dan hubungkan ulang secara otomatis |
 | Kunci API dicabut atau tidak valid | Tampilkan status terputus dan minta kunci baru |
 
-## 13. Metrik keberhasilan
+## 14. Metrik keberhasilan
 
 Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 
@@ -222,7 +230,7 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 - Notifikasi TP/SL muncul untuk setiap pembelian yang terisi.
 - Layanan latar tetap hidup sepanjang jam trading tanpa dimatikan sistem.
 
-## 14. Rencana rilis bertahap
+## 15. Rencana rilis bertahap
 
 | Fase | Isi | Hasil |
 | --- | --- | --- |
@@ -232,7 +240,7 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 | 3. Riwayat dan grafik | Daftar trade tertutup, grafik saldo dan modal aktif, tombol koreksi saldo | Pertumbuhan terlihat |
 | 4. Statistik | Win rate, total fee, persen profit termakan fee | Evaluasi gaya trading |
 
-## 15. Pertanyaan terbuka
+## 16. Pertanyaan terbuka
 
 1. ~~Fee beli dipotong dari koin atau dari IDR di API?~~ **Terjawab: dari IDR.** Ini menentukan detail rumus modal efektif (diselesaikan di Fase 0).
 2. ~~Apakah total biaya di struk sama dengan commission dari API~~ **Terjawab: sama.** (lihat bagian 9) (diselesaikan di Fase 0)?
@@ -240,11 +248,11 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 4. Apakah baris kecil “estimasi hasil bersih” (memperhitungkan fee jual) ditampilkan di bawah TP dan SL, atau dibiarkan polos?
 5. Setelan TP/SL baru: berlaku untuk posisi baru saja, atau boleh diubah per posisi yang sedang terbuka?
 6. Koin yang sudah dipegang sebelum aplikasi dipasang: diabaikan atau diisi modalnya secara manual?
-7. Teknologi pembuatan aplikasi belum diputuskan (syarat: layanan latar, WebSocket, penyimpanan lokal).
+7. ~~Teknologi pembuatan aplikasi~~ **Terjawab (7 Nov 2026): Rust untuk logika, Kotlin/Java untuk klien Android** (lihat bagian 10).
 8. Apakah perlu cadangan data (ekspor), dan bila ya, ke mana?
 9. Konfirmasi: hari mulai minggu (Senin) dan zona waktu (WIB).
 
-## 16. Risiko dan asumsi
+## 17. Risiko dan asumsi
 
 | Risiko atau asumsi | Dampak | Mitigasi |
 | --- | --- | --- |

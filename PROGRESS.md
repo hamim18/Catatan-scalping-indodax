@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 6 November 2026
-Status: **Fase 0 (Validasi data) selesai.** Fase 1 menunggu keputusan teknologi.
+Terakhir diperbarui: 7 November 2026
+Status: **Fase 0 selesai. Fase 1 berjalan:** teknologi diputuskan (Rust + Kotlin/Java), inti Rust T1.1a selesai.
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -20,6 +20,8 @@ Status: **Fase 0 (Validasi data) selesai.** Fase 1 menunggu keputusan teknologi.
 | T0.3 | Skrip dijalankan dengan key baca saja, trade ICNT nyata berhasil ditarik | Selesai |
 | T0.4 | Fee dan nilai trade dari API dicocokkan dengan struk Indodax (beli dan jual 5 Nov) | Selesai |
 | T0.5 | Rumus modal efektif terkonfirmasi, PRD dan prototype dikoreksi (v1.1) | Selesai |
+| T1.0 | Keputusan teknologi: Rust untuk logika/backend di HP, Kotlin/Java hanya klien. PRD v1.2 (bagian 10 baru) | Selesai |
+| T1.1a | Workspace Rust `core/` (crate `scalping-core`): model `myTrades`, HMAC-SHA256, klien REST baca saja, gabung per order + anti-dobel `tradeId`, modal efektif, TP/SL, profit jual. 9 tes lolos; hasil pada 18 trade nyata sama dengan skrip Python | Selesai |
 
 ### Hasil pencocokan dengan struk (ICNT, 5 November 2026)
 
@@ -33,6 +35,13 @@ Status: **Fase 0 (Validasi data) selesai.** Fase 1 menunggu keputusan teknologi.
 | Jual: nilai terisi | 66.113 | `quoteQty` 66113 | Ya |
 | Jual: biaya | 207 | `commission` 207 (idr) | Ya |
 | Jual: Total Diterima | 65.906 | `quoteQty` - `commission` = 65.906 | Ya |
+
+### Catatan T1.1a
+- Tes Rust memakai angka struk ICNT 5 Nov (modal efektif 4.006,07, TP 4.046, SL 3.966, hasil +380 / +0,58%).
+- Pencocokan Rust vs Python pada `raw_icntidr_20261106_202131.json`: modal efektif, IDR keluar, IDR diterima sama untuk semua order.
+- Belum diuji langsung ke server Indodax dari Rust (`cek_koneksi`); jalankan di komputermu.
+- Fee selain IDR sengaja ditolak (error), karena belum pernah ditemui.
+- Pembulatan TP/SL ke rupiah utuh hanya untuk tampilan (`bulatkan_idr`); aturan tick harga per koin belum diperiksa.
 
 ### Kesimpulan Fase 0
 - **Fee dalam IDR.** Koin yang diterima tidak dipotong fee.
@@ -54,6 +63,7 @@ Status: **Fase 0 (Validasi data) selesai.** Fase 1 menunggu keputusan teknologi.
 | Format simbol dan parameter waktu | `icntidr` (huruf kecil), `startTime`/`endTime`, maks 7 hari | Terselesaikan |
 | Trade 5 Nov tidak terlihat di salinan hasil | Hanya sebagian cetakan yang tersalin, trade-nya ada | Terselesaikan |
 | "Jumlah Order" (65.529) beda dengan uang yang keluar (65.526) | Jumlah Order = anggaran order. Yang dipakai: "Order Terisi" | Terselesaikan |
+| Format respons `/api/v2/account` belum diketahui | Skrip lama hanya memeriksa HTTP 200 | Menunggu `tools/fase0_akun.py` (T1.1c) |
 | Selisih 1 rupiah antara hasil jual dan modal beli berikutnya (data 3 Nov) | Diduga pembulatan | Belum dikonfirmasi, tidak berdampak |
 | Apakah sisa 3 IDR (anggaran tak terpakai) kembali ke saldo | Belum dicek di saldo | Belum dikonfirmasi. Tidak memengaruhi rumus karena saldo diambil dari API |
 
@@ -61,17 +71,15 @@ Status: **Fase 0 (Validasi data) selesai.** Fase 1 menunggu keputusan teknologi.
 
 ## 3. Tahap selanjutnya
 
-### Satu-satunya hal yang masih mengganjal Fase 1
-**Teknologi aplikasi belum diputuskan.** Syaratnya foreground service, WebSocket, dan penyimpanan lokal di Android.
-- Kotlin native: paling andal untuk layanan latar, paling berat dipelajari.
-- Flutter: satu bahasa (Dart), prototype mudah dipindah, layanan latar butuh plugin.
-- React Native (Expo): cocok jika akrab JavaScript, layanan latar paling rapuh.
+### Teknologi (diputuskan 7 November 2026)
+Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya sebagai klien Android (UI, foreground service, notifikasi, penyimpanan kunci). Jembatan: UniFFI (rencana, dipasang di T1.1b).
 
 ### Task berikutnya (urut)
 | Task | Isi | Syarat |
 | --- | --- | --- |
 | T0.6 | Skrip tes token WebSocket privat dengan key v2 (`generate_token`). Ini satu-satunya ketidakpastian PRD yang tersisa | Key sudah ada |
-| T1.1 | Inisialisasi proyek aplikasi dan koneksi akun (FR-01 sampai FR-03) | Teknologi diputuskan |
+| T1.1b | Proyek Android (`app/`, UI ringan), UniFFI Rust-Kotlin, penyimpanan kunci aman (FR-01, FR-02 di layar) | Butuh versi Android Studio/Gradle dari pengguna |
+| T1.1c | Baca saldo dan simpan snapshot awal (FR-03) | Butuh keluaran `python tools/fase0_akun.py` (format `/account` belum dilihat) |
 | T1.2 | Rekonsiliasi REST dengan anti-dobel berdasarkan `tradeId` (FR-09, FR-10) | T1.1 |
 | T1.3 | Hitung posisi, modal efektif, TP/SL (FR-11 sampai FR-13) | T1.2 |
 | T1.4 | Layanan latar dan WebSocket realtime (FR-06 sampai FR-08) | T1.3 |
@@ -96,7 +104,7 @@ Status: **Fase 0 (Validasi data) selesai.** Fase 1 menunggu keputusan teknologi.
 
 ## 4. Cara instalasi
 
-Kebutuhan: Python 3.8+ dan git. Skrip tidak butuh `pip install`.
+Kebutuhan: Python 3.8+, git, dan Rust (rustup). Skrip Python tidak butuh `pip install`.
 
 1. Masuk ke folder proyek: `cd catatan-scalping`
 2. Pastikan skrip versi terbaru: `python tools/fase0_validasi.py -h` harus menampilkan `--diagnosa`.
@@ -105,6 +113,13 @@ Kebutuhan: Python 3.8+ dan git. Skrip tidak butuh `pip install`.
 5. Tes koneksi tanpa key: `python tools/fase0_validasi.py --diagnosa`
 6. Tarik trade: `python tools/fase0_validasi.py icntidr --hari 7`
 7. Hasil mentah tersimpan di `data/raw_<simbol>_<waktu>.json`.
+
+Tes inti Rust:
+```
+cargo test -p scalping-core
+cargo run -p scalping-core --example cek_data -- data/raw_icntidr_<waktu>.json
+cargo run -p scalping-core --example cek_koneksi
+```
 
 Alur git setiap task:
 ```
@@ -125,23 +140,31 @@ catatan-scalping/
 ├── .env.example                     (salin menjadi .env)
 ├── data/                            (hasil tarikan, tidak di-commit)
 │   └── .gitkeep
+├── Cargo.toml                       (workspace Rust)
+├── Cargo.lock
+├── core/                            (crate scalping-core)
+│   ├── Cargo.toml
+│   ├── src/  lib.rs error.rs model.rs sign.rs calc.rs client.rs
+│   └── examples/  cek_data.rs cek_koneksi.rs
 ├── docs/
-│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.1)
+│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.2)
 │   └── prototype/
 │       └── Catatan_trading__prototype_UI.html
 └── tools/
-    └── fase0_validasi.py            (hanya baca; SHA256; --diagnosa)
+    ├── fase0_validasi.py            (hanya baca; SHA256; --diagnosa)
+    └── fase0_akun.py                (bentuk respons /account, angka disamarkan)
 ```
 
-### Rencana (bergantung teknologi yang dipilih)
+### Rencana
 ```
-app/        kode aplikasi mobile (folder dan bahasa mengikuti teknologi)
+app/        proyek Android Kotlin (T1.1b)
+core/       Rust (sudah ada)
 docs/       PRD, prototype, catatan hasil validasi
 tools/      skrip bantu (validasi data, tes WebSocket)
 ```
-Rincian `app/` dibuat setelah teknologi diputuskan.
 
 ---
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T1.1a/T1.0: `T1.1a: inti Rust (klien Indodax, kalkulasi posisi), keputusan teknologi, PRD v1.2`
