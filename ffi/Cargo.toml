@@ -1,0 +1,15 @@
+[package]
+name = "scalping-ffi"
+version = "0.1.0"
+edition = "2021"
+description = "Jembatan UniFFI antara scalping-core (Rust) dan klien Kotlin"
+publish = false
+
+[lib]
+name = "scalping_ffi"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+scalping-core = { path = "../core" }
+uniffi = "0.31"
+thiserror = "1"
