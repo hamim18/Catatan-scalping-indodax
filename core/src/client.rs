@@ -1,5 +1,5 @@
 //! Klien REST Indodax TAPI v2. HANYA metode GET (baca saja).
-use crate::{model::parse_my_trades, sign::tanda_tangan, Error, Hasil, Trade};
+use crate::{account::{parse_akun, Akun}, model::parse_my_trades, sign::tanda_tangan, Error, Hasil, Trade};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const BASE_PRODUKSI: &str = "https://api.indodax.com";
@@ -77,9 +77,14 @@ impl IndodaxClient {
     }
 
     /// FR-02: validasi kunci. Berhasil bila GET /api/v2/account membalas HTTP 200.
-    /// Mengembalikan JSON mentah; isinya belum di-parse (format belum divalidasi).
+    /// Mengembalikan JSON mentah.
     pub fn ambil_akun_mentah(&self) -> Hasil<String> {
         self.get("/api/v2/account", &[])
+    }
+
+    /// FR-02/FR-03: ambil akun dan saldo (sudah di-parse).
+    pub fn ambil_akun(&self) -> Hasil<Akun> {
+        parse_akun(&self.ambil_akun_mentah()?)
     }
 
     /// Satu permintaan myTrades. Rentang waktu maksimal 7 hari (aturan Indodax);

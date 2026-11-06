@@ -12,6 +12,8 @@ pub enum Error {
     Json(String),
     #[error("biaya trade {trade_id} bukan dalam IDR (aset: {aset}); belum didukung")]
     FeeBukanIdr { trade_id: String, aset: String },
+    #[error("aset {0} tidak ada di daftar saldo akun")]
+    AsetTidakAda(String),
     #[error("jumlah koin nol, tidak bisa dihitung")]
     KoinNol,
     #[error("jumlah koin dijual ({jual}) melebihi posisi ({posisi})")]

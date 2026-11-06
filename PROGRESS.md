@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
 Terakhir diperbarui: 7 November 2026
-Status: **Fase 0 selesai. Fase 1 berjalan:** teknologi diputuskan (Rust + Kotlin/Java), inti Rust T1.1a selesai.
+Status: **Fase 0 selesai. Fase 1 berjalan:** teknologi diputuskan (Rust + Kotlin/Java), inti Rust T1.1a dan T1.1c selesai. Berikutnya T1.1b (proyek Android).
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -22,6 +22,7 @@ Status: **Fase 0 selesai. Fase 1 berjalan:** teknologi diputuskan (Rust + Kotlin
 | T0.5 | Rumus modal efektif terkonfirmasi, PRD dan prototype dikoreksi (v1.1) | Selesai |
 | T1.0 | Keputusan teknologi: Rust untuk logika/backend di HP, Kotlin/Java hanya klien. PRD v1.2 (bagian 10 baru) | Selesai |
 | T1.1a | Workspace Rust `core/` (crate `scalping-core`): model `myTrades`, HMAC-SHA256, klien REST baca saja, gabung per order + anti-dobel `tradeId`, modal efektif, TP/SL, profit jual. 9 tes lolos; hasil pada 18 trade nyata sama dengan skrip Python | Selesai |
+| T1.1c | Parser `/api/v2/account` (`core/src/account.rs`): saldo IDR (tersedia+terkunci), cek key baca saja, `IndodaxClient::ambil_akun()`. 12 tes lolos. Penyimpanan snapshot menunggu lapisan penyimpanan (T1.2) | Selesai |
 
 ### Hasil pencocokan dengan struk (ICNT, 5 November 2026)
 
@@ -63,13 +64,17 @@ Status: **Fase 0 selesai. Fase 1 berjalan:** teknologi diputuskan (Rust + Kotlin
 | Format simbol dan parameter waktu | `icntidr` (huruf kecil), `startTime`/`endTime`, maks 7 hari | Terselesaikan |
 | Trade 5 Nov tidak terlihat di salinan hasil | Hanya sebagian cetakan yang tersalin, trade-nya ada | Terselesaikan |
 | "Jumlah Order" (65.529) beda dengan uang yang keluar (65.526) | Jumlah Order = anggaran order. Yang dipakai: "Order Terisi" | Terselesaikan |
-| Format respons `/api/v2/account` belum diketahui | Skrip lama hanya memeriksa HTTP 200 | Menunggu `tools/fase0_akun.py` (T1.1c) |
+| Format respons `/api/v2/account` belum diketahui | Skrip lama hanya memeriksa HTTP 200 | Terselesaikan (T1.1c): `balances[{asset,free,locked}]`, flag `canTrade/canWithdraw/canWithdrawFiat` |
+| Apakah aset IDR selalu ada di `balances` | Daftar tampilan terpotong | Belum dikonfirmasi; parser memberi error bila IDR tidak ada (`cek_koneksi` menampilkan ya/TIDAK) |
 | Selisih 1 rupiah antara hasil jual dan modal beli berikutnya (data 3 Nov) | Diduga pembulatan | Belum dikonfirmasi, tidak berdampak |
 | Apakah sisa 3 IDR (anggaran tak terpakai) kembali ke saldo | Belum dicek di saldo | Belum dikonfirmasi. Tidak memengaruhi rumus karena saldo diambil dari API |
 
 ---
 
 ## 3. Tahap selanjutnya
+
+### Lingkungan pengembangan (dilaporkan 7 November 2026)
+Arch Linux; Rust 1.98.1 dengan 4 target Android dan `cargo ndk`; JDK 17; Gradle 9.8.2 di PATH; Android SDK di `~/android-sdk` (platform 33 sampai 36, build-tools 34 sampai 36, NDK 26/27/28.2, `ANDROID_NDK_HOME` diatur); tanpa Android Studio, build lewat CLI; HP fisik via adb nirkabel.
 
 ### Teknologi (diputuskan 7 November 2026)
 Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya sebagai klien Android (UI, foreground service, notifikasi, penyimpanan kunci). Jembatan: UniFFI (rencana, dipasang di T1.1b).
@@ -78,9 +83,8 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya se
 | Task | Isi | Syarat |
 | --- | --- | --- |
 | T0.6 | Skrip tes token WebSocket privat dengan key v2 (`generate_token`). Ini satu-satunya ketidakpastian PRD yang tersisa | Key sudah ada |
-| T1.1b | Proyek Android (`app/`, UI ringan), UniFFI Rust-Kotlin, penyimpanan kunci aman (FR-01, FR-02 di layar) | Butuh versi Android Studio/Gradle dari pengguna |
-| T1.1c | Baca saldo dan simpan snapshot awal (FR-03) | Butuh keluaran `python tools/fase0_akun.py` (format `/account` belum dilihat) |
-| T1.2 | Rekonsiliasi REST dengan anti-dobel berdasarkan `tradeId` (FR-09, FR-10) | T1.1 |
+| T1.1b | Proyek Android (`app/`, build lewat CLI Gradle), UniFFI Rust-Kotlin, penyimpanan kunci aman (FR-01, FR-02 di layar) | Butuh file gradle (versi AGP/Kotlin) dari proyek Android yang sudah jalan |
+| T1.2 | Rekonsiliasi REST dengan anti-dobel berdasarkan `tradeId` (FR-09, FR-10), termasuk lapisan penyimpanan lokal dan snapshot saldo awal (FR-03) | T1.1b |
 | T1.3 | Hitung posisi, modal efektif, TP/SL (FR-11 sampai FR-13) | T1.2 |
 | T1.4 | Layanan latar dan WebSocket realtime (FR-06 sampai FR-08) | T1.3 |
 | T1.5 | Notifikasi beli dan jual (FR-15 sampai FR-17) | T1.4 |
@@ -144,7 +148,7 @@ catatan-scalping/
 ├── Cargo.lock
 ├── core/                            (crate scalping-core)
 │   ├── Cargo.toml
-│   ├── src/  lib.rs error.rs model.rs sign.rs calc.rs client.rs
+│   ├── src/  lib.rs error.rs model.rs sign.rs calc.rs client.rs account.rs
 │   └── examples/  cek_data.rs cek_koneksi.rs
 ├── docs/
 │   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.2)
@@ -152,7 +156,8 @@ catatan-scalping/
 │       └── Catatan_trading__prototype_UI.html
 └── tools/
     ├── fase0_validasi.py            (hanya baca; SHA256; --diagnosa)
-    └── fase0_akun.py                (bentuk respons /account, angka disamarkan)
+    ├── fase0_akun.py                (bentuk respons /account, angka disamarkan)
+    └── cek_lingkungan.py            (laporan versi Rust/Android/adb)
 ```
 
 ### Rencana
@@ -167,4 +172,5 @@ tools/      skrip bantu (validasi data, tes WebSocket)
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T1.1c: `T1.1c: parser /account dan cek key baca saja` (hash: ...)
 - T1.1a/T1.0: `T1.1a: inti Rust (klien Indodax, kalkulasi posisi), keputusan teknologi, PRD v1.2`
