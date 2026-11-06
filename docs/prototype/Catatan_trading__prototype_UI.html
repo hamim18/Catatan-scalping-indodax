@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Catatan trading: prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14202b;--mute:#5d6b78;--line:#d9e0e6;--gain:#0b8a68;--loss:#cf4338;--accent:#2f4fd1;--gain-bg:#dff3ec;--loss-bg:#fae3e0;--soft:#f4f6f8;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f161d;--card:#18222c;--ink:#e8eef3;--mute:#93a1ad;--line:#27343f;--gain:#3dc79c;--loss:#ff7a6e;--accent:#8aa0ff;--gain-bg:#12332b;--loss-bg:#3a1f1d;--soft:#1e2a35;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f161d;--card:#18222c;--ink:#e8eef3;--mute:#93a1ad;--line:#27343f;--gain:#3dc79c;--loss:#ff7a6e;--accent:#8aa0ff;--gain-bg:#12332b;--loss-bg:#3a1f1d;--soft:#1e2a35;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Manrope,system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;line-height:1.45}
+.app{max-width:440px;margin:0 auto;min-height:100vh;padding:16px 16px 96px}
+h1{font-size:20px;font-weight:800;margin:0}
+h2{font-size:15px;font-weight:700;margin:22px 0 10px}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--mute);background:var(--card);border:1px solid var(--line);border-radius:99px;padding:4px 10px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--gain)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.mute{color:var(--mute);font-size:13px}
+.big{font-size:32px;font-weight:800;letter-spacing:-.02em;margin:2px 0}
+.gain{color:var(--gain)}.loss{color:var(--loss)}
+.bar{height:10px;background:var(--soft);border-radius:6px;overflow:hidden;margin:8px 0 4px}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:6px}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.tgt+.tgt{margin-top:16px}
+.btns{display:flex;gap:8px;margin-top:12px}
+button{font:inherit;font-weight:700;font-size:14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:10px 12px;cursor:pointer;flex:1}
+button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.screen{display:none}.screen.on{display:block}
+.pos+.pos,.hist li+li{margin-top:12px}
+.ladder{position:relative;height:44px;margin:16px 6px 6px}
+.ladder .line{position:absolute;left:0;right:0;top:20px;height:4px;border-radius:2px;background:linear-gradient(90deg,var(--loss) 0 50%,var(--gain) 50% 100%)}
+.tick{position:absolute;top:0;transform:translateX(-50%);text-align:center;font-size:11px;line-height:1.2;color:var(--mute)}
+.tick b{display:block;font-size:12px;color:var(--ink)}
+.tick:after{content:"";display:block;width:2px;height:12px;margin:3px auto 0;background:var(--ink)}
+.tick.sl{left:0;transform:none;text-align:left}.tick.sl:after{margin-left:0;background:var(--loss)}
+.tick.tp{left:auto;right:0;transform:none;text-align:right}.tick.tp:after{margin-right:0;background:var(--gain)}
+.tick.me{left:50%}
+.hist{list-style:none;padding:0;margin:0}
+.hist li{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.pill{font-weight:700;font-size:13px;border-radius:8px;padding:3px 8px}
+.pill.g{background:var(--gain-bg);color:var(--gain)}.pill.l{background:var(--loss-bg);color:var(--loss)}
+label.f{display:block;margin-top:14px;font-size:13px;font-weight:700}
+.in{display:flex;align-items:center;gap:8px;margin-top:6px}
+.in input{flex:1;font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--soft);color:var(--ink)}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px))}
+nav div{max-width:440px;margin:0 auto;display:flex}
+nav button{border:0;background:none;color:var(--mute);font-size:12px;padding:8px 4px;border-radius:8px}
+nav button.on{color:var(--accent)}
+.toast{position:fixed;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top,0px));max-width:416px;margin:0 auto;background:var(--ink);color:var(--bg);border-radius:14px;padding:12px 14px;transform:translateY(-140%);transition:transform .25s;z-index:5;font-size:13px}
+.toast.show{transform:none}.toast b{display:block;font-size:14px}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+.note{font-size:12px;color:var(--mute);margin-top:10px}
+</style>
+</head>
+<body>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="app">
+
+<section class="screen on" id="beranda">
+  <div class="top"><h1>Catatan trading</h1><span class="chip"><span class="dot"></span>Terhubung · hanya baca</span></div>
+  <div class="card">
+    <div class="mute">Saldo</div>
+    <div class="big">Rp 1.482.350</div>
+    <div class="gain" style="font-weight:700">+Rp 32.350 (+2,23%)</div>
+    <div class="mute">dari modal aktif Rp 1.450.000</div>
+    <svg viewBox="0 0 300 90" width="100%" role="img" aria-label="Grafik saldo naik di atas garis modal aktif" style="margin-top:12px">
+      <polyline points="0,62 40,60 80,56 120,58 160,48 200,42 240,36 300,26" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+      <polyline points="0,64 100,64 101,60 300,60" fill="none" stroke="var(--mute)" stroke-width="2" stroke-dasharray="4 4"/>
+    </svg>
+    <div class="row mute"><span style="color:var(--accent);font-weight:700">Saldo</span><span>Modal aktif (garis putus-putus)</span></div>
+  </div>
+
+  <h2>Target</h2>
+  <div class="card">
+    <div class="tgt"><div class="row"><b>Hari ini</b><span class="gain" style="font-weight:700">+0,9% dari 1,5%</span></div>
+      <div class="bar"><i style="width:60%"></i></div><div class="mute">60% tercapai · +Rp 13.200</div></div>
+    <div class="tgt"><div class="row"><b>Minggu ini</b><span class="gain" style="font-weight:700">+2,0% dari 5%</span></div>
+      <div class="bar"><i style="width:40%"></i></div><div class="mute">40% tercapai · +Rp 29.100</div></div>
+  </div>
+
+  <h2>Coba notifikasi</h2>
+  <div class="card">
+    <div class="mute">Contoh dari trade ICNT tanggal 5 November. Di aplikasi asli, ini muncul otomatis saat order Indodax terisi.</div>
+    <div class="btns"><button class="pri" id="sBeli">Simulasikan beli</button><button id="sJual">Simulasikan jual</button></div>
+  </div>
+</section>
+
+<section class="screen" id="posisi">
+  <div class="top"><h1>Open posisi</h1><span class="chip">2 posisi</span></div>
+  <div class="card pos">
+    <div class="row"><b style="font-size:17px">DOGE</b><span class="mute">42,71 koin · modal Rp 150.000</span></div>
+    <div class="ladder"><div class="line"></div>
+      <div class="tick sl"><b>3.477</b>SL −1%</div><div class="tick me"><b>3.512</b>Modal efektif</div><div class="tick tp"><b>3.547</b>TP +1%</div></div>
+    <div class="note">Rugi bersih di SL sekitar −1,3% dan untung bersih di TP sekitar +0,7%, setelah fee jual.</div>
+    <div class="btns"><button>Jual di Indodax</button></div>
+  </div>
+  <div class="card pos">
+    <div class="row"><b style="font-size:17px">SOL</b><span class="mute">0,1017 koin · modal Rp 300.000</span></div>
+    <div class="ladder"><div class="line"></div>
+      <div class="tick sl"><b>2.920.500</b>SL −1%</div><div class="tick me"><b>2.950.000</b>Modal efektif</div><div class="tick tp"><b>2.979.500</b>TP +1%</div></div>
+    <div class="note">Terisi 3 kali, modal efektif sudah dirata-rata.</div>
+    <div class="btns"><button>Jual di Indodax</button></div>
+  </div>
+  <p class="note">Posisi tertutup otomatis saat aplikasi mendeteksi order jual dari Indodax.</p>
+</section>
+
+<section class="screen" id="riwayat">
+  <div class="top"><h1>Riwayat</h1><span class="chip">Hari ini</span></div>
+  <div class="card" style="margin-bottom:12px"><div class="row"><span class="mute">Hasil bersih hari ini</span><b class="gain">+Rp 13.200</b></div><div class="mute">3 trade · 2 untung · fee Rp 1.020</div></div>
+  <ul class="hist">
+    <li><div><b>ICNT</b><div class="mute">17:07 · modal Rp 65.529</div></div><div style="text-align:right"><b class="gain">+Rp 377</b><div><span class="pill g">+0,58%</span></div></div></li>
+    <li><div><b>DOGE</b><div class="mute">14:32 · modal Rp 150.000</div></div><div style="text-align:right"><b class="gain">+Rp 1.120</b><div><span class="pill g">+0,75%</span></div></div></li>
+    <li><div><b>SOL</b><div class="mute">11:05 · modal Rp 300.000</div></div><div style="text-align:right"><b class="loss">−Rp 2.940</b><div><span class="pill l">−0,98%</span></div></div></li>
+  </ul>
+</section>
+
+<section class="screen" id="setelan">
+  <div class="top"><h1>Setelan</h1></div>
+  <div class="card">
+    <b>Target per trade</b>
+    <label class="f" for="tp">Take profit (TP)</label><div class="in"><input id="tp" inputmode="decimal" value="1"><span>%</span></div>
+    <label class="f" for="sl">Stop loss (SL)</label><div class="in"><input id="sl" inputmode="decimal" value="1"><span>%</span></div>
+    <div class="note">TP dan SL dihitung dari modal efektif, yaitu harga beli ditambah fee beli.</div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <b>Target periode</b>
+    <label class="f" for="th">Target harian</label><div class="in"><input id="th" inputmode="decimal" value="1,5"><span>%</span></div>
+    <label class="f" for="tm">Target mingguan</label><div class="in"><input id="tm" inputmode="decimal" value="5"><span>%</span></div>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <b>Koneksi Indodax</b>
+    <div class="row" style="margin-top:8px"><span>Kunci API (izin baca saja)</span><span class="gain" style="font-weight:700">Aktif</span></div>
+    <div class="row" style="margin-top:8px"><span>Pantau order realtime</span><span class="gain" style="font-weight:700">Berjalan</span></div>
+    <div class="btns"><button>Sinkron sekarang</button><button>Ganti kunci</button></div>
+  </div>
+  <div class="btns"><button class="pri">Simpan setelan</button></div>
+</section>
+
+</div>
+<nav><div>
+  <button class="on" data-t="beranda">Beranda</button><button data-t="posisi">Posisi</button><button data-t="riwayat">Riwayat</button><button data-t="setelan">Setelan</button>
+</div></nav>
+<script>
+var tabs=document.querySelectorAll("nav button"),toast=document.getElementById("toast"),tm;
+tabs.forEach(function(b){b.addEventListener("click",function(){
+  tabs.forEach(function(x){x.classList.toggle("on",x===b)});
+  document.querySelectorAll(".screen").forEach(function(s){s.classList.toggle("on",s.id===b.dataset.t)});
+  window.scrollTo(0,0);});});
+function show(h){toast.innerHTML=h;toast.classList.add("show");clearTimeout(tm);tm=setTimeout(function(){toast.classList.remove("show")},4500);}
+document.getElementById("sBeli").onclick=function(){show("<b>ICNT dibeli</b>Modal efektif 4.006 · TP 4.046 · SL 3.966")};
+document.getElementById("sJual").onclick=function(){show("<b>ICNT dijual: +Rp 377 (+0,58%)</b>Target harian 60% tercapai")};
+</script>
+</body>
+</html>
