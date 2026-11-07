@@ -10,6 +10,7 @@ pub mod sign;
 pub mod store;
 pub mod sync;
 pub mod ws;
+pub mod ws_klien;
 
 pub use account::{parse_akun, Akun, Saldo};
 pub use calc::{gabung_per_order, OrderRingkas, Posisi, Sisi};
@@ -22,3 +23,4 @@ pub use sync::{sinkron, sinkron_koin, HasilSinkron, Opsi, SumberTrade};
 pub use ws::{
     parse_pesan, parse_token, AlasanPemicu, EventOrder, PemicuSinkron, PesanMasuk, StatusOrder, TokenWs,
 };
+pub use ws_klien::{pantau, KejadianPantau};

@@ -19,3 +19,8 @@ thiserror = "1"
 ureq = { version = "2", default-features = false, features = ["tls"] }
 # T1.2: penyimpanan lokal. "bundled" = SQLite ikut dikompilasi (perlu NDK/cc saat build Android).
 rusqlite = { version = "0.32", features = ["bundled"] }
+# T1.4b: klien WebSocket. rustls memakai penyedia "ring" saja (sama dengan ureq);
+# JANGAN aktifkan aws-lc-rs (merepotkan untuk Android). Versi sudah ada di Cargo.lock.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "0.26"
+base64 = "0.22"

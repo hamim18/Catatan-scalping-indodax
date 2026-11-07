@@ -881,15 +881,18 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 name = "scalping-core"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "hex",
  "hmac",
  "rusqlite",
  "rust_decimal",
+ "rustls",
  "serde",
  "serde_json",
  "sha2",
  "thiserror 1.0.69",
  "ureq",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
