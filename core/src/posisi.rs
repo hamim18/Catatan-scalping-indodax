@@ -86,6 +86,9 @@ pub struct TradeTertutup {
     pub idr_diterima: Decimal,
     pub profit: Decimal,
     pub persen: Decimal,
+    /// T4.1: total fee untuk bagian ini = fee beli proporsional + fee jual (IDR).
+    /// Sudah terkandung di `modal` dan `idr_diterima`, jadi TIDAK mengubah profit.
+    pub fee: Decimal,
     pub waktu_buka_ms: i64,
     pub waktu_tutup_ms: i64,
 }
@@ -112,6 +115,8 @@ struct Aktif {
     tp: Decimal,
     sl: Decimal,
     waktu_buka: i64,
+    /// T4.1: fee beli yang masih melekat pada koin posisi ini (IDR).
+    fee_beli: Decimal,
 }
 
 /// Hitung ulang semua posisi dari trade. Trade dengan waktu < `sejak_ms` diabaikan.
@@ -129,11 +134,12 @@ pub fn hitung(trades: &[Trade], sejak_ms: i64, setelan: &RiwayatSetelan) -> Hasi
             Sisi::Beli => {
                 if let Some(a) = aktif.get_mut(&o.symbol) {
                     a.pos.tambah_beli(o);
+                    a.fee_beli += o.fee;
                 } else {
                     let (tp, sl) = setelan.pada(o.waktu_awal_ms)?;
                     aktif.insert(
                         o.symbol.clone(),
-                        Aktif { pos: Posisi::dari_beli(o)?, tp, sl, waktu_buka: o.waktu_awal_ms },
+                        Aktif { pos: Posisi::dari_beli(o)?, tp, sl, waktu_buka: o.waktu_awal_ms, fee_beli: o.fee },
                     );
                 }
             }
@@ -154,7 +160,12 @@ pub fn hitung(trades: &[Trade], sejak_ms: i64, setelan: &RiwayatSetelan) -> Hasi
                     // kali dulu baru bagi
                     (a.pos.koin, o.idr_diterima() * a.pos.koin / o.koin)
                 };
+                // T4.1: fee beli proporsional (kali dulu baru bagi) + fee jual bagian yang cocok.
+                let koin_sebelum = a.pos.koin;
+                let fee_beli_terjual = a.fee_beli * koin_cocok / koin_sebelum;
+                let fee_jual = if o.koin.is_zero() { o.fee } else { o.fee * koin_cocok / o.koin };
                 let h = a.pos.jual(koin_cocok, idr_cocok)?;
+                a.fee_beli -= fee_beli_terjual;
                 hasil.tertutup.push(TradeTertutup {
                     simbol: o.symbol.clone(),
                     koin: koin_cocok,
@@ -162,6 +173,7 @@ pub fn hitung(trades: &[Trade], sejak_ms: i64, setelan: &RiwayatSetelan) -> Hasi
                     idr_diterima: h.idr_diterima,
                     profit: h.profit,
                     persen: h.persen,
+                    fee: fee_beli_terjual + fee_jual,
                     waktu_buka_ms: a.waktu_buka,
                     waktu_tutup_ms: o.waktu_akhir_ms,
                 });

@@ -9,7 +9,7 @@ use scalping_core::{
 use std::str::FromStr;
 use scalping_core::arus_kas::{sinkron_arus_kas as sinkron_arus_kas_inti, ArusKas};
 use scalping_core::periode::{DataSaldo, Pencapaian, RingkasanTarget, SelisihSaldo};
-use scalping_core::{awal_hari_wib, TradeTertutup};
+use scalping_core::{awal_hari_wib, awal_minggu_wib, hitung_statistik as hitung_statistik_inti, TradeTertutup};
 use scalping_core::{pantau, HasilHitung, KejadianPantau};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1000,6 +1000,65 @@ pub fn riwayat_tertutup(path_db: String, jumlah: u32) -> Result<RiwayatUi, Error
     })
 }
 
+/// T4.1: statistik trade tertutup (FR-25). Semua angka sudah berupa teks siap tampil.
+#[derive(uniffi::Record)]
+pub struct StatistikUi {
+    /// "hari", "minggu", atau "semua"
+    pub rentang: String,
+    pub jumlah: u32,
+    pub untung: u32,
+    pub rugi: u32,
+    pub impas: u32,
+    /// persen, 2 desimal; "-" bila belum ada trade
+    pub win_rate: String,
+    /// rata-rata hasil trade untung (Rp); "-" bila tidak ada
+    pub rata_untung: String,
+    /// rata-rata hasil trade rugi (Rp, negatif); "-" bila tidak ada
+    pub rata_rugi: String,
+    pub hasil_bersih: String,
+    pub total_fee: String,
+    pub profit_kotor: String,
+    /// total fee / profit kotor x 100; "-" bila profit kotor tidak positif
+    pub persen_fee: String,
+}
+
+fn teks_opsi_rp(v: Option<Decimal>) -> String {
+    v.map(|x| bulatkan_idr(x).to_string()).unwrap_or_else(|| "-".to_string())
+}
+
+fn teks_opsi_persen(v: Option<Decimal>) -> String {
+    v.map(|x| x.round_dp(2).to_string()).unwrap_or_else(|| "-".to_string())
+}
+
+/// Statistik trade tertutup untuk rentang "hari" / "minggu" / "semua" (WIB). Tanpa jaringan.
+#[uniffi::export]
+pub fn statistik_trading(path_db: String, rentang: String) -> Result<StatistikUi, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let h = hitung_aplikasi(&simpan)?;
+    let sekarang = sekarang_ms();
+    let (nama, dari_ms) = match rentang.trim().to_lowercase().as_str() {
+        "hari" => ("hari", awal_hari_wib(sekarang)),
+        "minggu" => ("minggu", awal_minggu_wib(sekarang)),
+        "semua" => ("semua", i64::MIN),
+        lain => return Err(gagal(format!("rentang tidak dikenal: {lain}"))),
+    };
+    let s = hitung_statistik_inti(&h.tertutup, dari_ms);
+    Ok(StatistikUi {
+        rentang: nama.to_string(),
+        jumlah: s.jumlah as u32,
+        untung: s.untung as u32,
+        rugi: s.rugi as u32,
+        impas: s.impas as u32,
+        win_rate: teks_opsi_persen(s.win_rate_persen),
+        rata_untung: teks_opsi_rp(s.rata_untung),
+        rata_rugi: teks_opsi_rp(s.rata_rugi),
+        hasil_bersih: bulatkan_idr(s.hasil_bersih).to_string(),
+        total_fee: bulatkan_idr(s.total_fee).to_string(),
+        profit_kotor: bulatkan_idr(s.profit_kotor).to_string(),
+        persen_fee: teks_opsi_persen(s.persen_fee_dari_profit),
+    })
+}
+
 /// Selisih saldo aplikasi dengan saldo IDR asli di Indodax.
 #[derive(uniffi::Record)]
 pub struct SelisihSaldoUi {
@@ -1213,6 +1272,16 @@ mod tes_fase3 {
         assert_eq!(r.baris.len(), 1);
         assert_eq!(r.baris[0].simbol, "icntidr");
         assert_eq!(r.baris[0].profit, "380");
+
+        // T4.1: fee 133 + 207 = 340; profit kotor 720; 340/720 = 47,22%
+        let st = statistik_trading(db.clone(), "semua".into()).unwrap();
+        assert_eq!(st.jumlah, 1);
+        assert_eq!(st.untung, 1);
+        assert_eq!(st.win_rate, "100");
+        assert_eq!(st.total_fee, "340");
+        assert_eq!(st.profit_kotor, "720");
+        assert_eq!(st.persen_fee, "47.22");
+        assert!(statistik_trading(db.clone(), "bulan".into()).is_err());
 
         let g = data_grafik(db.clone(), 50).unwrap();
         assert!(g.len() >= 3); // awal, trade tutup, koreksi, sekarang

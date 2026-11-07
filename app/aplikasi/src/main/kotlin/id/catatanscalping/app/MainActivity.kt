@@ -30,6 +30,7 @@ import uniffi.scalping_ffi.cekSelisihSaldo
 import uniffi.scalping_ffi.daftarKoreksiSaldo
 import uniffi.scalping_ffi.dataGrafik
 import uniffi.scalping_ffi.riwayatTertutup
+import uniffi.scalping_ffi.statistikTrading
 import uniffi.scalping_ffi.sinkronArusKas
 import uniffi.scalping_ffi.terapkanKoreksiSaldo
 import uniffi.scalping_ffi.bacaTarget
@@ -81,6 +82,8 @@ class MainActivity : Activity() {
     private lateinit var isiGrafik: TextView
     private lateinit var tombolRiwayat: Button
     private lateinit var isiRiwayat: TextView
+    private lateinit var isiStatistik: TextView
+    @Volatile private var rentangStatistik = "semua"
     private lateinit var tombolCekSelisih: Button
     private lateinit var tombolKoreksi: Button
     private lateinit var isiKoreksi: TextView
@@ -213,6 +216,19 @@ class MainActivity : Activity() {
         isiRiwayat.typeface = android.graphics.Typeface.MONOSPACE
         isi.addView(isiRiwayat)
 
+        isi.addView(teks("Statistik trading (T4.1)", 16f, tebal = true))
+        val barisRentang = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        for ((nama, kode) in listOf("Hari ini" to "hari", "Minggu ini" to "minggu", "Semua" to "semua")) {
+            barisRentang.addView(
+                Button(this).apply { text = nama; setOnClickListener { rentangStatistik = kode; tampilkanStatistik() } },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+            )
+        }
+        isi.addView(barisRentang)
+        isiStatistik = teks("", 13f)
+        isiStatistik.typeface = android.graphics.Typeface.MONOSPACE
+        isi.addView(isiStatistik)
+
         isi.addView(teks("Koreksi saldo (T3.3)", 16f, tebal = true))
         isi.addView(teks("Bandingkan saldo aplikasi dengan saldo IDR asli di Indodax. Sinkron trade dulu; jangan cek saat ada order terisi sebagian. Selisih dicatat sebagai penyesuaian (tidak dihitung sebagai profit), tidak menghapus catatan apa pun.", 13f))
         tombolCekSelisih = Button(this).apply { text = "Cek selisih saldo"; setOnClickListener { cekSelisih() } }
@@ -240,6 +256,7 @@ class MainActivity : Activity() {
         muatTarget()
         tampilkanProgress()
         tampilkanRiwayat()
+        tampilkanStatistik()
         tampilkanKoreksi()
         tampilkanGrafik()
     }
@@ -261,6 +278,30 @@ class MainActivity : Activity() {
                 runOnUiThread { isiRiwayat.text = t.toString() }
             } catch (e: Exception) {
                 runOnUiThread { isiRiwayat.text = "Riwayat belum bisa dihitung: ${pesanGalat(e)}" }
+            }
+        }.start()
+    }
+
+    /** T4.1: statistik trade tertutup untuk rentang terpilih. Tanpa jaringan. */
+    private fun tampilkanStatistik() {
+        val rentang = rentangStatistik
+        Thread {
+            try {
+                val s = statistikTrading(pathDb, rentang)
+                val judul = when (s.rentang) { "hari" -> "Hari ini"; "minggu" -> "Minggu ini"; else -> "Semua riwayat" }
+                val t = StringBuilder()
+                t.append("$judul: ${s.jumlah} trade\n")
+                t.append("Untung ${s.untung} · rugi ${s.rugi} · impas ${s.impas}\n")
+                t.append("Win rate: ${s.winRate}%\n")
+                t.append("Rata-rata untung: Rp ${s.rataUntung}\n")
+                t.append("Rata-rata rugi: Rp ${s.rataRugi}\n")
+                t.append("Hasil bersih: Rp ${s.hasilBersih}\n")
+                t.append("Total fee: Rp ${s.totalFee}\n")
+                t.append("Profit kotor: Rp ${s.profitKotor}\n")
+                t.append("Profit termakan fee: ${s.persenFee}%")
+                runOnUiThread { isiStatistik.text = t.toString() }
+            } catch (e: Exception) {
+                runOnUiThread { isiStatistik.text = "Statistik belum bisa dihitung: ${pesanGalat(e)}" }
             }
         }.start()
     }
@@ -730,6 +771,7 @@ class MainActivity : Activity() {
                     segarkan()
                     tampilkanProgress()
                     tampilkanRiwayat()
+                    tampilkanStatistik()
                     tampilkanGrafik()
                 }
             } catch (e: Exception) {

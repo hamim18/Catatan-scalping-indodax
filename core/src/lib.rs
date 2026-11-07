@@ -8,6 +8,7 @@ pub mod error;
 pub mod model;
 pub mod periode;
 pub mod posisi;
+pub mod statistik;
 pub mod sign;
 pub mod store;
 pub mod sync;
@@ -24,6 +25,7 @@ pub use error::{Error, Hasil};
 pub use model::{parse_my_trades, Trade};
 pub use periode::{awal_hari_wib, awal_minggu_wib, DataSaldo, Pencapaian, RingkasanTarget, SelisihSaldo, TitikGrafik};
 pub use posisi::{hitung, HasilHitung, Penyesuaian, PosisiTerbuka, RiwayatSetelan, TradeTertutup};
+pub use statistik::{hitung_statistik, Statistik};
 pub use store::{KoreksiSaldo, Penyimpanan};
 pub use sync::{sinkron, sinkron_koin, HasilSinkron, Opsi, SumberTrade};
 pub use ws::{
