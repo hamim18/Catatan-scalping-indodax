@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 7 November 2026 (T1.5 selesai)
-Status: **Fase 0 selesai. Fase 1 hampir selesai:** T1.0 sampai T1.5 lolos uji. Pantauan realtime berjalan di HP sebagai foreground service, trade tercatat tanpa dobel, dan kini notifikasi beli dan jual muncul otomatis (beli: modal efektif, TP, SL, estimasi hasil bersih; jual: hasil bersih nyata). Build dan tes berhasil tanpa error, 7 poin uji HP T1.5 lolos. Berikutnya: **Fase 2** (target dan saldo).
+Terakhir diperbarui: 7 November 2026 (T2.1 selesai)
+Status: **Fase 0 dan Fase 1 (MVP) selesai. Fase 2 berjalan:** T2.1 (setelan target harian dan mingguan) lolos uji: build dan tes berhasil, uji HP 6 poin lolos. Berikutnya: **T2.2** (arus kas deposit/withdraw IDR), menunggu contoh respons `GET /api/v2/fiat/orders` (skrip `tools/fase2_fiat.py`).
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -13,7 +13,7 @@ Status: **Fase 0 selesai. Fase 1 hampir selesai:** T1.0 sampai T1.5 lolos uji. P
 
 ## 1. Sudah dikerjakan
 
-### 1a. Ringkasan riwayat (Fase 0 sampai T1.5)
+### 1a. Ringkasan riwayat (Fase 0 sampai T2.1)
 
 | Task | Hasil singkat | Status |
 | --- | --- | --- |
@@ -28,6 +28,7 @@ Status: **Fase 0 selesai. Fase 1 hampir selesai:** T1.0 sampai T1.5 lolos uji. P
 | T1.4b | `core/src/ws_klien.rs`: sambungan WebSocket privat sebenarnya (`pantau`, `KejadianPantau`): minta token, handshake tanpa Origin, connect, subscribe, balas ping `{}`, sambung ulang otomatis dengan token baru, picu `sinkron_koin` lewat `PemicuSinkron`. Pustaka: rustls (provider `ring` saja, sama dengan ureq), webpki-roots, base64; tanpa aws-lc-rs. Contoh `core/examples/pantau.rs`. Lolos uji komputer: rekonsiliasi awal, subscribe, beli dan jual market UAI terdeteksi dan tercatat tanpa dobel | Selesai |
 | T1.4c | FFI: `Pemantau` (mulai, berhenti, sedang_jalan; thread pantau), callback `PendengarPantau`, enum `KejadianUi`. Android: `LayananLatar.kt` (foreground service tipe `specialUse`, satu notifikasi tetap dengan tombol Hentikan, START_STICKY), `PantauBersama` (status dan log untuk layar), izin notifikasi (Android 13+), permintaan abaikan optimasi baterai, sinkron otomatis saat app dibuka (FR-06, FR-10). Build dan tes berhasil, 7 poin uji HP lolos | Selesai |
 | T1.5 | FFI `isi_notifikasi` dan `ringkasan_posisi_notif` (isi notifikasi dihitung di Rust, format Indonesia, 6 tes di `scalping-ffi`; estimasi hasil bersih dengan fee jual perkiraan 0,31%; beli tambahan menampilkan TP/SL order itu dan posisi keseluruhan). `LayananLatar.kt`: saluran "Order terisi" (prioritas tinggi), satu notifikasi per order, pekerja satu thread, tanpa notifikasi ganda (trade_baru > 0), ringkasan TP/SL saat rekonsiliasi menemukan trade terlewat. Mulai pantauan menyimpan setelan TP/SL (FR-15 sampai FR-17). Build dan tes berhasil, 7 poin uji HP lolos | Selesai |
+| T2.1 | Target harian dan mingguan (FR-04): `Penyimpanan::atur_target/target` (tabel `meta`, kunci `target_harian_persen` dan `target_mingguan_persen`), `periksa_target` (lebih dari 0 dan paling banyak 100), FFI `simpan_target`/`baca_target` (`SetelanTarget`), kolom target di layar uji. 4 tes baru. Build dan tes berhasil, uji HP 6 poin lolos | Selesai |
 
 ### 1b. Kesimpulan Fase 0 (masih dipakai)
 - **Fee dalam IDR.** Koin yang diterima tidak dipotong fee. Fee selain IDR sengaja ditolak (error) karena belum pernah ditemui.
@@ -119,7 +120,7 @@ Status: **Fase 0 selesai. Fase 1 hampir selesai:** T1.0 sampai T1.5 lolos uji. P
 - Versi Android HP (`ro.build.version.sdk`) belum dilaporkan; kode menangani semua versi dari minSdk 30.
 - Kunci API dibaca layanan dari `KunciAman` dan disalurkan ke Rust; tidak dicatat ke log.
 
-### 1g. T1.5 (terbaru, detail)
+### 1g. T1.5 (detail)
 
 **Status: Selesai.** Build dan tes berhasil tanpa error; 7 poin uji HP lolos (dilaporkan pengguna, 7 Nov 2026).
 
@@ -147,6 +148,15 @@ Status: **Fase 0 selesai. Fase 1 hampir selesai:** T1.0 sampai T1.5 lolos uji. P
 - Order beli dikenali sebagai order beli terbaru koin itu; dua beli koin sama yang selesai nyaris bersamaan menampilkan order yang sama (perbaikan butuh ID order di `OrderRingkas` yang cocok dengan ID event WebSocket).
 - Fee jual perkiraan 0,31% dipakai tetap; belum ada setelan pengguna (jual market bisa lebih besar).
 - Tombol "Jual di Indodax" tidak disentuh (layar Posisi belum dibuat).
+
+### 1h. T2.1 (terbaru, detail)
+
+**Status: Selesai.** Build dan tes berhasil; 6 poin uji HP lolos (dilaporkan pengguna, 7 Nov 2026).
+
+- Target disimpan di tabel `meta` (tanpa tabel baru); hanya nilai terbaru, tanpa riwayat. Input tidak valid ditolak dan nilai lama tidak berubah. Koma desimal diterima.
+- Berkas berubah: `core/src/store.rs`, `core/src/posisi.rs` (`periksa_target`), `ffi/src/lib.rs`, `MainActivity.kt`.
+- Batas atas 100% adalah pilihan (bukan dari PRD); ubah di `periksa_target` bila perlu.
+- Progress target belum dihitung (T2.3).
 
 ---
 
@@ -181,7 +191,11 @@ Arch Linux; Rust 1.98.1 dengan 4 target Android dan `cargo ndk`; JDK 17; Gradle 
 Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya klien Android (UI, foreground service, notifikasi, penyimpanan kunci). Jembatan: UniFFI 0.31. Penyimpanan: SQLite (rusqlite bundled) dikelola dari Rust.
 
 ### Task berikutnya (urut)
-Fase 1 (MVP) selesai dengan T1.5. Berikutnya **Fase 2**: setelan target, snapshot harian dan mingguan, deposit/withdraw IDR, pencapaian dan progress target, lalu progress target di notifikasi jual (ditunda dari T1.5). Pemecahan task (T2.x) belum dibuat; disusun di awal sesi berikutnya, setelah berkas versi terbaru dikirim (jangan berasumsi isi berkas).
+| Task | Isi | Syarat |
+| --- | --- | --- |
+| T2.2 | Arus kas: tarik deposit/withdraw IDR (`GET /api/v2/fiat/orders`, maks 30 hari per permintaan), simpan anti-dobel (ID sumber unik), hitung setoran bersih (FR-24) | Contoh respons `fiat/orders` dari akun (jalankan `tools/fase2_fiat.py`, tempel hasilnya); nama parameter belum terkonfirmasi dokumen resmi |
+| T2.3 | Periode WIB dan snapshot harian/mingguan (FR-19), saldo versi aplikasi, pencapaian dan progress (FR-20, FR-21) | T2.2 selesai |
+| T2.4 | Layar progress, progress target di notifikasi jual (FR-16), notifikasi target tercapai (FR-18) | T2.3 selesai |
 
 ### Keputusan yang masih terbuka
 | Hal | Pilihan | Status |
@@ -195,6 +209,7 @@ Fase 1 (MVP) selesai dengan T1.5. Berikutnya **Fase 2**: setelan target, snapsho
 ### Keputusan yang sudah terjawab
 - Estimasi hasil bersih di bawah TP/SL: tampil (T1.5, permintaan pengguna).
 - Beli tambahan koin yang sama: tampil TP/SL order itu dan posisi keseluruhan (T1.5).
+- Target harian dan mingguan: hanya nilai terbaru, batas lebih dari 0 dan paling banyak 100 persen (T2.1).
 
 ### Pekerjaan kecil tertunda
 - PRD perlu v1.3: pertanyaan terbuka no. 4 terjawab (estimasi hasil bersih tampil, fee jual perkiraan 0,31%); FR-16 progress target ditunda ke Fase 2; bagian 9 (token WebSocket dengan key v2 terjawab, tanda tangan SHA512 untuk token, nama status `FILL`, WebSocket sebagai pemicu) dan pertanyaan terbuka.
@@ -217,7 +232,7 @@ Kebutuhan: Python 3.8+, git, Rust (rustup), dan toolchain Android (lihat bagian 
 Tes inti Rust:
 ```
 cargo test -p scalping-core        # 51 tes lulus per T1.4a (periksa jumlah terbaru setelah T1.4b)
-cargo test -p scalping-ffi         # T1.5: 6 tes (format angka, estimasi bersih, contoh ICNT)
+cargo test -p scalping-ffi         # T1.5: 6 tes; T2.1: +2 tes target (8)
 cargo run -p scalping-core --example pantau   # T1.4b: pantau realtime di komputer, Enter untuk berhenti
 cargo run -p scalping-core --example cek_data -- data/raw_icntidr_<waktu>.json
 cargo run -p scalping-core --example cek_koneksi
@@ -253,7 +268,7 @@ git commit -m "Tx.y: deskripsi singkat"
 
 ## 5. Struktur proyek
 
-### Saat ini (setelah T1.5)
+### Saat ini (setelah T2.1)
 ```
 catatan-scalping/
 ├── README.md
@@ -315,6 +330,7 @@ catatan-scalping/
     ├── fase0_validasi.py                (hanya baca; SHA256; --diagnosa)
     ├── fase0_akun.py                    (bentuk respons /account, angka disamarkan)
     ├── tes_websocket_token.py           (T0.6: tes token dan event WebSocket privat, baca saja)
+    ├── fase2_fiat.py                    (T2.2: lihat bentuk respons fiat/orders, angka disamarkan, baca saja)
     ├── cek_lingkungan.py                (laporan versi Rust/Android/adb)
     └── bangun_android.sh                (Rust -> binding -> APK -> adb)
 ```
@@ -326,6 +342,7 @@ Struktur Fase 2 (snapshot harian/mingguan, arus kas deposit/withdraw, pencapaian
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T2.1: `T2.1: setelan target harian dan mingguan` (hash: ...)
 - T1.5: `T1.5: notifikasi beli dan jual dengan TP/SL dan hasil bersih` (hash: ...)
 - T1.4c: `T1.4c: layanan latar, jembatan FFI pantauan, izin notifikasi dan baterai` (hash: ...)
 - T1.4b: `T1.4b: sambungan WebSocket privat, sambung ulang, pemicu sinkron` (hash: ...)
