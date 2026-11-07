@@ -1252,6 +1252,54 @@ pub fn daftar_koreksi_saldo(path_db: String, jumlah: u32) -> Result<Vec<BarisKor
         .collect())
 }
 
+/// Ringkasan isi cadangan (U5). Hanya jumlah; tanpa angka uang.
+#[derive(uniffi::Record)]
+pub struct RingkasanCadanganUi {
+    pub jumlah_trade: u32,
+    pub jumlah_arus_kas: u32,
+    pub jumlah_koreksi: u32,
+    /// waktu snapshot saldo awal (ms), kosong bila tidak ada
+    pub snapshot_awal_ms: Option<i64>,
+}
+
+fn ringkasan_cadangan(r: (usize, usize, usize, Option<i64>)) -> RingkasanCadanganUi {
+    RingkasanCadanganUi {
+        jumlah_trade: r.0 as u32,
+        jumlah_arus_kas: r.1 as u32,
+        jumlah_koreksi: r.2 as u32,
+        snapshot_awal_ms: r.3,
+    }
+}
+
+/// U5: ekspor salinan database ke berkas BARU `path_tujuan` (biasanya di cache aplikasi; Kotlin lalu
+/// menyalinnya ke lokasi pilihan pengguna). Hasilnya diperiksa ulang sebelum dikembalikan.
+/// Kunci API tidak ada di database, jadi tidak ikut.
+#[uniffi::export]
+pub fn ekspor_cadangan(path_db: String, path_tujuan: String) -> Result<RingkasanCadanganUi, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    simpan.ekspor_ke(&path_tujuan).map_err(gagal)?;
+    match Penyimpanan::periksa_cadangan(&path_tujuan) {
+        Ok(r) => Ok(ringkasan_cadangan(r)),
+        Err(e) => {
+            let _ = std::fs::remove_file(&path_tujuan);
+            Err(gagal(e))
+        }
+    }
+}
+
+/// U5: periksa berkas cadangan tanpa mengubah apa pun (untuk dialog konfirmasi impor).
+#[uniffi::export]
+pub fn periksa_cadangan(path_sumber: String) -> Result<RingkasanCadanganUi, ErrorApp> {
+    Penyimpanan::periksa_cadangan(&path_sumber).map(ringkasan_cadangan).map_err(gagal)
+}
+
+/// U5: ganti database dengan isi cadangan. Pantauan HARUS sudah mati. Database lama disimpan
+/// sebagai `<path_db>.sebelum-impor`. Gagal di tengah jalan tidak merusak database yang ada.
+#[uniffi::export]
+pub fn pulihkan_cadangan(path_db: String, path_sumber: String) -> Result<RingkasanCadanganUi, ErrorApp> {
+    Penyimpanan::pulihkan(&path_db, &path_sumber).map(ringkasan_cadangan).map_err(gagal)
+}
+
 #[cfg(test)]
 mod tes_fase3 {
     use super::*;
@@ -1593,5 +1641,71 @@ mod tes_notifikasi {
         let (tp, sl) = harga_tp_sl(ef, Decimal::from(1), Decimal::from(1));
         assert_eq!(fmt_harga(tp), "4.046");
         assert_eq!(fmt_harga(sl), "3.966");
+    }
+}
+
+#[cfg(test)]
+mod tes_cadangan {
+    use super::*;
+    use scalping_core::Trade;
+
+    fn d(s: &str) -> Decimal {
+        Decimal::from_str(s).unwrap()
+    }
+
+    fn path(nama: &str) -> String {
+        std::env::temp_dir()
+            .join(format!("ffi_cadangan_{nama}_{}.db", std::process::id()))
+            .to_string_lossy()
+            .to_string()
+    }
+
+    fn bersih(p: &str) {
+        for a in ["", ".impor.tmp", ".sebelum-impor"] {
+            let _ = std::fs::remove_file(format!("{p}{a}"));
+        }
+    }
+
+    #[test]
+    fn ekspor_periksa_dan_pulihkan_lewat_ffi() {
+        let asal = path("asal");
+        let salinan = path("salinan");
+        let tujuan = path("tujuan");
+        for p in [&asal, &salinan, &tujuan] {
+            bersih(p);
+        }
+        let mut s = Penyimpanan::buka(&asal).unwrap();
+        s.simpan_banyak(&[Trade {
+            trade_id: "t1".into(),
+            order_id: "o1".into(),
+            symbol: "icntidr".into(),
+            price: d("3998"),
+            qty: d("16.35667833"),
+            quote_qty: d("65393"),
+            commission: d("133"),
+            commission_asset: "idr".into(),
+            is_buyer: true,
+            is_maker: false,
+            time: 1000,
+        }])
+        .unwrap();
+        s.tambah_snapshot("awal", 500, d("1000000")).unwrap();
+        drop(s);
+
+        let r = ekspor_cadangan(asal.clone(), salinan.clone()).unwrap();
+        assert_eq!((r.jumlah_trade, r.jumlah_arus_kas, r.snapshot_awal_ms), (1, 0, Some(500)));
+        // ekspor tidak boleh menimpa
+        assert!(ekspor_cadangan(asal.clone(), salinan.clone()).is_err());
+
+        let p = periksa_cadangan(salinan.clone()).unwrap();
+        assert_eq!(p.jumlah_trade, 1);
+        assert!(periksa_cadangan("/tidak/ada.db".into()).is_err());
+
+        let h = pulihkan_cadangan(tujuan.clone(), salinan.clone()).unwrap();
+        assert_eq!(h.jumlah_trade, 1);
+        assert_eq!(Penyimpanan::buka(&tujuan).unwrap().jumlah_trade().unwrap(), 1);
+        for p in [&asal, &salinan, &tujuan] {
+            bersih(p);
+        }
     }
 }

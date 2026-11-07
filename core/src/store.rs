@@ -4,7 +4,7 @@
 //! Anti-dobel (FR-09): `trade_id` adalah PRIMARY KEY, INSERT OR IGNORE.
 use crate::arus_kas::{ArusKas, JenisArusKas};
 use crate::{Error, Hasil, Trade};
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
 use rust_decimal::Decimal;
 use std::str::FromStr;
 
@@ -377,6 +377,121 @@ impl Penyimpanan {
             .optional()
             .map_err(gagal)
     }
+
+    // ---------- U5: cadangan data lokal ----------
+
+    /// Ekspor: salinan database yang konsisten ke berkas baru `tujuan` (VACUUM INTO).
+    /// Menolak menimpa berkas yang sudah ada. Berisi catatan saja; kunci API tidak ada di database.
+    pub fn ekspor_ke(&self, tujuan: &str) -> Hasil<()> {
+        if std::path::Path::new(tujuan).exists() {
+            return Err(gagal("berkas tujuan sudah ada"));
+        }
+        self.conn
+            .execute("VACUUM INTO ?1", params![tujuan])
+            .map_err(gagal)?;
+        Ok(())
+    }
+
+    /// Periksa berkas cadangan TANPA mengubahnya. Mengembalikan
+    /// (jumlah trade, jumlah arus kas, jumlah koreksi, waktu snapshot awal).
+    pub fn periksa_cadangan(path: &str) -> Hasil<(usize, usize, usize, Option<i64>)> {
+        if !std::path::Path::new(path).is_file() {
+            return Err(gagal("berkas cadangan tidak ditemukan"));
+        }
+        let bukan_db = |_e: rusqlite::Error| gagal("berkas ini bukan cadangan database yang valid");
+        let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(bukan_db)?;
+        let hasil: String = conn
+            .query_row("PRAGMA integrity_check", [], |r| r.get(0))
+            .map_err(bukan_db)?;
+        if hasil != "ok" {
+            return Err(gagal("database cadangan rusak (integrity_check gagal)"));
+        }
+        let ada = |tabel: &str| -> Hasil<bool> {
+            let n: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    params![tabel],
+                    |r| r.get(0),
+                )
+                .map_err(gagal)?;
+            Ok(n > 0)
+        };
+        for wajib in ["trade", "meta", "snapshot"] {
+            if !ada(wajib)? {
+                return Err(gagal(format!("bukan cadangan Catatan Scalping: tabel {wajib} tidak ada")));
+            }
+        }
+        // Kolom wajib harus ada (prepare gagal bila ada kolom yang hilang).
+        conn.prepare(
+            "SELECT trade_id, order_id, symbol, price, qty, quote_qty, commission,
+                    commission_asset, is_buyer, is_maker, waktu_ms FROM trade LIMIT 1",
+        )
+        .map_err(|_| gagal("tabel trade di cadangan tidak sesuai"))?;
+        conn.prepare("SELECT jenis, waktu_ms, saldo FROM snapshot LIMIT 1")
+            .map_err(|_| gagal("tabel snapshot di cadangan tidak sesuai"))?;
+        let hitung = |tabel: &str| -> Hasil<usize> {
+            if !ada(tabel)? {
+                return Ok(0);
+            }
+            let n: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {tabel}"), [], |r| r.get(0))
+                .map_err(gagal)?;
+            Ok(n as usize)
+        };
+        let awal: Option<i64> = conn
+            .query_row(
+                "SELECT MIN(waktu_ms) FROM snapshot WHERE jenis='awal'",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(gagal)?;
+        Ok((hitung("trade")?, hitung("arus_kas")?, hitung("koreksi_saldo")?, awal))
+    }
+
+    /// Impor: ganti database `path_db` dengan isi cadangan `sumber`.
+    /// Urutan aman: periksa -> salin bersih ke berkas sementara -> verifikasi isi ->
+    /// simpan salinan database lama (`<path_db>.sebelum-impor`) -> ganti lewat rename.
+    /// Pemanggil WAJIB menghentikan pantauan/sinkron sebelum memanggil ini.
+    pub fn pulihkan(path_db: &str, sumber: &str) -> Hasil<(usize, usize, usize, Option<i64>)> {
+        Self::periksa_cadangan(sumber)?;
+        let tmp = format!("{path_db}.impor.tmp");
+        let _ = std::fs::remove_file(&tmp);
+        {
+            let src = Connection::open_with_flags(sumber, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(gagal)?;
+            src.execute("VACUUM INTO ?1", params![&tmp]).map_err(gagal)?;
+        }
+        // Verifikasi: semua angka desimal di cadangan harus terbaca.
+        let verifikasi = (|| -> Hasil<()> {
+            let p = Self::buka(&tmp)?;
+            p.semua_trade()?;
+            p.semua_arus_kas()?;
+            p.semua_koreksi()?;
+            p.riwayat_setelan()?;
+            Ok(())
+        })();
+        if let Err(e) = verifikasi {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(gagal(format!("isi cadangan tidak valid: {e}")));
+        }
+        // Simpan database lama supaya impor yang keliru masih bisa dibatalkan.
+        if std::path::Path::new(path_db).exists() {
+            let lama = format!("{path_db}.sebelum-impor");
+            let _ = std::fs::remove_file(&lama);
+            let simpan_lama = Self::buka(path_db).and_then(|p| p.ekspor_ke(&lama));
+            if let Err(e) = simpan_lama {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(gagal(format!("gagal menyimpan salinan database lama: {e}")));
+            }
+        }
+        for akhiran in ["-wal", "-shm", "-journal"] {
+            let _ = std::fs::remove_file(format!("{path_db}{akhiran}"));
+        }
+        if let Err(e) = std::fs::rename(&tmp, path_db) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(gagal(format!("gagal mengganti database: {e}")));
+        }
+        Self::periksa_cadangan(path_db)
+    }
 }
 
 #[cfg(test)]
@@ -504,5 +619,100 @@ mod tests {
         s.tambah_snapshot("awal", 2000, d("1450000")).unwrap();
         s.tambah_snapshot("awal", 3000, d("9")).unwrap();
         assert_eq!(s.snapshot_awal().unwrap(), Some((2000, d("1450000"))));
+    }
+
+    fn path_tes(nama: &str) -> String {
+        std::env::temp_dir()
+            .join(format!("cadangan_{nama}_{}.db", std::process::id()))
+            .to_string_lossy()
+            .to_string()
+    }
+
+    fn hapus_semua(p: &str) {
+        for a in ["", ".impor.tmp", ".sebelum-impor", "-wal", "-shm", "-journal"] {
+            let _ = std::fs::remove_file(format!("{p}{a}"));
+        }
+    }
+
+    #[test]
+    fn ekspor_lalu_pulihkan_membawa_semua_catatan() {
+        let a = path_tes("a");
+        let b = path_tes("b");
+        let c = path_tes("c");
+        for p in [&a, &b, &c] {
+            hapus_semua(p);
+        }
+        let mut asal = Penyimpanan::buka(&a).unwrap();
+        asal.simpan_banyak(&[
+            trade("1", "o1", "icntidr", true, 1000),
+            trade("2", "o2", "icntidr", false, 2000),
+        ])
+        .unwrap();
+        asal.tambah_snapshot("awal", 500, d("1450000")).unwrap();
+        asal.atur_target(d("1.5"), d("5")).unwrap();
+        asal.tambah_koreksi(3000, d("-12.5"), "uji").unwrap();
+        asal.ekspor_ke(&b).unwrap();
+
+        // Database tujuan berisi data lain (1 trade); setelah pulihkan harus sama dengan asal.
+        let mut lain = Penyimpanan::buka(&c).unwrap();
+        lain.simpan_banyak(&[trade("9", "o9", "dogeidr", true, 100)]).unwrap();
+        drop(lain);
+
+        let r = Penyimpanan::pulihkan(&c, &b).unwrap();
+        assert_eq!(r, (2, 0, 1, Some(500)));
+        let baru = Penyimpanan::buka(&c).unwrap();
+        assert_eq!(baru.semua_trade().unwrap(), asal.semua_trade().unwrap());
+        assert_eq!(baru.target().unwrap(), (Some(d("1.5")), Some(d("5"))));
+        assert_eq!(baru.snapshot_awal().unwrap(), Some((500, d("1450000"))));
+        // Salinan database lama tetap ada.
+        let lama = Penyimpanan::buka(&format!("{c}.sebelum-impor")).unwrap();
+        assert_eq!(lama.jumlah_trade().unwrap(), 1);
+        for p in [&a, &b, &c] {
+            hapus_semua(p);
+        }
+    }
+
+    #[test]
+    fn ekspor_menolak_menimpa_berkas_yang_ada() {
+        let a = path_tes("tolak");
+        hapus_semua(&a);
+        let s = Penyimpanan::buka(&a).unwrap();
+        let tujuan = path_tes("tolak_tujuan");
+        std::fs::write(&tujuan, b"sudah ada").unwrap();
+        assert!(s.ekspor_ke(&tujuan).is_err());
+        assert_eq!(std::fs::read(&tujuan).unwrap(), b"sudah ada");
+        hapus_semua(&a);
+        hapus_semua(&tujuan);
+    }
+
+    #[test]
+    fn periksa_cadangan_menolak_berkas_bukan_database() {
+        let p = path_tes("sampah");
+        hapus_semua(&p);
+        std::fs::write(&p, b"ini bukan database sqlite, hanya teks biasa yang cukup panjang.").unwrap();
+        assert!(Penyimpanan::periksa_cadangan(&p).is_err());
+        assert!(Penyimpanan::periksa_cadangan("/tidak/ada/berkas.db").is_err());
+        // pulihkan gagal tidak boleh merusak database yang ada
+        let tujuan = path_tes("tujuan_utuh");
+        hapus_semua(&tujuan);
+        let mut t = Penyimpanan::buka(&tujuan).unwrap();
+        t.simpan_banyak(&[trade("1", "o1", "icntidr", true, 1000)]).unwrap();
+        drop(t);
+        assert!(Penyimpanan::pulihkan(&tujuan, &p).is_err());
+        assert_eq!(Penyimpanan::buka(&tujuan).unwrap().jumlah_trade().unwrap(), 1);
+        hapus_semua(&p);
+        hapus_semua(&tujuan);
+    }
+
+    #[test]
+    fn periksa_cadangan_menolak_database_lain() {
+        let p = path_tes("dblain");
+        hapus_semua(&p);
+        {
+            let c = Connection::open(&p).unwrap();
+            c.execute_batch("CREATE TABLE barang (id INTEGER);").unwrap();
+        }
+        assert!(Penyimpanan::periksa_cadangan(&p).is_err());
+        hapus_semua(&p);
     }
 }

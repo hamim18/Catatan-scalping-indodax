@@ -1,6 +1,7 @@
 package id.catatanscalping.app
 
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.os.Bundle
@@ -138,6 +139,19 @@ class MainActivity : Activity() {
         if (requestCode == KODE_NOTIF) {
             (layar[TAB_SETELAN] as LayarSetelan)
                 .izinNotifSelesai(grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+        }
+    }
+
+    /** U5: hasil pemilih berkas sistem (ekspor dan impor cadangan). */
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        val setelan = layar[TAB_SETELAN] as LayarSetelan
+        when (requestCode) {
+            Cadangan.KODE_EKSPOR -> setelan.cadanganEkspor(uri)
+            Cadangan.KODE_IMPOR -> setelan.cadanganImpor(uri)
         }
     }
 

@@ -55,6 +55,9 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
 
     private val infoArusKas = ui.mono("")
     private lateinit var tombolArusKas: Button
+    private lateinit var tombolEkspor: Button
+    private lateinit var tombolImpor: Button
+    private val infoCadangan = ui.mute("", 12f)
     private lateinit var cekBersih: CheckBox
     private val teksLog = ui.mono("")
 
@@ -136,6 +139,19 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         kArus.tambah(infoArusKas, atas = 6)
         isi.tambah(kArus, atas = 12)
 
+        // --- Cadangan data (U5) ---
+        val kCadangan = ui.kartu()
+        kCadangan.tambah(ui.teks("Cadangan data", 14f, tebal = true))
+        kCadangan.tambah(
+            ui.mute("Simpan atau pulihkan catatan trade ke penyimpanan HP (berkas .db). Kunci API tidak ikut dicadangkan; setelah impor di HP baru, masukkan kunci lagi.", 12f),
+            atas = 6,
+        )
+        tombolEkspor = ui.tombol("Ekspor data") { Cadangan.mintaEkspor(a) }
+        tombolImpor = ui.tombol("Impor data") { Cadangan.mintaImpor(a) }
+        kCadangan.tambah(barisTombol(tombolEkspor, tombolImpor), atas = 10)
+        kCadangan.tambah(infoCadangan, atas = 8)
+        isi.tambah(kCadangan, atas = 12)
+
         // --- Log pantauan ---
         val kLog = ui.kartu()
         kLog.tambah(ui.teks("Log pantauan", 14f, tebal = true))
@@ -216,6 +232,7 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         tombolTes.aktif(punyaKunci)
         tombolHapus.aktif(punyaKunci)
         tombolArusKas.aktif(punyaKunci && !Sinkron.arusKasBerjalan)
+        tombolImpor.aktif(!pantau)
         teksLog.text = PantauBersama.logTeks()
     }
 
@@ -267,6 +284,28 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
                 a.dataBerubah()
             }
             r.onFailure { infoSimpan.text = "Tidak disimpan: ${Latar.pesan(it)}" }
+        }
+    }
+
+    // ---------- cadangan data (U5) ----------
+
+    fun cadanganEkspor(uri: Uri) {
+        infoCadangan.text = "Menyalin data..."
+        Cadangan.ekspor(a, uri) { infoCadangan.text = it }
+    }
+
+    fun cadanganImpor(uri: Uri) {
+        if (Sinkron.pantauAktif(a)) {
+            infoCadangan.text = "Hentikan pantauan dulu sebelum impor."
+            return
+        }
+        infoCadangan.text = "Memeriksa berkas..."
+        Cadangan.impor(a, uri) { pesan, berhasil ->
+            infoCadangan.text = pesan
+            if (berhasil) {
+                muatNilaiTersimpan()
+                a.dataBerubah()
+            }
         }
     }
 

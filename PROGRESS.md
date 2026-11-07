@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 8 November 2026 (Fase UI U1 sampai U4: kode selesai dan build berhasil)
-Status: **Fase 0, Fase 1 (MVP), Fase 2 (T2.1 sampai T2.5), Fase 3 (T3.1 sampai T3.3), dan T4.1 (statistik) selesai dan lolos uji** (build, tes, dan uji HP dilaporkan pengguna 7 Nov 2026). **Fase UI: U1 sampai U4 (layar asli Beranda, Posisi, Riwayat, Setelan) selesai ditulis dan build berhasil (dilaporkan pengguna 8 Nov 2026); uji HP per layar menunggu laporan.** Langkah berikutnya: **U5** (ekspor/impor data lokal), butuh `core/src/store.rs`, `core/Cargo.toml`, `ffi/Cargo.toml`.
+Terakhir diperbarui: 8 November 2026 (Fase UI U1 sampai U5 selesai dan lolos uji)
+Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2 (T2.1 sampai T2.5), Fase 3 (T3.1 sampai T3.3), T4.1 (statistik), dan Fase UI (U1 sampai U5)** (build, tes Rust, dan uji HP dilaporkan pengguna 7 sampai 8 Nov 2026). Langkah berikutnya: PRD v1.3 (dokumentasi), lalu keputusan terbuka (pantauan otomatis setelah reboot, verifikasi mode fee deposit saat ada deposit nyata).
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -38,10 +38,11 @@ Status: **Fase 0, Fase 1 (MVP), Fase 2 (T2.1 sampai T2.5), Fase 3 (T3.1 sampai T
 | T3.2 | Grafik saldo versi aplikasi dan modal aktif: `DataSaldo::deret` (core), FFI `data_grafik`, komponen `GrafikView.kt` (garis tebal saldo, putus-putus modal berundak) (FR-22) | Selesai (build, tes, uji HP lulus 7 Nov) |
 | T3.3 | Koreksi saldo: tabel `koreksi_saldo`, `DataSaldo::selisih_saldo`, FFI `cek_selisih_saldo`/`terapkan_koreksi_saldo`/`daftar_koreksi_saldo`, tombol "Cek selisih saldo" dan "Catat koreksi" (dengan dialog konfirmasi) di layar uji | Selesai (build, tes, uji HP lulus 7 Nov) |
 | T4.1 | Statistik (FR-25): field `TradeTertutup.fee` (fee beli proporsional + fee jual), modul `core/src/statistik.rs` (`hitung_statistik`: jumlah, untung/rugi/impas, win rate, rata-rata untung dan rugi, hasil bersih, total fee, profit kotor, persen profit termakan fee), FFI `statistik_trading(path_db, rentang)` dengan rentang hari/minggu/semua (WIB), bagian "Statistik trading" dengan tiga tombol di layar uji | Selesai (build, tes, uji HP lulus 7 Nov) |
-| U1 | Kerangka 4 tab (navigasi bawah, tema terang/gelap sesuai prototype), `Format.kt` (titik ribuan, koma desimal), `Komponen.kt`, `Latar.kt`, `Sinkron.kt`, layar Setelan (TP/SL, target, kunci, pantauan, sinkron, deposit/withdraw, log). FFI baru: `baca_setelan`, `hasil_persen` (di `RingkasanTargetUi`), `daftar_posisi`, 1 tes baru (15 tes ffi) | Build berhasil 8 Nov; uji HP menunggu |
-| U2 | Beranda: saldo, hasil Rp dan persen terhadap modal aktif, grafik (`GrafikView` bertema), progress target harian/mingguan, chip status koneksi | Build berhasil 8 Nov; uji HP menunggu |
-| U3 | Posisi: kartu per posisi dengan tangga SL/modal efektif/TP dan estimasi hasil bersih; TANPA tombol Jual | Build berhasil 8 Nov; uji HP menunggu |
-| U4 | Riwayat: ringkasan hari ini, daftar trade tertutup (tombol "Tampilkan lebih banyak"), statistik tiga rentang, koreksi saldo | Build berhasil 8 Nov; uji HP menunggu |
+| U1 | Kerangka 4 tab (navigasi bawah, tema terang/gelap sesuai prototype), `Format.kt` (titik ribuan, koma desimal), `Komponen.kt`, `Latar.kt`, `Sinkron.kt`, layar Setelan (TP/SL, target, kunci, pantauan, sinkron, deposit/withdraw, log). FFI baru: `baca_setelan`, `hasil_persen` (di `RingkasanTargetUi`), `daftar_posisi`, 1 tes baru (15 tes ffi) | Selesai (build berhasil, uji HP lulus 8 Nov) |
+| U2 | Beranda: saldo, hasil Rp dan persen terhadap modal aktif, grafik (`GrafikView` bertema), progress target harian/mingguan, chip status koneksi | Selesai (build berhasil, uji HP lulus 8 Nov) |
+| U3 | Posisi: kartu per posisi dengan tangga SL/modal efektif/TP dan estimasi hasil bersih; TANPA tombol Jual | Selesai (build berhasil, uji HP lulus 8 Nov) |
+| U4 | Riwayat: ringkasan hari ini, daftar trade tertutup (tombol "Tampilkan lebih banyak"), statistik tiga rentang, koreksi saldo | Selesai (build berhasil, uji HP lulus 8 Nov) |
+| U5 | Ekspor/impor data lokal: `Penyimpanan::ekspor_ke/periksa_cadangan/pulihkan` di `store.rs` (VACUUM INTO, cek integritas dan tabel wajib, verifikasi angka desimal, salinan `catatan.db.sebelum-impor`, ganti lewat rename), FFI `ekspor_cadangan/periksa_cadangan/pulihkan_cadangan` (`RingkasanCadanganUi`), `Cadangan.kt` (SAF), kartu "Cadangan data" di Setelan, `MainActivity.onActivityResult`. Kunci API tidak ikut. 4 tes baru di core, 1 di ffi (16 tes ffi) | Selesai (build, tes, uji HP lulus 8 Nov) |
 
 ### 1b. Kesimpulan Fase 0 (masih dipakai)
 - **Fee dalam IDR.** Koin yang diterima tidak dipotong fee. Fee selain IDR sengaja ditolak (error) karena belum pernah ditemui.
@@ -239,7 +240,7 @@ Status: **Fase 0, Fase 1 (MVP), Fase 2 (T2.1 sampai T2.5), Fase 3 (T3.1 sampai T
 
 ### 1l. Fase UI: U1 sampai U4 (terbaru, detail)
 
-**Status: Kode ditulis dan build berhasil (dilaporkan pengguna, 8 Nov 2026). Uji HP per layar menunggu laporan.**
+**Status: Selesai.** Kode ditulis dan build berhasil; uji HP empat layar lulus, semua sesuai kriteria (dilaporkan pengguna, 8 Nov 2026).
 
 **Keputusan pengguna (7 Nov 2026)**
 - Tombol "Jual di Indodax": DIHAPUS (aplikasi tidak membuat order; posisi tertutup otomatis saat order jual terdeteksi).
@@ -270,13 +271,33 @@ Status: **Fase 0, Fase 1 (MVP), Fase 2 (T2.1 sampai T2.5), Fase 3 (T3.1 sampai T
 - Berkas `ffi-lib.rs.patch` hanya perantara (sudah diterapkan), tidak perlu disimpan di repo.
 - Layar asli memakai teks sistem (bukan font Manrope prototype).
 
-**Yang perlu diuji di HP**
+**Yang diuji di HP (lulus)**
 1. Empat tab muncul dengan navigasi bawah; tema mengikuti terang/gelap sistem; papan ketik tidak menutup kolom isian.
 2. Setelan: kolom TP/SL dan target terisi dari data tersimpan; Simpan setelan berhasil dan nilai salah ditolak dengan pesan; Sinkron sekarang; mulai/hentikan pantauan; tombol baterai; Sinkron deposit/withdraw.
 3. Beranda: saldo dan hasil cocok dengan hitungan lama; grafik dua garis; bar target; chip status berubah saat pantauan hidup/mati.
 4. Posisi: kartu per posisi sesuai notifikasi beli (contoh TP 4.046, SL 3.966); kosong saat tidak ada posisi.
 5. Riwayat: ringkasan dan daftar cocok dengan sebelumnya; statistik tiga rentang; cek selisih dan catat koreksi.
 6. Setelah ada order terisi saat app terbuka, layar aktif menyegarkan diri.
+
+### 1m. U5: ekspor dan impor data lokal (detail)
+
+**Status: Selesai.** `cargo test -p scalping-core`, `cargo test -p scalping-ffi`, build Android, dan uji HP lulus (dilaporkan pengguna, 8 Nov 2026).
+
+**Yang dibangun**
+- `core/src/store.rs`: `Penyimpanan::ekspor_ke(tujuan)` (salinan konsisten lewat `VACUUM INTO`, menolak menimpa berkas yang ada), `Penyimpanan::periksa_cadangan(path)` (buka hanya-baca, `PRAGMA integrity_check`, tabel wajib `trade`/`meta`/`snapshot`, kolom wajib; mengembalikan jumlah trade, arus kas, koreksi, dan waktu snapshot awal), `Penyimpanan::pulihkan(path_db, sumber)`. Dependensi tidak berubah (SQLite bundled mendukung `VACUUM INTO`). 4 tes baru.
+- Urutan aman `pulihkan`: periksa berkas, salin bersih ke `<db>.impor.tmp`, verifikasi semua angka desimal terbaca, simpan database lama sebagai `<db>.sebelum-impor`, hapus `-wal`/`-shm`/`-journal`, lalu `rename`. Gagal di tahap mana pun tidak merusak database yang ada.
+- `ffi/src/lib.rs`: `ekspor_cadangan`, `periksa_cadangan`, `pulihkan_cadangan`, `RingkasanCadanganUi`. 1 tes baru (`tes_cadangan`); total tes ffi 16.
+- Android: `Cadangan.kt` (pemilih berkas sistem SAF: `ACTION_CREATE_DOCUMENT` dan `ACTION_OPEN_DOCUMENT`; berkas perantara di cache aplikasi, dihapus setelah dipakai), kartu "Cadangan data" di `LayarSetelan.kt` (tombol Ekspor dan Impor, tombol Impor nonaktif saat pantauan berjalan), `MainActivity.onActivityResult`. Berkas ekspor bernama `catatan-scalping-<tanggal WIB>.db`.
+
+**Perilaku**
+- Ekspor: Rust membuat salinan di cache, diperiksa ulang, lalu disalin ke lokasi pilihan pengguna. Pesan hasil memuat jumlah trade, deposit/withdraw, dan koreksi.
+- Impor: berkas diperiksa dulu, dialog konfirmasi menampilkan ringkasan isi, baru database diganti. Setelah impor, kolom setelan dimuat ulang dan layar disegarkan.
+- Kunci API TIDAK ikut dicadangkan (database tidak menyimpannya). Di HP baru, setelah impor: masukkan kunci, jalankan "Sinkron sekarang" satu kali, baru mulai pantauan (penanda sinkron pertama ada di preferensi aplikasi, bukan di database).
+
+**Catatan dan batasan**
+- Impor hanya mengecek pantauan (harus mati); belum mencegah impor saat sinkron manual atau sinkron otomatis sedang berjalan. Hindari impor pada saat itu.
+- Berkas `.sebelum-impor` disimpan di folder privat aplikasi dan ditimpa pada impor berikutnya (hanya satu salinan terakhir).
+- Cadangan manual saja; belum ada cadangan terjadwal.
 
 ---
 
@@ -285,7 +306,7 @@ Status: **Fase 0, Fase 1 (MVP), Fase 2 (T2.1 sampai T2.5), Fase 3 (T3.1 sampai T
 ### Belum terselesaikan atau dikenal
 | Masalah | Penyebab / dugaan | Status |
 | --- | --- | --- |
-| Uji HP layar baru (U1 sampai U4) belum dilaporkan | Baru build berhasil 8 Nov | Menunggu uji pengguna |
+| Impor cadangan saat sinkron manual atau otomatis berjalan tidak dicegah | Impor hanya mengecek pantauan mati | Dikenal (U5); jangan impor saat sinkron berjalan |
 | `tradeId` event WebSocket vs REST belum dibandingkan | Belum ada data pembanding | Tidak menghalangi (anti-dobel dari REST) |
 | Kemungkinan "database is locked" saat dua koneksi SQLite aktif bersamaan | `busy_timeout` 5 detik ada; layar kini membaca lewat antrean satu thread, tulis oleh pantau tetap bisa bersamaan | Pantau saat uji lanjutan |
 | Pantauan tidak menyala sendiri setelah HP reboot | Belum ada penerima BOOT_COMPLETED | Dicatat; belum diputuskan perlu atau tidak |
@@ -303,7 +324,7 @@ Status: **Fase 0, Fase 1 (MVP), Fase 2 (T2.1 sampai T2.5), Fase 3 (T3.1 sampai T
 | Apakah sisa 3 IDR (anggaran order tak terpakai) kembali ke saldo | Belum dicek di saldo | Belum dikonfirmasi; tidak memengaruhi rumus karena saldo diambil dari API |
 
 ### Sudah terselesaikan (ringkas)
-Build UI pertama gagal karena binding UniFFI belum diperbarui (diselesaikan 8 Nov: terapkan patch FFI, build lewat `bangun_android.sh`); Notifikasi beli dan jual muncul otomatis, satu per order, tanpa ganda, termasuk notifikasi trade terlewat setelah sambung ulang (T1.5, uji HP 7 poin lolos); Pemilihan pustaka WebSocket + TLS (T1.4b: rustls provider `ring` + webpki-roots, tidak bentrok dengan ureq, build Android berhasil); foreground service tidak mati saat layar dikunci dan app dibuang dari recent apps (uji HP T1.4c); sambung ulang dan rekonsiliasi setelah koneksi putus (uji HP T1.4c); Token WebSocket privat dengan key v2 (T0.6: berhasil); format event order_update dan nama status FILL (terkonfirmasi); fee event = `commission` REST (cocok pada 2 trade); HTTP 403 dari skrip lama (file belum tertimpa); SHA256 untuk TAPI v2; format simbol huruf kecil dan parameter `startTime`/`endTime` maks 7 hari; "Jumlah Order" vs uang keluar (pakai "Order Terisi"); format respons `/account`; `adb: more than one device` (skrip menerima serial); HTTP 400 kode 1109 saat sinkron (simbol ditolak dilewati, terbukti di HP); build SQLite bundled untuk Android (berhasil); aset IDR ada di saldo akunmu (sinkron pertama berhasil membuat snapshot, yang membutuhkan IDR).
+Uji HP layar asli U1 sampai U4 dan U5 lulus, semua sesuai kriteria (8 Nov); Build UI pertama gagal karena binding UniFFI belum diperbarui (diselesaikan 8 Nov: terapkan patch FFI, build lewat `bangun_android.sh`); Notifikasi beli dan jual muncul otomatis, satu per order, tanpa ganda, termasuk notifikasi trade terlewat setelah sambung ulang (T1.5, uji HP 7 poin lolos); Pemilihan pustaka WebSocket + TLS (T1.4b: rustls provider `ring` + webpki-roots, tidak bentrok dengan ureq, build Android berhasil); foreground service tidak mati saat layar dikunci dan app dibuang dari recent apps (uji HP T1.4c); sambung ulang dan rekonsiliasi setelah koneksi putus (uji HP T1.4c); Token WebSocket privat dengan key v2 (T0.6: berhasil); format event order_update dan nama status FILL (terkonfirmasi); fee event = `commission` REST (cocok pada 2 trade); HTTP 403 dari skrip lama (file belum tertimpa); SHA256 untuk TAPI v2; format simbol huruf kecil dan parameter `startTime`/`endTime` maks 7 hari; "Jumlah Order" vs uang keluar (pakai "Order Terisi"); format respons `/account`; `adb: more than one device` (skrip menerima serial); HTTP 400 kode 1109 saat sinkron (simbol ditolak dilewati, terbukti di HP); build SQLite bundled untuk Android (berhasil); aset IDR ada di saldo akunmu (sinkron pertama berhasil membuat snapshot, yang membutuhkan IDR).
 
 ---
 
@@ -318,9 +339,8 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 ### Task berikutnya (urut)
 | Task | Isi | Syarat |
 | --- | --- | --- |
-| Uji HP U1 sampai U4 | Jalankan poin uji di 1l, laporkan hasil, lalu commit per task | Pengguna |
-| U5 | Ekspor/impor data ke penyimpanan lokal. Rencana: salinan database konsisten dibuat di Rust (mis. `VACUUM INTO`), Kotlin memakai pemilih berkas sistem (SAF) untuk menyimpan/memilih berkas; impor memvalidasi berkas, menghentikan pantauan, mengganti database, lalu memuat ulang. Kunci API TIDAK ikut dicadangkan | Berkas `core/src/store.rs`, `core/Cargo.toml`, `ffi/Cargo.toml` dari pengguna |
-| Pekerjaan kecil | PRD v1.3 (lihat bawah) | Claude |
+| Pekerjaan kecil | PRD v1.3 (lihat "Pekerjaan kecil tertunda") | Claude |
+| Opsional | Pantauan menyala otomatis setelah HP reboot (penerima BOOT_COMPLETED); verifikasi mode fee deposit saat ada deposit nyata | Keputusan pengguna |
 
 ### Keputusan yang masih terbuka
 | Hal | Pilihan | Status |
@@ -332,7 +352,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 
 ### Keputusan yang sudah terjawab
 - Tombol "Jual di Indodax": dihapus (7 Nov 2026).
-- Cadangan data: ekspor/impor ke penyimpanan lokal saja (7 Nov 2026).
+- Cadangan data: ekspor/impor ke penyimpanan lokal saja (7 Nov 2026); dikerjakan di U5, lulus uji HP 8 Nov 2026.
 - Zona waktu WIB dan minggu mulai Senin: dikonfirmasi (7 Nov 2026).
 - Estimasi hasil bersih di bawah TP/SL: tampil (T1.5, permintaan pengguna).
 - Beli tambahan koin yang sama: tampil TP/SL order itu dan posisi keseluruhan (T1.5).
@@ -343,6 +363,8 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - Statistik (T4.1): tiga rentang (hari/minggu/semua), definisi win rate dan persen profit termakan fee seperti di 1k; lolos uji pengguna 7 Nov 2026.
 - T2.5, Fase 3, dan koreksi saldo lolos uji HP 7 Nov 2026.
 - Koreksi saldo ditempatkan di layar Riwayat, deposit/withdraw dan mode fee di layar Setelan (U1/U4).
+- Layar asli U1 sampai U4 lolos uji HP, semua sesuai kriteria (8 Nov 2026).
+- U5: salinan database lama otomatis disimpan sebagai `.sebelum-impor`; kunci API tidak dicadangkan; impor wajib dengan pantauan mati (usulan, lolos uji HP).
 
 ### Pekerjaan kecil tertunda
 - PRD perlu v1.3: FR-22 (grafik), koreksi saldo, FR-23 (riwayat), FR-25 (statistik) sudah diimplementasikan dan kini ada di layar asli; FR-14 diubah (tombol Jual dihapus); saldo versi aplikasi dihitung dari catatan; koreksi diperlakukan seperti setoran; pertanyaan terbuka no. 3 (tombol Jual: dihapus), no. 4 (estimasi bersih tampil, fee jual perkiraan 0,31%), no. 6 (diabaikan), no. 8 (cadangan lokal), no. 9 (WIB, Senin) terjawab; FR-16 progress target selesai di T2.4; bagian 9 (token WebSocket dengan key v2 terjawab, tanda tangan SHA512 untuk token, nama status `FILL`, WebSocket sebagai pemicu) dan pertanyaan terbuka.
@@ -351,7 +373,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - **Fase 2**: selesai (T2.1 sampai T2.5)
 - **Fase 3**: selesai (T3.1 sampai T3.3)
 - **Fase 4**: selesai (T4.1)
-- **Fase UI**: U1 sampai U4 selesai ditulis, build berhasil, uji HP menunggu; U5 (ekspor/impor lokal) berikutnya
+- **Fase UI**: selesai (U1 sampai U5, lulus uji HP 8 Nov 2026)
 
 ---
 
@@ -366,7 +388,7 @@ Kebutuhan: Python 3.8+, git, Rust (rustup), dan toolchain Android (lihat bagian 
 Tes inti Rust:
 ```
 cargo test -p scalping-core        # 51 tes per T1.4a; T4.1 menambah 6 di statistik.rs (periksa jumlah terbaru)
-cargo test -p scalping-ffi         # T1.5: 6 tes; T2.1: +2 (8); T2.3/T2.4: +2 (10); T3: +4 (14); U1: +1 (15)
+cargo test -p scalping-ffi         # T1.5: 6 tes; T2.1: +2 (8); T2.3/T2.4: +2 (10); T3: +4 (14); U1: +1 (15); U5: +1 (16); U5 juga menambah 4 tes di store.rs (periksa jumlah terbaru)
 python tools/fase2_fiat.py             # T2.2: bentuk respons deposit (--jenis 1 untuk withdraw)
 cargo run -p scalping-core --example pantau   # T1.4b: pantau realtime di komputer, Enter untuk berhenti
 cargo run -p scalping-core --example cek_data -- data/raw_icntidr_<waktu>.json
@@ -398,13 +420,13 @@ Alur git setiap task:
 git add .
 git commit -m "Tx.y: deskripsi singkat"
 ```
-Catatan: `git add .` wajib agar file Kotlin baru (Tema.kt, Format.kt, Komponen.kt, Latar.kt, Sinkron.kt, Layar.kt, Layar*.kt) ikut tercatat.
+Catatan: `git add .` wajib agar file Kotlin baru (Tema.kt, Format.kt, Komponen.kt, Latar.kt, Sinkron.kt, Layar.kt, Layar*.kt, Cadangan.kt) ikut tercatat.
 
 ---
 
 ## 5. Struktur proyek
 
-### Saat ini (setelah U4)
+### Saat ini (setelah U5)
 ```
 catatan-scalping/
 ├── README.md
@@ -426,7 +448,7 @@ catatan-scalping/
 │   │   ├── client.rs                    (klien REST, GET saja)
 │   │   ├── account.rs                   (parser /account, saldo, cek key baca saja)
 │   │   ├── calc.rs                      (gabung per order, anti-dobel, modal efektif, TP/SL, profit jual)
-│   │   ├── store.rs                     (SQLite: trade, snapshot, meta, setelan_tp_sl, arus_kas, koreksi_saldo)
+│   │   ├── store.rs                     (SQLite: trade, snapshot, meta, setelan_tp_sl, arus_kas, koreksi_saldo; U5: ekspor_ke, periksa_cadangan, pulihkan)
 │   │   ├── sync.rs                      (rekonsiliasi REST per koin, snapshot saldo awal)
 │   │   ├── arus_kas.rs                  (T2.2: parser fiat/orders, arus kas, sinkron_arus_kas)
 │   │   ├── periode.rs                   (T2.3: periode WIB, saldo versi aplikasi, pencapaian dan progress)
@@ -440,7 +462,7 @@ catatan-scalping/
 │       └── pantau.rs                    (T1.4b: uji pantauan realtime di komputer, db data/pantau_uji.db)
 ├── ffi/                                 (crate scalping-ffi, jembatan UniFFI)
 │   ├── Cargo.toml
-│   └── src/lib.rs                       (cek_koneksi, sinkron_sekarang, order_terbaru, simpan_setelan, baca_setelan, hitung_posisi, daftar_posisi, Pemantau, PendengarPantau, KejadianUi, isi_notifikasi, ringkasan_posisi_notif, IsiNotifOrder, target dan arus kas, hitung_target (hasil_persen), riwayat_tertutup, data_grafik, koreksi saldo, statistik_trading; 15 tes)
+│   └── src/lib.rs                       (cek_koneksi, sinkron_sekarang, order_terbaru, simpan_setelan, baca_setelan, hitung_posisi, daftar_posisi, Pemantau, PendengarPantau, KejadianUi, isi_notifikasi, ringkasan_posisi_notif, IsiNotifOrder, target dan arus kas, hitung_target (hasil_persen), riwayat_tertutup, data_grafik, koreksi saldo, statistik_trading, ekspor_cadangan, periksa_cadangan, pulihkan_cadangan; 16 tes)
 ├── uniffi-bindgen/                      (pembuat binding Kotlin)
 │   ├── Cargo.toml
 │   └── src/main.rs
@@ -454,12 +476,13 @@ catatan-scalping/
 │       └── src/main/
 │           ├── AndroidManifest.xml
 │           ├── kotlin/id/catatanscalping/app/
-│           │   ├── MainActivity.kt      (U1: kerangka 4 tab, navigasi bawah, insets, siklus hidup)
+│           │   ├── MainActivity.kt      (U1: kerangka 4 tab, navigasi bawah, insets, siklus hidup; U5: onActivityResult)
 │           │   ├── Layar.kt             (U1: dasar tiap layar)
 │           │   ├── LayarBeranda.kt      (U2: saldo, grafik, progress target, status koneksi)
 │           │   ├── LayarPosisi.kt       (U3: posisi terbuka, tangga SL/modal/TP, tanpa tombol Jual)
 │           │   ├── LayarRiwayat.kt      (U4: ringkasan, daftar trade, statistik, koreksi saldo)
-│           │   ├── LayarSetelan.kt      (U1: TP/SL, target, kunci, pantauan, sinkron, arus kas, log)
+│           │   ├── LayarSetelan.kt      (U1: TP/SL, target, kunci, pantauan, sinkron, arus kas, log; U5: kartu Cadangan data)
+│           │   ├── Cadangan.kt          (U5: ekspor/impor lewat pemilih berkas sistem)
 │           │   ├── Tema.kt              (U1: warna terang/gelap sesuai prototype)
 │           │   ├── Format.kt            (U1: titik ribuan, koma desimal, tanda, waktu WIB)
 │           │   ├── Komponen.kt          (U1: kartu, tombol, kolom isian, chip, bar)
@@ -486,12 +509,13 @@ catatan-scalping/
 ```
 
 ### Rencana
-U5 (ekspor/impor data lokal) menambah fungsi di `core/src/store.rs` dan `ffi/src/lib.rs`, serta `Cadangan.kt` di sisi Android; strukturnya ditetapkan saat berkas `store.rs` dan Cargo.toml diterima.
+Semua task pada rencana awal selesai. Pekerjaan tersisa: PRD v1.3 dan dua keputusan opsional (lihat bagian 3). Struktur di atas sudah mencakup U5; tidak ada file baru lain yang direncanakan.
 
 ---
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- U5: `U5: ekspor dan impor data lokal` (hash: ...)
 - U4: `U4: layar Riwayat, statistik, koreksi saldo` (hash: ...)
 - U3: `U3: layar Posisi (tanpa tombol Jual)` (hash: ...)
 - U2: `U2: layar Beranda` (hash: ...)
