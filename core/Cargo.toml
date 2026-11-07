@@ -17,3 +17,5 @@ sha2 = "0.10"
 hex = "0.4"
 thiserror = "1"
 ureq = { version = "2", default-features = false, features = ["tls"] }
+# T1.2: penyimpanan lokal. "bundled" = SQLite ikut dikompilasi (perlu NDK/cc saat build Android).
+rusqlite = { version = "0.32", features = ["bundled"] }

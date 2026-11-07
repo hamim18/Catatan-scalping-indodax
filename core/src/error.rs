@@ -18,6 +18,12 @@ pub enum Error {
     KoinNol,
     #[error("jumlah koin dijual ({jual}) melebihi posisi ({posisi})")]
     JualMelebihiPosisi { jual: String, posisi: String },
+    #[error("penyimpanan lokal bermasalah: {0}")]
+    Penyimpanan(String),
+    #[error("key punya izin trade/withdraw; sinkron ditolak. Pakai key BACA SAJA")]
+    KunciBukanBacaSaja,
+    #[error("rentang waktu {simbol} terlalu padat: {jumlah} trade dalam rentang minimal")]
+    RentangTerlaluPadat { simbol: String, jumlah: usize },
 }
 
 pub type Hasil<T> = Result<T, Error>;

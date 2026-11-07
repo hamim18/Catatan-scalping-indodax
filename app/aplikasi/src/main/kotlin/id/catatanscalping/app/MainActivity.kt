@@ -13,7 +13,14 @@ import android.widget.TextView
 import uniffi.scalping_ffi.ErrorApp
 import uniffi.scalping_ffi.StatusKoneksi
 import uniffi.scalping_ffi.cekKoneksi
+import uniffi.scalping_ffi.HasilSinkronUi
+import uniffi.scalping_ffi.orderTerbaru
+import uniffi.scalping_ffi.sinkronSekarang
 import uniffi.scalping_ffi.versiCore
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Layar koneksi (FR-01, FR-02). Hanya tampilan; semua logika ada di Rust.
@@ -27,6 +34,16 @@ class MainActivity : Activity() {
     private lateinit var tombolSimpan: Button
     private lateinit var tombolTes: Button
     private lateinit var tombolHapus: Button
+    private lateinit var tombolSinkron: Button
+    private lateinit var tombolOrder: Button
+    private lateinit var isiOrder: TextView
+
+    private val pathDb: String
+        get() {
+            val f = getDatabasePath("catatan.db")
+            f.parentFile?.mkdirs() // folder databases/ belum tentu ada
+            return f.absolutePath
+        }
 
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
 
@@ -66,6 +83,13 @@ class MainActivity : Activity() {
         isi.addView(tombolSimpan)
         isi.addView(tombolTes)
         isi.addView(tombolHapus)
+        tombolSinkron = Button(this).apply { text = "Sinkron sekarang (T1.2)"; setOnClickListener { sinkron() } }
+        tombolOrder = Button(this).apply { text = "Lihat order tersimpan"; setOnClickListener { tampilkanOrder() } }
+        isi.addView(tombolSinkron)
+        isi.addView(tombolOrder)
+        isiOrder = teks("", 13f)
+        isiOrder.typeface = android.graphics.Typeface.MONOSPACE
+        isi.addView(isiOrder)
         info = teks("", 14f)
         isi.addView(info)
         isi.addView(teks("Inti Rust versi ${versiCore()}", 12f))
@@ -88,12 +112,14 @@ class MainActivity : Activity() {
         status.text = if (ujung != null) "Kunci tersimpan (berakhiran $ujung)" else "Belum ada kunci"
         tombolTes.isEnabled = ujung != null
         tombolHapus.isEnabled = ujung != null
+        tombolSinkron.isEnabled = ujung != null
     }
 
     private fun sibuk(ya: Boolean) {
         tombolSimpan.isEnabled = !ya
         tombolTes.isEnabled = !ya && kunci.ujungKey() != null
         tombolHapus.isEnabled = !ya && kunci.ujungKey() != null
+        tombolSinkron.isEnabled = !ya && kunci.ujungKey() != null
         if (ya) info.text = "Menghubungi Indodax..."
     }
 
@@ -148,6 +174,55 @@ class MainActivity : Activity() {
             return
         }
         jalankanTes(p.first, p.second, simpanBila = false)
+    }
+
+    private fun waktuWib(ms: Long): String {
+        val f = SimpleDateFormat("dd MMM HH:mm", Locale("id", "ID"))
+        f.timeZone = TimeZone.getTimeZone("Asia/Jakarta")
+        return f.format(Date(ms))
+    }
+
+    private fun sinkron() {
+        val p = kunci.ambil()
+        if (p == null) {
+            info.text = "Kunci tersimpan tidak bisa dibuka. Masukkan ulang."
+            return
+        }
+        sibuk(true)
+        info.text = "Sinkron berjalan, bisa beberapa puluh detik..."
+        Thread {
+            try {
+                val h: HasilSinkronUi = sinkronSekarang(p.first, p.second, pathDb, 7u, emptyList())
+                val ringkas = StringBuilder()
+                ringkas.append("Sinkron selesai.\n")
+                ringkas.append("Koin dipindai: ${h.koinDipindai.joinToString(", ").ifEmpty { "(tidak ada)" }}\n")
+                ringkas.append("Trade baru: ${h.tradeBaru}, total tersimpan: ${h.tradeTotal}\n")
+                if (h.koinDilewati.isNotEmpty()) ringkas.append("Dilewati (simbol tidak dikenal Indodax): ${h.koinDilewati.joinToString(", ")}\n")
+                if (h.snapshotAwalDibuat) ringkas.append("Snapshot saldo awal dibuat.")
+                runOnUiThread { sibuk(false); info.text = ringkas.toString(); tampilkanOrder() }
+            } catch (e: Exception) {
+                val pesan = (e as? ErrorApp.Gagal)?.pesan ?: (e.message ?: "Gagal")
+                runOnUiThread { sibuk(false); info.text = "Sinkron gagal: $pesan" }
+            }
+        }.start()
+    }
+
+    private fun tampilkanOrder() {
+        Thread {
+            try {
+                val daftar = orderTerbaru(pathDb, 15u)
+                val t = StringBuilder()
+                if (daftar.isEmpty()) t.append("Belum ada order tersimpan.")
+                for (o in daftar) {
+                    t.append("${waktuWib(o.waktuMs)}  ${o.sisi.uppercase()} ${o.simbol}\n")
+                    t.append("   koin ${o.koin}  Rp ${o.idr}  (${o.pengisian}x isi)\n")
+                }
+                runOnUiThread { isiOrder.text = t.toString() }
+            } catch (e: Exception) {
+                val pesan = (e as? ErrorApp.Gagal)?.pesan ?: (e.message ?: "Gagal")
+                runOnUiThread { isiOrder.text = "Gagal membaca order: $pesan" }
+            }
+        }.start()
     }
 
     private fun hapus() {
