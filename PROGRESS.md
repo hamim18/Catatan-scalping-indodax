@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 7 November 2026 (T1.4b dan T1.4c selesai)
-Status: **Fase 0 selesai. Fase 1 berjalan:** T1.0 sampai T1.4c lolos uji. Pantauan realtime berjalan di HP sebagai foreground service: order Indodax terdeteksi lewat WebSocket privat, trade ditarik lewat REST dan tercatat tanpa dobel, sambung ulang dan rekonsiliasi bekerja (7 poin uji HP T1.4c lolos). Berikutnya: **T1.5** (notifikasi beli dan jual dengan TP/SL).
+Terakhir diperbarui: 7 November 2026 (T1.5 selesai)
+Status: **Fase 0 selesai. Fase 1 hampir selesai:** T1.0 sampai T1.5 lolos uji. Pantauan realtime berjalan di HP sebagai foreground service, trade tercatat tanpa dobel, dan kini notifikasi beli dan jual muncul otomatis (beli: modal efektif, TP, SL, estimasi hasil bersih; jual: hasil bersih nyata). Build dan tes berhasil tanpa error, 7 poin uji HP T1.5 lolos. Berikutnya: **Fase 2** (target dan saldo).
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -13,7 +13,7 @@ Status: **Fase 0 selesai. Fase 1 berjalan:** T1.0 sampai T1.4c lolos uji. Pantau
 
 ## 1. Sudah dikerjakan
 
-### 1a. Ringkasan riwayat (Fase 0 sampai T1.4c)
+### 1a. Ringkasan riwayat (Fase 0 sampai T1.5)
 
 | Task | Hasil singkat | Status |
 | --- | --- | --- |
@@ -27,6 +27,7 @@ Status: **Fase 0 selesai. Fase 1 berjalan:** T1.0 sampai T1.4c lolos uji. Pantau
 | T1.4a | `core/src/ws.rs`: token (badan, tanda tangan HMAC-SHA512, parser respons, `Debug` tidak membocorkan token), pesan connect/subscribe, parser pesan masuk (ping `{}`, balasan, galat, event order_update, banyak pesan per frame), `PemicuSinkron` (memicu sinkron REST saat DONE atau CANCELLED setelah sebagian terisi; DONE ganda tidak memicu dua kali), jadwal ulang `jeda_ulang`, `order_sudah_tersimpan`, `umur_sambungan_maks`. Tanpa jaringan. `cargo test -p scalping-core`: 51 lulus | Selesai |
 | T1.4b | `core/src/ws_klien.rs`: sambungan WebSocket privat sebenarnya (`pantau`, `KejadianPantau`): minta token, handshake tanpa Origin, connect, subscribe, balas ping `{}`, sambung ulang otomatis dengan token baru, picu `sinkron_koin` lewat `PemicuSinkron`. Pustaka: rustls (provider `ring` saja, sama dengan ureq), webpki-roots, base64; tanpa aws-lc-rs. Contoh `core/examples/pantau.rs`. Lolos uji komputer: rekonsiliasi awal, subscribe, beli dan jual market UAI terdeteksi dan tercatat tanpa dobel | Selesai |
 | T1.4c | FFI: `Pemantau` (mulai, berhenti, sedang_jalan; thread pantau), callback `PendengarPantau`, enum `KejadianUi`. Android: `LayananLatar.kt` (foreground service tipe `specialUse`, satu notifikasi tetap dengan tombol Hentikan, START_STICKY), `PantauBersama` (status dan log untuk layar), izin notifikasi (Android 13+), permintaan abaikan optimasi baterai, sinkron otomatis saat app dibuka (FR-06, FR-10). Build dan tes berhasil, 7 poin uji HP lolos | Selesai |
+| T1.5 | FFI `isi_notifikasi` dan `ringkasan_posisi_notif` (isi notifikasi dihitung di Rust, format Indonesia, 6 tes di `scalping-ffi`; estimasi hasil bersih dengan fee jual perkiraan 0,31%; beli tambahan menampilkan TP/SL order itu dan posisi keseluruhan). `LayananLatar.kt`: saluran "Order terisi" (prioritas tinggi), satu notifikasi per order, pekerja satu thread, tanpa notifikasi ganda (trade_baru > 0), ringkasan TP/SL saat rekonsiliasi menemukan trade terlewat. Mulai pantauan menyimpan setelan TP/SL (FR-15 sampai FR-17). Build dan tes berhasil, 7 poin uji HP lolos | Selesai |
 
 ### 1b. Kesimpulan Fase 0 (masih dipakai)
 - **Fee dalam IDR.** Koin yang diterima tidak dipotong fee. Fee selain IDR sengaja ditolak (error) karena belum pernah ditemui.
@@ -118,6 +119,35 @@ Status: **Fase 0 selesai. Fase 1 berjalan:** T1.0 sampai T1.4c lolos uji. Pantau
 - Versi Android HP (`ro.build.version.sdk`) belum dilaporkan; kode menangani semua versi dari minSdk 30.
 - Kunci API dibaca layanan dari `KunciAman` dan disalurkan ke Rust; tidak dicatat ke log.
 
+### 1g. T1.5 (terbaru, detail)
+
+**Status: Selesai.** Build dan tes berhasil tanpa error; 7 poin uji HP lolos (dilaporkan pengguna, 7 Nov 2026).
+
+**Yang dibangun**
+- `ffi/src/lib.rs`: `isi_notifikasi`, `ringkasan_posisi_notif`, `IsiNotifOrder`. Isi notifikasi dihitung di Rust dari database lokal (sejak snapshot saldo awal), format Indonesia (titik ribuan, koma desimal). 6 tes di `scalping-ffi`.
+- `LayananLatar.kt`: saluran "Order terisi" (prioritas tinggi, terpisah dari notifikasi layanan), satu notifikasi per order, pekerja satu thread, tanpa notifikasi ganda (hanya bila `trade_baru > 0`).
+- `MainActivity.kt`: mulai pantauan menyimpan setelan TP%/SL% dari kolom di layar lebih dulu (tidak menambah catatan bila sama).
+- Manifest, `core/*`, `Cargo.toml`, `build.gradle.kts` tidak berubah.
+
+**Perilaku**
+- Beli pertama: modal efektif, TP, SL, estimasi hasil bersih (contoh ringkas: `Modal 4.006 · TP 4.046 (≈+0,69%) · SL 3.966 (≈−1,31%)`).
+- Beli tambahan pada koin yang masih dipegang: dua blok, ORDER INI (TP/SL dari modal efektif order itu) dan POSISI KESELURUHAN (TP/SL dari modal efektif rata-rata).
+- Jual: hasil bersih nyata (Rp dan %), modal dan IDR diterima; jual sebagian menampilkan sisa posisi.
+- Trade terlewat (ditemukan rekonsiliasi saat tersambung ulang): satu notifikasi "N trade baru dicatat saat sinkron" berisi TP/SL dan estimasi semua posisi terbuka.
+- Notifikasi hanya informasi; tidak ada order dipasang di Indodax (FR-17).
+
+**Keputusan baru**
+- Estimasi hasil bersih di bawah TP/SL: DITAMPILKAN (diminta pengguna, 7 Nov 2026). Memakai fee jual perkiraan 0,31% (`fee_jual_perkiraan()` di ffi); nilai nyata tetap dari `commission` saat jual.
+- Beli tambahan koin yang sama: tampil TP/SL order itu dan TP/SL posisi keseluruhan (diminta pengguna).
+- Progress target harian di notifikasi jual (bagian FR-16): ditunda ke Fase 2 (snapshot harian belum ada).
+
+**Catatan teknis dan batasan**
+- Notifikasi jual mengambil trade tertutup terbaru koin itu, hanya bila waktu tutupnya tidak lebih lama dari order jual terbaru (cegah menampilkan hasil jual lama saat jual tanpa modal).
+- Pembulatan tampilan: harga < 100 tampil 2 desimal, selebihnya rupiah utuh (aturan tick per koin masih belum diperiksa).
+- Order beli dikenali sebagai order beli terbaru koin itu; dua beli koin sama yang selesai nyaris bersamaan menampilkan order yang sama (perbaikan butuh ID order di `OrderRingkas` yang cocok dengan ID event WebSocket).
+- Fee jual perkiraan 0,31% dipakai tetap; belum ada setelan pengguna (jual market bisa lebih besar).
+- Tombol "Jual di Indodax" tidak disentuh (layar Posisi belum dibuat).
+
 ---
 
 ## 2. Masalah
@@ -132,11 +162,13 @@ Status: **Fase 0 selesai. Fase 1 berjalan:** T1.0 sampai T1.4c lolos uji. Pantau
 | Koin yang sudah tidak dipegang (contoh ICNT) tidak terpindai | Daftar koin dari saldo + riwayat tersimpan | Dikenal; solusi sementara `koin_tambahan`, belum ada isiannya di UI |
 | `pxgidr` ditolak Indodax (kode 1109) | Dugaan: tidak ada pasangan IDR | Dilewati dengan benar; penyebab belum dipastikan |
 | TP/SL dibulatkan ke rupiah utuh | Aturan tick harga per koin belum diperiksa | Belum diperiksa |
+| Dua order beli koin sama yang selesai nyaris bersamaan menampilkan notifikasi order yang sama | Order dikenali dari order beli terbaru koin itu; `OrderRingkas` belum punya ID order | Dikenal (T1.5); perbaikan bila ID order cocok dengan ID event WebSocket |
+| Fee jual perkiraan 0,31% tetap untuk estimasi bersih | Belum ada setelan; jual market bisa lebih mahal | Dikenal (T1.5); nilai nyata tetap dari `commission` saat jual |
 | Selisih 1 rupiah antara hasil jual dan modal beli berikutnya (data 3 Nov) | Diduga pembulatan | Belum dikonfirmasi, tidak berdampak |
 | Apakah sisa 3 IDR (anggaran order tak terpakai) kembali ke saldo | Belum dicek di saldo | Belum dikonfirmasi; tidak memengaruhi rumus karena saldo diambil dari API |
 
 ### Sudah terselesaikan (ringkas)
-Pemilihan pustaka WebSocket + TLS (T1.4b: rustls provider `ring` + webpki-roots, tidak bentrok dengan ureq, build Android berhasil); foreground service tidak mati saat layar dikunci dan app dibuang dari recent apps (uji HP T1.4c); sambung ulang dan rekonsiliasi setelah koneksi putus (uji HP T1.4c); Token WebSocket privat dengan key v2 (T0.6: berhasil); format event order_update dan nama status FILL (terkonfirmasi); fee event = `commission` REST (cocok pada 2 trade); HTTP 403 dari skrip lama (file belum tertimpa); SHA256 untuk TAPI v2; format simbol huruf kecil dan parameter `startTime`/`endTime` maks 7 hari; "Jumlah Order" vs uang keluar (pakai "Order Terisi"); format respons `/account`; `adb: more than one device` (skrip menerima serial); HTTP 400 kode 1109 saat sinkron (simbol ditolak dilewati, terbukti di HP); build SQLite bundled untuk Android (berhasil); aset IDR ada di saldo akunmu (sinkron pertama berhasil membuat snapshot, yang membutuhkan IDR).
+Notifikasi beli dan jual muncul otomatis, satu per order, tanpa ganda, termasuk notifikasi trade terlewat setelah sambung ulang (T1.5, uji HP 7 poin lolos); Pemilihan pustaka WebSocket + TLS (T1.4b: rustls provider `ring` + webpki-roots, tidak bentrok dengan ureq, build Android berhasil); foreground service tidak mati saat layar dikunci dan app dibuang dari recent apps (uji HP T1.4c); sambung ulang dan rekonsiliasi setelah koneksi putus (uji HP T1.4c); Token WebSocket privat dengan key v2 (T0.6: berhasil); format event order_update dan nama status FILL (terkonfirmasi); fee event = `commission` REST (cocok pada 2 trade); HTTP 403 dari skrip lama (file belum tertimpa); SHA256 untuk TAPI v2; format simbol huruf kecil dan parameter `startTime`/`endTime` maks 7 hari; "Jumlah Order" vs uang keluar (pakai "Order Terisi"); format respons `/account`; `adb: more than one device` (skrip menerima serial); HTTP 400 kode 1109 saat sinkron (simbol ditolak dilewati, terbukti di HP); build SQLite bundled untuk Android (berhasil); aset IDR ada di saldo akunmu (sinkron pertama berhasil membuat snapshot, yang membutuhkan IDR).
 
 ---
 
@@ -149,22 +181,23 @@ Arch Linux; Rust 1.98.1 dengan 4 target Android dan `cargo ndk`; JDK 17; Gradle 
 Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya klien Android (UI, foreground service, notifikasi, penyimpanan kunci). Jembatan: UniFFI 0.31. Penyimpanan: SQLite (rusqlite bundled) dikelola dari Rust.
 
 ### Task berikutnya (urut)
-| Task | Isi | Syarat |
-| --- | --- | --- |
-| T1.5 | Notifikasi beli dan jual (FR-15 sampai FR-17): saat order beli terisi tampilkan koin, modal efektif, TP, SL; saat jual tampilkan hasil bersih (Rp dan %). Notifikasi berprioritas tinggi terpisah dari notifikasi layanan. Memakai kejadian `OrderSelesai` dan `hitung_posisi` | T1.4c selesai; berkas `LayananLatar.kt`, `MainActivity.kt`, `ffi/src/lib.rs` versi terbaru (dari T1.4c) |
+Fase 1 (MVP) selesai dengan T1.5. Berikutnya **Fase 2**: setelan target, snapshot harian dan mingguan, deposit/withdraw IDR, pencapaian dan progress target, lalu progress target di notifikasi jual (ditunda dari T1.5). Pemecahan task (T2.x) belum dibuat; disusun di awal sesi berikutnya, setelah berkas versi terbaru dikirim (jangan berasumsi isi berkas).
 
 ### Keputusan yang masih terbuka
 | Hal | Pilihan | Status |
 | --- | --- | --- |
 | Tombol "Jual di Indodax" | Buka app Indodax atau dihapus | Belum |
-| Estimasi hasil bersih di bawah TP/SL | Tampil atau polos | Belum |
 | Setelan TP/SL baru | Hanya posisi baru atau juga yang terbuka | Dipakai usulan "hanya posisi baru" (T1.3), belum dikonfirmasi |
 | Koin yang dipegang sebelum app dipasang | Diabaikan atau diisi modalnya | Dipakai usulan "penyesuaian, profit 0" (T1.3), belum dikonfirmasi |
 | Cadangan data (ekspor) | Perlu atau tidak, ke mana | Belum |
 | Zona waktu WIB dan minggu mulai Senin | Perlu konfirmasi (layar sudah memakai WIB) | Belum |
 
+### Keputusan yang sudah terjawab
+- Estimasi hasil bersih di bawah TP/SL: tampil (T1.5, permintaan pengguna).
+- Beli tambahan koin yang sama: tampil TP/SL order itu dan posisi keseluruhan (T1.5).
+
 ### Pekerjaan kecil tertunda
-- PRD perlu v1.3: bagian 9 (token WebSocket dengan key v2 terjawab, tanda tangan SHA512 untuk token, nama status `FILL`, WebSocket sebagai pemicu) dan pertanyaan terbuka.
+- PRD perlu v1.3: pertanyaan terbuka no. 4 terjawab (estimasi hasil bersih tampil, fee jual perkiraan 0,31%); FR-16 progress target ditunda ke Fase 2; bagian 9 (token WebSocket dengan key v2 terjawab, tanda tangan SHA512 untuk token, nama status `FILL`, WebSocket sebagai pemicu) dan pertanyaan terbuka.
 
 ### Fase berikutnya
 - **Fase 2**: setelan target, snapshot harian dan mingguan, deposit/withdraw IDR, progress target
@@ -184,6 +217,7 @@ Kebutuhan: Python 3.8+, git, Rust (rustup), dan toolchain Android (lihat bagian 
 Tes inti Rust:
 ```
 cargo test -p scalping-core        # 51 tes lulus per T1.4a (periksa jumlah terbaru setelah T1.4b)
+cargo test -p scalping-ffi         # T1.5: 6 tes (format angka, estimasi bersih, contoh ICNT)
 cargo run -p scalping-core --example pantau   # T1.4b: pantau realtime di komputer, Enter untuk berhenti
 cargo run -p scalping-core --example cek_data -- data/raw_icntidr_<waktu>.json
 cargo run -p scalping-core --example cek_koneksi
@@ -207,7 +241,7 @@ Build dan pasang Android:
 cargo update            # bila dependensi berubah
 bash tools/bangun_android.sh --pasang <serial-adb>
 ```
-Uji di HP: simpan kunci, Sinkron sekarang, lalu Hitung posisi (centang "semua riwayat" untuk data lama). Pantauan: matikan optimasi baterai, Mulai pantauan realtime, izinkan notifikasi, lakukan transaksi kecil di Indodax.
+Uji di HP: simpan kunci, Sinkron sekarang, lalu Hitung posisi (centang "semua riwayat" untuk data lama). Pantauan: matikan optimasi baterai, isi TP%/SL%, Mulai pantauan realtime, izinkan notifikasi, lakukan transaksi kecil di Indodax (notifikasi beli/jual muncul otomatis, T1.5).
 
 Alur git setiap task:
 ```
@@ -219,7 +253,7 @@ git commit -m "Tx.y: deskripsi singkat"
 
 ## 5. Struktur proyek
 
-### Saat ini (setelah T1.4c)
+### Saat ini (setelah T1.5)
 ```
 catatan-scalping/
 ├── README.md
@@ -252,7 +286,7 @@ catatan-scalping/
 │       └── pantau.rs                    (T1.4b: uji pantauan realtime di komputer, db data/pantau_uji.db)
 ├── ffi/                                 (crate scalping-ffi, jembatan UniFFI)
 │   ├── Cargo.toml
-│   └── src/lib.rs                       (cek_koneksi, sinkron_sekarang, order_terbaru, simpan_setelan, hitung_posisi, Pemantau, PendengarPantau, KejadianUi)
+│   └── src/lib.rs                       (cek_koneksi, sinkron_sekarang, order_terbaru, simpan_setelan, hitung_posisi, Pemantau, PendengarPantau, KejadianUi, isi_notifikasi, ringkasan_posisi_notif, IsiNotifOrder; 6 tes)
 ├── uniffi-bindgen/                      (pembuat binding Kotlin)
 │   ├── Cargo.toml
 │   └── src/main.rs
@@ -267,7 +301,7 @@ catatan-scalping/
 │           ├── AndroidManifest.xml
 │           ├── kotlin/id/catatanscalping/app/
 │           │   ├── MainActivity.kt      (layar uji: koneksi, sinkron, order, pantauan, posisi dan TP/SL)
-│           │   ├── LayananLatar.kt      (T1.4c: foreground service + PantauBersama)
+│           │   ├── LayananLatar.kt      (T1.4c: foreground service + PantauBersama; T1.5: saluran "Order terisi" dan pekerja notifikasi)
 │           │   └── KunciAman.kt         (simpan key terenkripsi, Android Keystore)
 │           ├── res/values/themes.xml
 │           ├── res/values-night/themes.xml
@@ -286,15 +320,13 @@ catatan-scalping/
 ```
 
 ### Rencana (belum ada)
-```
-core/src/notif.rs (atau di posisi.rs)    isi notifikasi beli/jual (T1.5)
-app/.../Notifikasi.kt                    saluran dan notifikasi beli/jual (T1.5)
-```
+Struktur Fase 2 (snapshot harian/mingguan, arus kas deposit/withdraw, pencapaian) belum dirancang; ditentukan di awal Fase 2.
 
 ---
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T1.5: `T1.5: notifikasi beli dan jual dengan TP/SL dan hasil bersih` (hash: ...)
 - T1.4c: `T1.4c: layanan latar, jembatan FFI pantauan, izin notifikasi dan baterai` (hash: ...)
 - T1.4b: `T1.4b: sambungan WebSocket privat, sambung ulang, pemicu sinkron` (hash: ...)
 - T1.4a: `T1.4a: protokol WebSocket privat (token, parser event, pemicu sinkron)` (hash: ...)

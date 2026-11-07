@@ -7,7 +7,7 @@ use scalping_core::{
     gabung_per_order, hitung, sinkron, IndodaxClient, Opsi, Penyimpanan, RiwayatSetelan, Sisi,
 };
 use std::str::FromStr;
-use scalping_core::{pantau, KejadianPantau};
+use scalping_core::{pantau, HasilHitung, KejadianPantau};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -381,5 +381,356 @@ impl Pemantau {
 
     pub fn sedang_jalan(&self) -> bool {
         self.jalan.load(Ordering::SeqCst)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// T1.5: isi notifikasi beli dan jual. Semua angka dihitung di Rust; Kotlin
+// hanya menampilkan teks. Tanpa jaringan (hanya membaca database lokal).
+// ---------------------------------------------------------------------------
+
+/// Teks notifikasi order. `teks` = satu baris ringkas, `rinci` = teks panjang (dibuka saat notifikasi diperluas).
+#[derive(uniffi::Record)]
+pub struct IsiNotifOrder {
+    pub judul: String,
+    pub teks: String,
+    pub rinci: String,
+}
+
+/// "4046" -> "4.046", "1234.5" -> "1.234,5", "-2940" -> "-2.940" (format Indonesia).
+fn ribuan(angka: &str) -> String {
+    let (tanda, sisa) = match angka.strip_prefix('-') {
+        Some(r) => ("-", r),
+        None => ("", angka),
+    };
+    let (bulat, desimal) = match sisa.split_once('.') {
+        Some((b, d)) => (b, Some(d)),
+        None => (sisa, None),
+    };
+    let n = bulat.len();
+    let mut hasil = String::from(tanda);
+    for (i, c) in bulat.chars().enumerate() {
+        if i > 0 && (n - i) % 3 == 0 {
+            hasil.push('.');
+        }
+        hasil.push(c);
+    }
+    if let Some(d) = desimal {
+        hasil.push(',');
+        hasil.push_str(d);
+    }
+    hasil
+}
+
+/// Harga per koin: koin murah (< 100) tampil 2 desimal, selebihnya rupiah utuh.
+/// Hanya untuk tampilan (aturan tick harga per koin belum diperiksa, lihat PROGRESS).
+fn fmt_harga(d: Decimal) -> String {
+    if d.abs() < Decimal::from(100) {
+        ribuan(&d.round_dp(2).normalize().to_string())
+    } else {
+        ribuan(&bulatkan_idr(d).to_string())
+    }
+}
+
+fn fmt_rupiah(d: Decimal) -> String {
+    ribuan(&bulatkan_idr(d).to_string())
+}
+
+/// Persen dengan koma desimal, contoh "0,58" atau "1".
+fn fmt_persen(d: Decimal) -> String {
+    d.round_dp(2).normalize().to_string().replace('.', ",")
+}
+
+/// "+Rp 380" atau "−Rp 2.940".
+fn fmt_untung(d: Decimal) -> String {
+    let tanda = if d < Decimal::ZERO { "−" } else { "+" };
+    format!("{tanda}Rp {}", fmt_rupiah(d.abs()))
+}
+
+/// "uaiidr" -> "UAI"
+fn nama_koin(simbol: &str) -> String {
+    let s = simbol.to_lowercase();
+    let s = s.strip_suffix("idr").unwrap_or(&s);
+    s.trim_end_matches('_').to_uppercase()
+}
+
+/// Hitung ulang dari database dengan aturan PRD (trade sejak snapshot saldo awal).
+fn hitung_aplikasi(simpan: &Penyimpanan) -> Result<HasilHitung, ErrorApp> {
+    let riwayat = simpan.riwayat_setelan().map_err(gagal)?;
+    if riwayat.is_empty() {
+        return Err(gagal("Setelan TP/SL belum disimpan"));
+    }
+    let sejak_ms = simpan
+        .snapshot_awal()
+        .map_err(gagal)?
+        .map(|(w, _)| w)
+        .ok_or_else(|| gagal("Belum ada snapshot saldo awal; sinkron dulu"))?;
+    let trades = simpan.semua_trade().map_err(gagal)?;
+    hitung(&trades, sejak_ms, &RiwayatSetelan::baru(riwayat)).map_err(gagal)
+}
+
+/// Perkiraan fee jual untuk estimasi hasil bersih. Sama dengan jual limit pada data nyata
+/// (PRD: ±0,31%); fee sebenarnya tetap dari `commission` API saat jual terjadi.
+fn fee_jual_perkiraan() -> Decimal {
+    Decimal::new(31, 4) // 0,0031
+}
+
+/// Estimasi hasil bersih bila koin dijual di `harga`: (profit Rp, persen terhadap modal).
+/// Fee beli sudah ada di `modal`; fee jual diperkirakan.
+fn estimasi_bersih(koin: Decimal, modal: Decimal, harga: Decimal) -> (Decimal, Decimal) {
+    let diterima = koin * harga * (Decimal::ONE - fee_jual_perkiraan());
+    let profit = diterima - modal;
+    let persen = if modal.is_zero() { Decimal::ZERO } else { profit / modal * Decimal::from(100) };
+    (profit, persen)
+}
+
+/// "+0,58%" atau "−1,31%"
+fn fmt_persen_bertanda(d: Decimal) -> String {
+    let tanda = if d < Decimal::ZERO { "−" } else { "+" };
+    format!("{tanda}{}%", fmt_persen(d.abs()))
+}
+
+/// Harga TP dan SL dari modal efektif (rumus PRD bagian 8).
+fn harga_tp_sl(modal_efektif: Decimal, tp_persen: Decimal, sl_persen: Decimal) -> (Decimal, Decimal) {
+    let seratus = Decimal::from(100);
+    (
+        modal_efektif * (Decimal::ONE + tp_persen / seratus),
+        modal_efektif * (Decimal::ONE - sl_persen / seratus),
+    )
+}
+
+/// Satu blok TP/SL (dua baris) untuk `koin` dengan total modal `modal`.
+fn blok_tp_sl(koin: Decimal, modal: Decimal, tp: Decimal, sl: Decimal, tp_persen: Decimal, sl_persen: Decimal) -> String {
+    let (e_tp, pers_tp) = estimasi_bersih(koin, modal, tp);
+    let (e_sl, pers_sl) = estimasi_bersih(koin, modal, sl);
+    format!(
+        "TP {} (+{}%) → bersih ≈ {} ({})\nSL {} (−{}%) → bersih ≈ {} ({})",
+        fmt_harga(tp),
+        fmt_persen(tp_persen),
+        fmt_untung(e_tp),
+        fmt_persen_bertanda(pers_tp),
+        fmt_harga(sl),
+        fmt_persen(sl_persen),
+        fmt_untung(e_sl),
+        fmt_persen_bertanda(pers_sl)
+    )
+}
+
+/// Satu baris ringkas: "TP 4.046 (≈+0,69%) · SL 3.966 (≈−1,31%)" (persen = estimasi bersih).
+fn ringkas_tp_sl(koin: Decimal, modal: Decimal, tp: Decimal, sl: Decimal) -> String {
+    let (_, pers_tp) = estimasi_bersih(koin, modal, tp);
+    let (_, pers_sl) = estimasi_bersih(koin, modal, sl);
+    format!(
+        "TP {} (≈{}) · SL {} (≈{})",
+        fmt_harga(tp),
+        fmt_persen_bertanda(pers_tp),
+        fmt_harga(sl),
+        fmt_persen_bertanda(pers_sl)
+    )
+}
+
+const CATATAN_FEE: &str = "Bersih ≈ setelah fee beli (sudah di modal) dan fee jual perkiraan 0,31%; fee sebenarnya bisa berbeda.";
+
+/// Isi notifikasi untuk satu order yang baru selesai (FR-15, FR-16).
+/// `sisi`: "beli" atau "jual". Progress target harian belum ada (Fase 2).
+/// Beli tambahan pada koin yang masih dipegang: tampil TP/SL order ini DAN posisi keseluruhan.
+#[uniffi::export]
+pub fn isi_notifikasi(path_db: String, simbol: String, sisi: String) -> Result<IsiNotifOrder, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let h = hitung_aplikasi(&simpan)?;
+    let nama = nama_koin(&simbol);
+    let posisi = h.posisi.iter().find(|p| p.simbol.eq_ignore_ascii_case(&simbol));
+    let trades = simpan.semua_trade().map_err(gagal)?;
+
+    if sisi == "beli" {
+        let Some(p) = posisi else {
+            let t = "Tercatat, tapi posisinya tidak ditemukan (mungkin sudah terjual).".to_string();
+            return Ok(IsiNotifOrder { judul: format!("{nama} dibeli"), teks: t.clone(), rinci: t });
+        };
+        // Order beli terbaru koin ini (Asumsi: dua beli yang selesai nyaris bersamaan menampilkan order terbaru yang sama)
+        let order = gabung_per_order(&trades)
+            .map_err(gagal)?
+            .into_iter()
+            .filter(|o| matches!(o.sisi, Sisi::Beli) && o.symbol.eq_ignore_ascii_case(&simbol))
+            .max_by_key(|o| o.waktu_awal_ms);
+        // Koin yang sudah dipegang SEBELUM order ini (posisi sudah menyertakan order ini)
+        let sebelumnya = order.as_ref().map(|o| p.koin - o.koin).filter(|d| *d > Decimal::ZERO);
+
+        return Ok(match (order, sebelumnya) {
+            (Some(o), Some(_)) if o.koin > Decimal::ZERO => {
+                let modal_o = o.idr_keluar();
+                let ef_o = modal_o / o.koin;
+                let (tp_o, sl_o) = harga_tp_sl(ef_o, p.tp_persen, p.sl_persen);
+                let blok_o = blok_tp_sl(o.koin, modal_o, tp_o, sl_o, p.tp_persen, p.sl_persen);
+                let blok_p = blok_tp_sl(p.koin, p.total_idr_keluar, p.harga_tp, p.harga_sl, p.tp_persen, p.sl_persen);
+                IsiNotifOrder {
+                    judul: format!("{nama} dibeli (tambah posisi)"),
+                    teks: format!(
+                        "Order ini: {} | Total: {}",
+                        ringkas_tp_sl(o.koin, modal_o, tp_o, sl_o),
+                        ringkas_tp_sl(p.koin, p.total_idr_keluar, p.harga_tp, p.harga_sl)
+                    ),
+                    rinci: format!(
+                        "ORDER INI: {} koin, modal Rp {} (efektif {})\n{blok_o}\n\nPOSISI KESELURUHAN: {} koin, modal Rp {} (efektif rata-rata {})\n{blok_p}\n\n{CATATAN_FEE}",
+                        o.koin.normalize(),
+                        fmt_rupiah(modal_o),
+                        fmt_harga(ef_o),
+                        p.koin.normalize(),
+                        fmt_rupiah(p.total_idr_keluar),
+                        fmt_harga(p.modal_efektif),
+                    ),
+                }
+            }
+            _ => IsiNotifOrder {
+                judul: format!("{nama} dibeli"),
+                teks: format!(
+                    "Modal {} · {}",
+                    fmt_harga(p.modal_efektif),
+                    ringkas_tp_sl(p.koin, p.total_idr_keluar, p.harga_tp, p.harga_sl)
+                ),
+                rinci: format!(
+                    "Modal efektif {} per koin ({} koin, total Rp {})\n{}\n\n{CATATAN_FEE}",
+                    fmt_harga(p.modal_efektif),
+                    p.koin.normalize(),
+                    fmt_rupiah(p.total_idr_keluar),
+                    blok_tp_sl(p.koin, p.total_idr_keluar, p.harga_tp, p.harga_sl, p.tp_persen, p.sl_persen)
+                ),
+            },
+        });
+    }
+
+    // Jual: cari penjualan terbaru koin ini yang cocok dengan posisi.
+    let waktu_jual_terbaru = gabung_per_order(&trades)
+        .map_err(gagal)?
+        .iter()
+        .filter(|o| matches!(o.sisi, Sisi::Jual) && o.symbol.eq_ignore_ascii_case(&simbol))
+        .map(|o| o.waktu_awal_ms)
+        .max();
+    let tutup = h
+        .tertutup
+        .iter()
+        .filter(|t| t.simbol.eq_ignore_ascii_case(&simbol))
+        .max_by_key(|t| t.waktu_tutup_ms)
+        // Jual tanpa modal di aplikasi menjadi penyesuaian, jangan tampilkan jual lama sebagai hasilnya.
+        .filter(|t| waktu_jual_terbaru.map_or(true, |w| t.waktu_tutup_ms >= w));
+
+    Ok(match tutup {
+        Some(t) => {
+            let hasil = format!("{} ({})", fmt_untung(t.profit), fmt_persen_bertanda(t.persen));
+            let sisa = posisi
+                .map(|p| format!("\nSisa posisi: {} koin masih terbuka.", p.koin.normalize()))
+                .unwrap_or_default();
+            IsiNotifOrder {
+                judul: format!("{nama} dijual: {hasil}"),
+                teks: format!("Modal Rp {} · diterima Rp {}", fmt_rupiah(t.modal), fmt_rupiah(t.idr_diterima)),
+                rinci: format!(
+                    "Hasil bersih {hasil}\nModal Rp {}, diterima Rp {} (fee sudah termasuk).{sisa}",
+                    fmt_rupiah(t.modal),
+                    fmt_rupiah(t.idr_diterima)
+                ),
+            }
+        }
+        None => IsiNotifOrder {
+            judul: format!("{nama} dijual"),
+            teks: "Tercatat, tidak dihitung: koin ini tidak punya modal di aplikasi.".into(),
+            rinci: "Tercatat sebagai penyesuaian (profit dianggap 0) karena koin ini dibeli sebelum aplikasi dipasang.".into(),
+        },
+    })
+}
+
+/// Ringkasan posisi terbuka, dipakai saat sinkron menemukan trade yang terlewat
+/// dan koinnya tidak diketahui (jadi TP/SL semua posisi ditampilkan sekaligus).
+#[uniffi::export]
+pub fn ringkasan_posisi_notif(path_db: String, trade_baru: u32) -> Result<IsiNotifOrder, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let h = hitung_aplikasi(&simpan)?;
+    let judul = format!("{trade_baru} trade baru dicatat saat sinkron");
+    if h.posisi.is_empty() {
+        let t = "Tidak ada posisi terbuka.".to_string();
+        return Ok(IsiNotifOrder { judul, teks: t.clone(), rinci: t });
+    }
+    let ringkas: Vec<String> = h
+        .posisi
+        .iter()
+        .map(|p| format!("{}: {}", nama_koin(&p.simbol), ringkas_tp_sl(p.koin, p.total_idr_keluar, p.harga_tp, p.harga_sl)))
+        .collect();
+    let rinci: Vec<String> = h
+        .posisi
+        .iter()
+        .map(|p| {
+            format!(
+                "{} ({} koin, modal efektif {})\n{}",
+                nama_koin(&p.simbol),
+                p.koin.normalize(),
+                fmt_harga(p.modal_efektif),
+                blok_tp_sl(p.koin, p.total_idr_keluar, p.harga_tp, p.harga_sl, p.tp_persen, p.sl_persen)
+            )
+        })
+        .collect();
+    Ok(IsiNotifOrder {
+        judul,
+        teks: ringkas.join("; "),
+        rinci: format!("{}\n\n{CATATAN_FEE}", rinci.join("\n\n")),
+    })
+}
+
+#[cfg(test)]
+mod tes_notifikasi {
+    use super::*;
+
+    #[test]
+    fn ribuan_format_indonesia() {
+        assert_eq!(ribuan("0"), "0");
+        assert_eq!(ribuan("380"), "380");
+        assert_eq!(ribuan("4046"), "4.046");
+        assert_eq!(ribuan("1234567.89"), "1.234.567,89");
+        assert_eq!(ribuan("-2940"), "-2.940");
+        assert_eq!(ribuan("12.3"), "12,3");
+    }
+
+    #[test]
+    fn harga_koin_mahal_dan_murah() {
+        assert_eq!(fmt_harga(Decimal::from_str("4006.07").unwrap()), "4.006");
+        assert_eq!(fmt_harga(Decimal::from_str("2950000").unwrap()), "2.950.000");
+        assert_eq!(fmt_harga(Decimal::from_str("12.3456").unwrap()), "12,35");
+    }
+
+    #[test]
+    fn untung_dan_persen() {
+        assert_eq!(fmt_untung(Decimal::from(380)), "+Rp 380");
+        assert_eq!(fmt_untung(Decimal::from(-2940)), "−Rp 2.940");
+        assert_eq!(fmt_persen(Decimal::from_str("0.5800").unwrap()), "0,58");
+        assert_eq!(fmt_persen(Decimal::from(1)), "1");
+    }
+
+    #[test]
+    fn nama_koin_dari_simbol() {
+        assert_eq!(nama_koin("uaiidr"), "UAI");
+        assert_eq!(nama_koin("ICNTIDR"), "ICNT");
+        assert_eq!(nama_koin("doge_idr"), "DOGE");
+    }
+
+    #[test]
+    fn estimasi_bersih_sesuai_contoh_prd() {
+        // ICNT 5 Nov: modal 65.526 untuk 16,35667833 koin. TP 1% -> sekitar +0,7%, SL 1% -> sekitar -1,3% (PRD bagian 8).
+        let koin = Decimal::from_str("16.35667833").unwrap();
+        let modal = Decimal::from(65526);
+        let ef = modal / koin;
+        let (tp, sl) = harga_tp_sl(ef, Decimal::from(1), Decimal::from(1));
+        let (u_tp, p_tp) = estimasi_bersih(koin, modal, tp);
+        let (u_sl, p_sl) = estimasi_bersih(koin, modal, sl);
+        assert_eq!(fmt_persen(p_tp), "0,69");
+        assert_eq!(fmt_persen(p_sl), "-1,31");
+        assert_eq!(fmt_untung(u_tp), "+Rp 450");
+        assert_eq!(fmt_untung(u_sl), "−Rp 856");
+        assert_eq!(fmt_persen_bertanda(p_sl), "−1,31%");
+    }
+
+    #[test]
+    fn harga_tp_sl_icnt() {
+        let ef = Decimal::from(65526) / Decimal::from_str("16.35667833").unwrap();
+        let (tp, sl) = harga_tp_sl(ef, Decimal::from(1), Decimal::from(1));
+        assert_eq!(fmt_harga(tp), "4.046");
+        assert_eq!(fmt_harga(sl), "3.966");
     }
 }

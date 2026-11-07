@@ -227,9 +227,23 @@ class MainActivity : Activity() {
     }
 
     private fun mulaiPantau() {
-        LayananLatar.mulai(this)
-        info.text = "Memulai pantauan..."
-        segarkan()
+        // Notifikasi TP/SL butuh setelan persen: simpan dari kolom TP%/SL% (tidak menambah catatan bila sama).
+        val tp = isiTp.text.toString()
+        val sl = isiSl.text.toString()
+        info.text = "Menyimpan setelan TP/SL..."
+        Thread {
+            try {
+                simpanSetelan(pathDb, tp, sl)
+                runOnUiThread {
+                    LayananLatar.mulai(this)
+                    info.text = "Memulai pantauan (TP ${tp}% / SL ${sl}%)..."
+                    segarkan()
+                }
+            } catch (e: Exception) {
+                val pesan = (e as? ErrorApp.Gagal)?.pesan ?: (e.message ?: "Gagal")
+                runOnUiThread { info.text = "Setelan TP/SL tidak valid: $pesan" }
+            }
+        }.start()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

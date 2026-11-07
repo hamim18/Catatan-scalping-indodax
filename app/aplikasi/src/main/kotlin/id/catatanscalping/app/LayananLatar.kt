@@ -14,6 +14,9 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import uniffi.scalping_ffi.ErrorApp
+import uniffi.scalping_ffi.IsiNotifOrder
+import uniffi.scalping_ffi.isiNotifikasi
+import uniffi.scalping_ffi.ringkasanPosisiNotif
 import uniffi.scalping_ffi.KejadianUi
 import uniffi.scalping_ffi.Pemantau
 import uniffi.scalping_ffi.PendengarPantau
@@ -21,6 +24,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Status pantauan yang dipakai bersama oleh layanan dan layar.
@@ -63,6 +68,10 @@ class LayananLatar : Service() {
     private var statusKoneksi = "Menghubungkan..."
     private var orderTerakhir: String? = null
 
+    // Satu thread kerja: menyusun isi notifikasi memakai database, tanpa menahan thread pantau
+    // dan menjaga urutan notifikasi sesuai urutan order.
+    private val pekerja = Executors.newSingleThreadExecutor()
+
     // Callback dari thread Rust. Tidak boleh melempar exception ke Rust.
     private val penerima = object : PendengarPantau {
         override fun kejadian(k: KejadianUi) {
@@ -90,6 +99,10 @@ class LayananLatar : Service() {
         val saluran = NotificationChannel(SALURAN, "Pantauan Indodax", NotificationManager.IMPORTANCE_LOW)
         saluran.description = "Satu notifikasi tetap selama pantauan order berjalan. Boleh disenyapkan."
         nm.createNotificationChannel(saluran)
+        // Saluran terpisah, prioritas tinggi, untuk notifikasi beli/jual (FR-15, FR-16)
+        val saluranOrder = NotificationChannel(SALURAN_ORDER, "Order terisi", NotificationManager.IMPORTANCE_HIGH)
+        saluranOrder.description = "Muncul saat order beli atau jual terisi: TP/SL atau hasil bersih."
+        nm.createNotificationChannel(saluranOrder)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -167,8 +180,14 @@ class LayananLatar : Service() {
             is KejadianUi.OrderSelesai -> {
                 orderTerakhir = "${k.sisi.uppercase()} ${k.simbol} (trade baru ${k.tradeBaru})"
                 PantauBersama.catat("Order selesai: $orderTerakhir")
+                // trade_baru 0 = order ini sudah tercatat sebelumnya (contoh oleh rekonsiliasi): jangan notifikasi ganda
+                if (k.tradeBaru > 0u) pekerja.execute { notifOrder(k.simbol, k.sisi) }
             }
-            is KejadianUi.Rekonsiliasi -> PantauBersama.catat("Rekonsiliasi REST: ${k.tradeBaru} trade baru")
+            is KejadianUi.Rekonsiliasi -> {
+                PantauBersama.catat("Rekonsiliasi REST: ${k.tradeBaru} trade baru")
+                // Trade yang terlewat saat koneksi putus: koinnya tidak diketahui, tampilkan TP/SL semua posisi
+                if (k.tradeBaru > 0u) pekerja.execute { notifRekonsiliasi(k.tradeBaru) }
+            }
             is KejadianUi.Galat -> PantauBersama.catat("Galat: ${k.pesan}")
             is KejadianUi.Berhenti -> {
                 val g = k.galat
@@ -250,8 +269,60 @@ class LayananLatar : Service() {
         getSystemService(NotificationManager::class.java).notify(ID_GALAT, n)
     }
 
+    // ---- notifikasi order (T1.5) ----
+
+    private fun ambilIsi(buat: () -> IsiNotifOrder): IsiNotifOrder? {
+        // Percobaan kedua setelah jeda singkat: database bisa sedang sibuk menulis dari pantau.
+        for (percobaan in 0..1) {
+            try {
+                return buat()
+            } catch (e: ErrorApp.Gagal) {
+                if (percobaan == 1) {
+                    PantauBersama.catat("Isi notifikasi gagal: ${e.pesan}")
+                    return IsiNotifOrder("Order tercatat", e.pesan, e.pesan)
+                }
+                Thread.sleep(1500)
+            } catch (e: Exception) {
+                PantauBersama.catat("Isi notifikasi gagal: ${e.message}")
+                return null
+            }
+        }
+        return null
+    }
+
+    private fun notifOrder(simbol: String, sisi: String) {
+        val isi = ambilIsi { isiNotifikasi(pathDb, simbol, sisi) } ?: return
+        kirimNotifOrder(isi)
+    }
+
+    private fun notifRekonsiliasi(tradeBaru: UInt) {
+        val isi = ambilIsi { ringkasanPosisiNotif(pathDb, tradeBaru) } ?: return
+        kirimNotifOrder(isi)
+    }
+
+    /** Notifikasi biasa (bisa digeser), satu per order, terpisah dari notifikasi layanan. */
+    private fun kirimNotifOrder(isi: IsiNotifOrder) {
+        val n = Notification.Builder(this, SALURAN_ORDER)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentTitle(isi.judul)
+            .setContentText(isi.teks)
+            .setStyle(Notification.BigTextStyle().bigText(isi.rinci))
+            .setCategory(Notification.CATEGORY_STATUS)
+            .setAutoCancel(true)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    this, 3,
+                    Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                    PendingIntent.FLAG_IMMUTABLE
+                )
+            )
+            .build()
+        getSystemService(NotificationManager::class.java).notify(idOrder.getAndIncrement(), n)
+    }
+
     override fun onDestroy() {
         hidup = false
+        pekerja.shutdown() // tugas yang sudah antre tetap selesai
         utama.removeCallbacksAndMessages(null)
         // Bila dimatikan sistem, preferensi "aktif" tetap true supaya START_STICKY menyambung lagi.
         PantauBersama.pemantau.berhenti()
@@ -261,6 +332,8 @@ class LayananLatar : Service() {
     companion object {
         const val AKSI_HENTI = "id.catatanscalping.app.HENTI"
         private const val SALURAN = "pantau"
+        private const val SALURAN_ORDER = "order"
+        private val idOrder = AtomicInteger(2000) // satu ID per notifikasi order supaya bertumpuk, tidak saling timpa
         private const val ID_NOTIF = 1001
         private const val ID_GALAT = 1002
 
