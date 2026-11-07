@@ -52,6 +52,18 @@ pub fn periksa_persen(tp: Decimal, sl: Decimal) -> Hasil<()> {
     Ok(())
 }
 
+/// Target harian dan mingguan (persen): keduanya harus lebih dari 0 dan paling banyak 100.
+pub fn periksa_target(harian: Decimal, mingguan: Decimal) -> Hasil<()> {
+    for (nama, v) in [("harian", harian), ("mingguan", mingguan)] {
+        if v <= Decimal::ZERO || v > Decimal::ONE_HUNDRED {
+            return Err(Error::SetelanTidakValid(format!(
+                "Target {nama} harus lebih dari 0 dan paling banyak 100"
+            )));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PosisiTerbuka {
     pub simbol: String,
@@ -363,6 +375,15 @@ mod tests {
         let trades = vec![t("1", "b1", "xidr", true, "10", "1000", "0", 1000)];
         let kosong = RiwayatSetelan::baru(vec![]);
         assert!(matches!(hitung(&trades, 0, &kosong), Err(Error::SetelanBelumDiisi)));
+    }
+
+    #[test]
+    fn periksa_target_menolak_nol_negatif_dan_di_atas_100() {
+        assert!(periksa_target(d("1.5"), d("5")).is_ok());
+        assert!(periksa_target(d("100"), d("100")).is_ok());
+        assert!(periksa_target(d("0"), d("5")).is_err());
+        assert!(periksa_target(d("1.5"), d("-5")).is_err());
+        assert!(periksa_target(d("1.5"), d("100.01")).is_err());
     }
 
     #[test]

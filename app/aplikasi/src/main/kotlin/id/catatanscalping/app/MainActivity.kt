@@ -20,9 +20,11 @@ import android.widget.ScrollView
 import android.widget.TextView
 import uniffi.scalping_ffi.ErrorApp
 import uniffi.scalping_ffi.StatusKoneksi
+import uniffi.scalping_ffi.bacaTarget
 import uniffi.scalping_ffi.cekKoneksi
 import uniffi.scalping_ffi.hitungPosisi
 import uniffi.scalping_ffi.simpanSetelan
+import uniffi.scalping_ffi.simpanTarget
 import uniffi.scalping_ffi.HasilSinkronUi
 import uniffi.scalping_ffi.orderTerbaru
 import uniffi.scalping_ffi.sinkronSekarang
@@ -55,6 +57,10 @@ class MainActivity : Activity() {
     private lateinit var tombolPantau: Button
     private lateinit var tombolBaterai: Button
     private lateinit var isiPantau: TextView
+    private lateinit var isiTargetHarian: EditText
+    private lateinit var isiTargetMingguan: EditText
+    private lateinit var tombolTarget: Button
+    private lateinit var isiTarget: TextView
 
     // true selama sinkron (manual atau otomatis) berjalan
     @Volatile private var sinkronBerjalan = false
@@ -141,6 +147,16 @@ class MainActivity : Activity() {
         isiPosisi = teks("", 13f)
         isiPosisi.typeface = android.graphics.Typeface.MONOSPACE
         isi.addView(isiPosisi)
+        isi.addView(teks("Target harian dan mingguan (T2.1)", 16f, tebal = true))
+        isi.addView(teks("Dalam persen dari saldo awal periode. Progress dihitung di T2.3.", 13f))
+        isiTargetHarian = angka("Target harian % (contoh 1,5)", "")
+        isiTargetMingguan = angka("Target mingguan % (contoh 5)", "")
+        isi.addView(isiTargetHarian)
+        isi.addView(isiTargetMingguan)
+        tombolTarget = Button(this).apply { text = "Simpan target"; setOnClickListener { simpanTargetUi() } }
+        isi.addView(tombolTarget)
+        isiTarget = teks("", 13f)
+        isi.addView(isiTarget)
         info = teks("", 14f)
         isi.addView(info)
         isi.addView(teks("Inti Rust versi ${versiCore()}", 12f))
@@ -156,6 +172,42 @@ class MainActivity : Activity() {
         }
         setContentView(gulir)
         segarkan()
+        muatTarget()
+    }
+
+    /** Isi kolom target dari database (bila sudah pernah disimpan). */
+    private fun muatTarget() {
+        Thread {
+            try {
+                val t = bacaTarget(pathDb)
+                // variabel lokal: properti hasil binding bisa var, jadi tidak bisa di-smart-cast
+                val h = t.harianPersen?.replace('.', ',')
+                val m = t.mingguanPersen?.replace('.', ',')
+                runOnUiThread {
+                    h?.let { isiTargetHarian.setText(it) }
+                    m?.let { isiTargetMingguan.setText(it) }
+                    isiTarget.text = if (h == null || m == null) "Target belum diatur."
+                    else "Tersimpan: harian $h%, mingguan $m%"
+                }
+            } catch (e: Exception) {
+                val pesan = (e as? ErrorApp.Gagal)?.pesan ?: (e.message ?: "Gagal")
+                runOnUiThread { isiTarget.text = "Gagal membaca target: $pesan" }
+            }
+        }.start()
+    }
+
+    private fun simpanTargetUi() {
+        val h = isiTargetHarian.text.toString()
+        val m = isiTargetMingguan.text.toString()
+        Thread {
+            try {
+                simpanTarget(pathDb, h, m)
+                runOnUiThread { muatTarget() }
+            } catch (e: Exception) {
+                val pesan = (e as? ErrorApp.Gagal)?.pesan ?: (e.message ?: "Gagal")
+                runOnUiThread { isiTarget.text = "Target tidak disimpan: $pesan" }
+            }
+        }.start()
     }
 
     private fun segarkan() {

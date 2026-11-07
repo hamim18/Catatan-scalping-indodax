@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS snapshot (
 );
 ";
 
+const META_TARGET_HARIAN: &str = "target_harian_persen";
+const META_TARGET_MINGGUAN: &str = "target_mingguan_persen";
+
 fn gagal(e: impl std::fmt::Display) -> Error {
     Error::Penyimpanan(e.to_string())
 }
@@ -198,6 +201,24 @@ impl Penyimpanan {
         baris.collect::<Result<Vec<_>, _>>().map_err(gagal)
     }
 
+    /// Simpan target harian dan mingguan (persen). Disimpan di meta; hanya nilai terbaru
+    /// yang dipakai (target tidak punya riwayat).
+    pub fn atur_target(&self, harian: Decimal, mingguan: Decimal) -> Hasil<()> {
+        self.atur_meta(META_TARGET_HARIAN, &harian.to_string())?;
+        self.atur_meta(META_TARGET_MINGGUAN, &mingguan.to_string())
+    }
+
+    /// Target (harian %, mingguan %). None bila belum pernah diatur.
+    pub fn target(&self) -> Hasil<(Option<Decimal>, Option<Decimal>)> {
+        let baca = |kunci: &str| -> Hasil<Option<Decimal>> {
+            match self.meta(kunci)? {
+                None => Ok(None),
+                Some(t) => Decimal::from_str(&t).map(Some).map_err(gagal),
+            }
+        };
+        Ok((baca(META_TARGET_HARIAN)?, baca(META_TARGET_MINGGUAN)?))
+    }
+
     /// Catat snapshot saldo (jenis: "awal", nanti "harian"/"mingguan" di Fase 2).
     pub fn tambah_snapshot(&self, jenis: &str, waktu_ms: i64, saldo: Decimal) -> Hasil<()> {
         self.conn
@@ -290,6 +311,16 @@ mod tests {
             s.riwayat_setelan().unwrap(),
             vec![(1000, d("1"), d("1")), (2000, d("2"), d("1.5"))]
         );
+    }
+
+    #[test]
+    fn target_belum_diatur_lalu_disimpan_dan_diganti() {
+        let s = Penyimpanan::dalam_memori().unwrap();
+        assert_eq!(s.target().unwrap(), (None, None));
+        s.atur_target(d("1.5"), d("5")).unwrap();
+        assert_eq!(s.target().unwrap(), (Some(d("1.5")), Some(d("5"))));
+        s.atur_target(d("2"), d("6.5")).unwrap();
+        assert_eq!(s.target().unwrap(), (Some(d("2")), Some(d("6.5"))));
     }
 
     #[test]

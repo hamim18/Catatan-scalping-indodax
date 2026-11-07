@@ -2,7 +2,7 @@
 //! Key dan secret tidak pernah dicatat ke log.
 use rust_decimal::Decimal;
 use scalping_core::calc::bulatkan_idr;
-use scalping_core::posisi::periksa_persen;
+use scalping_core::posisi::{periksa_persen, periksa_target};
 use scalping_core::{
     gabung_per_order, hitung, sinkron, IndodaxClient, Opsi, Penyimpanan, RiwayatSetelan, Sisi,
 };
@@ -198,6 +198,34 @@ pub fn simpan_setelan(path_db: String, tp_persen: String, sl_persen: String) -> 
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
     simpan.tambah_setelan(sekarang, tp, sl).map_err(gagal)
+}
+
+/// Target harian dan mingguan (persen) sebagai teks. None = belum diatur (T2.1).
+#[derive(uniffi::Record)]
+pub struct SetelanTarget {
+    pub harian_persen: Option<String>,
+    pub mingguan_persen: Option<String>,
+}
+
+/// Simpan target harian dan mingguan (FR-04). Menerima koma desimal. Tanpa jaringan.
+#[uniffi::export]
+pub fn simpan_target(path_db: String, harian_persen: String, mingguan_persen: String) -> Result<(), ErrorApp> {
+    let harian = desimal(&harian_persen)?;
+    let mingguan = desimal(&mingguan_persen)?;
+    periksa_target(harian, mingguan).map_err(gagal)?;
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    simpan.atur_target(harian, mingguan).map_err(gagal)
+}
+
+/// Baca target yang tersimpan. Tanpa jaringan.
+#[uniffi::export]
+pub fn baca_target(path_db: String) -> Result<SetelanTarget, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let (h, m) = simpan.target().map_err(gagal)?;
+    Ok(SetelanTarget {
+        harian_persen: h.map(|d| d.normalize().to_string()),
+        mingguan_persen: m.map(|d| d.normalize().to_string()),
+    })
 }
 
 /// Hitung ulang posisi, TP/SL, dan trade tertutup dari trade tersimpan. Tanpa jaringan.
@@ -672,6 +700,40 @@ pub fn ringkasan_posisi_notif(path_db: String, trade_baru: u32) -> Result<IsiNot
         teks: ringkas.join("; "),
         rinci: format!("{}\n\n{CATATAN_FEE}", rinci.join("\n\n")),
     })
+}
+
+#[cfg(test)]
+mod tes_target {
+    use super::*;
+
+    fn db_sementara(nama: &str) -> String {
+        let p = std::env::temp_dir().join(format!("catatan_tes_{nama}_{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&p);
+        p.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn target_disimpan_dibaca_dan_menerima_koma() {
+        let db = db_sementara("target");
+        let kosong = baca_target(db.clone()).unwrap();
+        assert!(kosong.harian_persen.is_none() && kosong.mingguan_persen.is_none());
+        simpan_target(db.clone(), "1,5".into(), "5".into()).unwrap();
+        let t = baca_target(db.clone()).unwrap();
+        assert_eq!(t.harian_persen.as_deref(), Some("1.5"));
+        assert_eq!(t.mingguan_persen.as_deref(), Some("5"));
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn target_tidak_valid_ditolak_dan_tidak_menimpa() {
+        let db = db_sementara("tolak");
+        simpan_target(db.clone(), "1".into(), "4".into()).unwrap();
+        assert!(simpan_target(db.clone(), "0".into(), "4".into()).is_err());
+        assert!(simpan_target(db.clone(), "abc".into(), "4".into()).is_err());
+        let t = baca_target(db.clone()).unwrap();
+        assert_eq!(t.harian_persen.as_deref(), Some("1"));
+        let _ = std::fs::remove_file(&db);
+    }
 }
 
 #[cfg(test)]
