@@ -28,6 +28,8 @@ pub enum Error {
     SetelanTidakValid(String),
     #[error("rentang waktu {simbol} terlalu padat: {jumlah} trade dalam rentang minimal")]
     RentangTerlaluPadat { simbol: String, jumlah: usize },
+    #[error("belum ada snapshot saldo awal; jalankan sinkron trade dulu")]
+    BelumAdaSnapshot,
 }
 
 pub type Hasil<T> = Result<T, Error>;

@@ -19,7 +19,12 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import uniffi.scalping_ffi.ErrorApp
+import uniffi.scalping_ffi.PencapaianUi
 import uniffi.scalping_ffi.StatusKoneksi
+import uniffi.scalping_ffi.aturAmountSudahBersih
+import uniffi.scalping_ffi.daftarArusKas
+import uniffi.scalping_ffi.hitungTarget
+import uniffi.scalping_ffi.sinkronArusKas
 import uniffi.scalping_ffi.bacaTarget
 import uniffi.scalping_ffi.cekKoneksi
 import uniffi.scalping_ffi.hitungPosisi
@@ -61,9 +66,16 @@ class MainActivity : Activity() {
     private lateinit var isiTargetMingguan: EditText
     private lateinit var tombolTarget: Button
     private lateinit var isiTarget: TextView
+    private lateinit var tombolArusKas: Button
+    private lateinit var cekBersih: CheckBox
+    private lateinit var tombolProgress: Button
+    private lateinit var isiProgress: TextView
 
     // true selama sinkron (manual atau otomatis) berjalan
     @Volatile private var sinkronBerjalan = false
+
+    // true selama sinkron arus kas (T2.2) berjalan
+    @Volatile private var arusKasBerjalan = false
 
     private val prefs get() = getSharedPreferences(PantauBersama.PREF, MODE_PRIVATE)
 
@@ -157,6 +169,20 @@ class MainActivity : Activity() {
         isi.addView(tombolTarget)
         isiTarget = teks("", 13f)
         isi.addView(isiTarget)
+        isi.addView(teks("Arus kas dan progress target (T2.2 sampai T2.4)", 16f, tebal = true))
+        isi.addView(teks("Deposit/withdraw IDR dikeluarkan dari pencapaian. Periode WIB, minggu mulai Senin. Butuh sinkron trade dan \"Hitung posisi\" (TP/SL tersimpan) sekali.", 13f))
+        tombolArusKas = Button(this).apply { text = "Sinkron arus kas (deposit/withdraw)"; setOnClickListener { jalankanArusKas(false) } }
+        cekBersih = CheckBox(this).apply {
+            text = "Nominal (amount) sudah bersih: fee TIDAK dikurangkan lagi"
+            setOnClickListener { ubahModeFee() }
+        }
+        tombolProgress = Button(this).apply { text = "Hitung progress target"; setOnClickListener { tampilkanProgress() } }
+        isi.addView(tombolArusKas)
+        isi.addView(cekBersih)
+        isi.addView(tombolProgress)
+        isiProgress = teks("", 13f)
+        isiProgress.typeface = android.graphics.Typeface.MONOSPACE
+        isi.addView(isiProgress)
         info = teks("", 14f)
         isi.addView(info)
         isi.addView(teks("Inti Rust versi ${versiCore()}", 12f))
@@ -173,6 +199,103 @@ class MainActivity : Activity() {
         setContentView(gulir)
         segarkan()
         muatTarget()
+        tampilkanProgress()
+    }
+
+    private fun pesanGalat(e: Exception): String = (e as? ErrorApp.Gagal)?.pesan ?: (e.message ?: "Gagal")
+
+    /** T2.2: tarik deposit/withdraw IDR (baca saja). Aman dijalankan saat pantauan hidup. */
+    private fun jalankanArusKas(otomatis: Boolean) {
+        val p = kunci.ambil()
+        if (p == null) {
+            if (!otomatis) isiProgress.text = "Kunci tersimpan tidak bisa dibuka. Masukkan ulang."
+            return
+        }
+        if (arusKasBerjalan) return
+        arusKasBerjalan = true
+        tombolArusKas.isEnabled = false
+        if (!otomatis) isiProgress.text = "Menarik riwayat deposit/withdraw..."
+        Thread {
+            val pesan = try {
+                val h = sinkronArusKas(p.first, p.second, pathDb)
+                "Arus kas: ${h.baru} baru, ${h.total} tersimpan, ${h.dilewati} dilewati (bukan sukses/IDR)."
+            } catch (e: Exception) {
+                "Arus kas gagal: ${pesanGalat(e)}"
+            }
+            runOnUiThread {
+                arusKasBerjalan = false
+                tombolArusKas.isEnabled = kunci.ujungKey() != null
+                tampilkanProgress(pesan)
+            }
+        }.start()
+    }
+
+    /** Aplikasi dibuka saat pantauan hidup: sinkron trade dimatikan, jadi arus kas dilengkapi di sini. */
+    private fun arusKasOtomatis() {
+        if (kunci.ujungKey() == null || !pantauAktif() || arusKasBerjalan) return
+        if (!prefs.getBoolean(PantauBersama.PREF_PERNAH_SINKRON, false)) return
+        val sekarang = System.currentTimeMillis()
+        if (sekarang - terakhirArusKasMs < 60_000) return
+        terakhirArusKasMs = sekarang
+        jalankanArusKas(true)
+    }
+
+    private fun ubahModeFee() {
+        val ya = cekBersih.isChecked
+        Thread {
+            try {
+                aturAmountSudahBersih(pathDb, ya)
+                runOnUiThread { tampilkanProgress() }
+            } catch (e: Exception) {
+                runOnUiThread { isiProgress.text = "Mode fee tidak disimpan: ${pesanGalat(e)}" }
+            }
+        }.start()
+    }
+
+    private fun barisPencapaian(judul: String, p: PencapaianUi): String {
+        val sb = StringBuilder()
+        sb.append("$judul (sejak ${waktuWib(p.mulaiMs)})\n")
+        sb.append("  pencapaian ${p.persen}%  hasil Rp ${p.profit}  setoran bersih Rp ${p.setoranBersih}\n")
+        // variabel lokal: properti hasil binding tidak bisa di-smart-cast
+        val target = p.targetPersen
+        val progres = p.progressPersen
+        if (target == null || progres == null) {
+            sb.append("  target belum diatur\n")
+        } else {
+            val isi = (progres.toBigDecimalOrNull()?.toInt() ?: 0).coerceIn(0, 100) / 10
+            sb.append("  target $target%  [${"█".repeat(isi)}${"░".repeat(10 - isi)}] $progres%")
+            if (p.tercapai) sb.append("  TERCAPAI")
+            sb.append("\n")
+        }
+        return sb.toString()
+    }
+
+    /** T2.3/T2.4: saldo versi aplikasi, pencapaian dan progress. Hitungan di Rust, tanpa jaringan. */
+    private fun tampilkanProgress(awalan: String = "") {
+        Thread {
+            try {
+                val r = hitungTarget(pathDb)
+                val arus = daftarArusKas(pathDb, 5u)
+                val t = StringBuilder()
+                if (awalan.isNotEmpty()) t.append(awalan).append("\n\n")
+                t.append("Saldo awal (snapshot ${waktuWib(r.snapshotAwalMs)}): Rp ${r.saldoAwal}\n")
+                t.append("Modal aktif: Rp ${r.modalAktif}\n")
+                t.append("Saldo versi aplikasi: Rp ${r.saldoSekarang} (hasil sejak awal: Rp ${r.selisihModal})\n\n")
+                t.append(barisPencapaian("HARI INI", r.harian)).append("\n")
+                t.append(barisPencapaian("MINGGU INI", r.mingguan)).append("\n")
+                t.append("Arus kas tersimpan: ${r.jumlahArusKas}\n")
+                for (a in arus) {
+                    t.append("${waktuWib(a.waktuMs)} ${a.jenis.uppercase()} amount ${a.jumlah} fee ${a.biaya} -> saldo ${a.efekSaldo}\n")
+                }
+                runOnUiThread {
+                    cekBersih.isChecked = r.amountSudahBersih
+                    isiProgress.text = t.toString()
+                }
+            } catch (e: Exception) {
+                val awal = if (awalan.isNotEmpty()) awalan + "\n\n" else ""
+                runOnUiThread { isiProgress.text = awal + "Progress belum bisa dihitung: ${pesanGalat(e)}" }
+            }
+        }.start()
     }
 
     /** Isi kolom target dari database (bila sudah pernah disimpan). */
@@ -216,6 +339,7 @@ class MainActivity : Activity() {
         tombolTes.isEnabled = ujung != null
         tombolHapus.isEnabled = ujung != null
         tombolSinkron.isEnabled = bolehSinkron()
+        tombolArusKas.isEnabled = ujung != null && !arusKasBerjalan
         segarkanPantau()
     }
 
@@ -246,6 +370,7 @@ class MainActivity : Activity() {
         PantauBersama.pendengarUi = { runOnUiThread { segarkanPantau() } }
         segarkan()
         sinkronOtomatis()
+        arusKasOtomatis()
     }
 
     override fun onPause() {
@@ -333,6 +458,7 @@ class MainActivity : Activity() {
     private companion object {
         const val KODE_NOTIF = 7
         @Volatile var terakhirOtomatisMs = 0L
+        @Volatile var terakhirArusKasMs = 0L
     }
 
     private fun sibuk(ya: Boolean) {
@@ -425,13 +551,26 @@ class MainActivity : Activity() {
                 ringkas.append("Koin dipindai: ${h.koinDipindai.joinToString(", ").ifEmpty { "(tidak ada)" }}\n")
                 ringkas.append("Trade baru: ${h.tradeBaru}, total tersimpan: ${h.tradeTotal}\n")
                 if (h.koinDilewati.isNotEmpty()) ringkas.append("Dilewati (simbol tidak dikenal Indodax): ${h.koinDilewati.joinToString(", ")}\n")
-                if (h.snapshotAwalDibuat) ringkas.append("Snapshot saldo awal dibuat.")
+                if (h.snapshotAwalDibuat) ringkas.append("Snapshot saldo awal dibuat.\n")
+                // T2.2: lengkapi arus kas (deposit/withdraw). Kegagalan di sini tidak membatalkan sinkron trade.
+                if (!arusKasBerjalan) {
+                    arusKasBerjalan = true
+                    try {
+                        val a = sinkronArusKas(p.first, p.second, pathDb)
+                        ringkas.append("Arus kas: ${a.baru} baru, ${a.total} tersimpan.")
+                    } catch (e: Exception) {
+                        ringkas.append("Arus kas gagal: ${pesanGalat(e)}")
+                    } finally {
+                        arusKasBerjalan = false
+                    }
+                }
                 runOnUiThread {
                     sinkronBerjalan = false
                     sibuk(false)
                     info.text = ringkas.toString()
                     tampilkanOrder()
                     segarkan()
+                    tampilkanProgress()
                 }
             } catch (e: Exception) {
                 val pesan = (e as? ErrorApp.Gagal)?.pesan ?: (e.message ?: "Gagal")

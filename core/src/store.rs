@@ -2,6 +2,7 @@
 //! (trade per pengisian), bukan angka saldo mentah. Angka uang disimpan
 //! sebagai teks desimal supaya tidak ada floating point.
 //! Anti-dobel (FR-09): `trade_id` adalah PRIMARY KEY, INSERT OR IGNORE.
+use crate::arus_kas::{ArusKas, JenisArusKas};
 use crate::{Error, Hasil, Trade};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use rust_decimal::Decimal;
@@ -37,10 +38,20 @@ CREATE TABLE IF NOT EXISTS snapshot (
     saldo    TEXT NOT NULL,
     PRIMARY KEY (jenis, waktu_ms)
 );
+CREATE TABLE IF NOT EXISTS arus_kas (
+    id_sumber TEXT PRIMARY KEY,
+    jenis     TEXT NOT NULL,
+    jumlah    TEXT NOT NULL,
+    biaya     TEXT NOT NULL,
+    waktu_ms  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_arus_kas_waktu ON arus_kas(waktu_ms);
 ";
 
 const META_TARGET_HARIAN: &str = "target_harian_persen";
 const META_TARGET_MINGGUAN: &str = "target_mingguan_persen";
+const META_AMOUNT_BERSIH: &str = "arus_kas_amount_sudah_bersih";
+const META_ARUS_KAS_TERAKHIR: &str = "arus_kas_sinkron_terakhir_ms";
 
 fn gagal(e: impl std::fmt::Display) -> Error {
     Error::Penyimpanan(e.to_string())
@@ -69,6 +80,9 @@ impl Penyimpanan {
     }
 
     fn dari(conn: Connection) -> Hasil<Self> {
+        // Pantauan (menulis) dan tampilan (membaca) bisa membuka database bersamaan:
+        // tunggu sampai 5 detik alih-alih langsung gagal "database is locked".
+        conn.busy_timeout(std::time::Duration::from_secs(5)).map_err(gagal)?;
         conn.execute_batch(SKEMA).map_err(gagal)?;
         Ok(Self { conn })
     }
@@ -219,6 +233,85 @@ impl Penyimpanan {
         Ok((baca(META_TARGET_HARIAN)?, baca(META_TARGET_MINGGUAN)?))
     }
 
+    /// T2.2: simpan arus kas (deposit/withdraw IDR) tanpa dobel (`id_sumber` unik).
+    /// Mengembalikan jumlah baris BARU.
+    pub fn simpan_arus_kas(&mut self, arus: &[ArusKas]) -> Hasil<usize> {
+        let tx = self.conn.transaction().map_err(gagal)?;
+        let mut baru = 0usize;
+        {
+            let mut st = tx
+                .prepare(
+                    "INSERT OR IGNORE INTO arus_kas (id_sumber, jenis, jumlah, biaya, waktu_ms)
+                     VALUES (?1,?2,?3,?4,?5)",
+                )
+                .map_err(gagal)?;
+            for a in arus {
+                baru += st
+                    .execute(params![a.id_sumber, a.jenis.teks(), a.jumlah.to_string(), a.biaya.to_string(), a.waktu_ms])
+                    .map_err(gagal)?;
+            }
+        }
+        tx.commit().map_err(gagal)?;
+        Ok(baru)
+    }
+
+    /// Semua arus kas, urut waktu naik.
+    pub fn semua_arus_kas(&self) -> Hasil<Vec<ArusKas>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT id_sumber, jenis, jumlah, biaya, waktu_ms FROM arus_kas ORDER BY waktu_ms ASC, id_sumber ASC")
+            .map_err(gagal)?;
+        let baris = st
+            .query_map([], |r| {
+                let jenis_teks: String = r.get(1)?;
+                let jenis = JenisArusKas::dari_teks(&jenis_teks).ok_or_else(|| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        1,
+                        rusqlite::types::Type::Text,
+                        "jenis arus kas tidak dikenal".into(),
+                    )
+                })?;
+                Ok(ArusKas {
+                    id_sumber: r.get(0)?,
+                    jenis,
+                    jumlah: kolom_desimal(r, 2)?,
+                    biaya: kolom_desimal(r, 3)?,
+                    waktu_ms: r.get(4)?,
+                })
+            })
+            .map_err(gagal)?;
+        baris.collect::<Result<Vec<_>, _>>().map_err(gagal)
+    }
+
+    pub fn jumlah_arus_kas(&self) -> Hasil<usize> {
+        let n: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM arus_kas", [], |r| r.get(0))
+            .map_err(gagal)?;
+        Ok(n as usize)
+    }
+
+    /// Apakah `amount` deposit/withdraw sudah bersih (fee tidak dikurangkan lagi). Bawaan: false.
+    pub fn amount_sudah_bersih(&self) -> Hasil<bool> {
+        Ok(self.meta(META_AMOUNT_BERSIH)?.as_deref() == Some("1"))
+    }
+
+    pub fn atur_amount_sudah_bersih(&self, ya: bool) -> Hasil<()> {
+        self.atur_meta(META_AMOUNT_BERSIH, if ya { "1" } else { "0" })
+    }
+
+    /// Waktu (ms) sinkron arus kas terakhir yang berhasil. None bila belum pernah.
+    pub fn arus_kas_terakhir_ms(&self) -> Hasil<Option<i64>> {
+        match self.meta(META_ARUS_KAS_TERAKHIR)? {
+            None => Ok(None),
+            Some(t) => t.parse::<i64>().map(Some).map_err(gagal),
+        }
+    }
+
+    pub fn atur_arus_kas_terakhir_ms(&self, ms: i64) -> Hasil<()> {
+        self.atur_meta(META_ARUS_KAS_TERAKHIR, &ms.to_string())
+    }
+
     /// Catat snapshot saldo (jenis: "awal", nanti "harian"/"mingguan" di Fase 2).
     pub fn tambah_snapshot(&self, jenis: &str, waktu_ms: i64, saldo: Decimal) -> Hasil<()> {
         self.conn
@@ -321,6 +414,32 @@ mod tests {
         assert_eq!(s.target().unwrap(), (Some(d("1.5")), Some(d("5"))));
         s.atur_target(d("2"), d("6.5")).unwrap();
         assert_eq!(s.target().unwrap(), (Some(d("2")), Some(d("6.5"))));
+    }
+
+    fn arus(id: &str, jenis: JenisArusKas, jumlah: &str, w: i64) -> ArusKas {
+        ArusKas { id_sumber: id.into(), jenis, jumlah: d(jumlah), biaya: d("2500"), waktu_ms: w }
+    }
+
+    #[test]
+    fn arus_kas_anti_dobel_dan_presisi() {
+        let mut s = Penyimpanan::dalam_memori().unwrap();
+        let a = arus("deposit:1", JenisArusKas::Deposit, "50000.5", 20);
+        let b = arus("withdraw:1", JenisArusKas::Withdraw, "20000", 10);
+        assert_eq!(s.simpan_arus_kas(&[a.clone(), a.clone(), b.clone()]).unwrap(), 2);
+        assert_eq!(s.simpan_arus_kas(&[a.clone()]).unwrap(), 0);
+        assert_eq!(s.jumlah_arus_kas().unwrap(), 2);
+        assert_eq!(s.semua_arus_kas().unwrap(), vec![b, a]); // urut waktu
+    }
+
+    #[test]
+    fn mode_fee_dan_sinkron_terakhir() {
+        let s = Penyimpanan::dalam_memori().unwrap();
+        assert!(!s.amount_sudah_bersih().unwrap());
+        s.atur_amount_sudah_bersih(true).unwrap();
+        assert!(s.amount_sudah_bersih().unwrap());
+        assert_eq!(s.arus_kas_terakhir_ms().unwrap(), None);
+        s.atur_arus_kas_terakhir_ms(1793984400000).unwrap();
+        assert_eq!(s.arus_kas_terakhir_ms().unwrap(), Some(1793984400000));
     }
 
     #[test]

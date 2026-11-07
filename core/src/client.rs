@@ -1,4 +1,5 @@
 //! Klien REST Indodax TAPI v2. HANYA metode GET (baca saja).
+use crate::arus_kas::{parse_fiat_orders, HasilParseFiat, JenisArusKas};
 use crate::{account::{parse_akun, Akun}, model::parse_my_trades, sign::tanda_tangan, Error, Hasil, Trade};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -107,6 +108,18 @@ impl IndodaxClient {
             p.push(("endTime", a.to_string()));
         }
         parse_my_trades(&self.get("/api/v2/myTrades", &p)?)
+    }
+
+    /// T2.2: riwayat deposit/withdraw IDR (GET /api/v2/fiat/orders). Rentang maksimal 30 hari;
+    /// pembelahan rentang dikerjakan `arus_kas::sinkron_arus_kas`. Nama parameter
+    /// (transactionType, beginTime, endTime) sudah terbukti diterima Indodax (HTTP 200).
+    pub fn ambil_arus_kas(&self, jenis: JenisArusKas, mulai_ms: u64, akhir_ms: u64) -> Hasil<HasilParseFiat> {
+        let p = vec![
+            ("transactionType", jenis.kode_api().to_string()),
+            ("beginTime", mulai_ms.to_string()),
+            ("endTime", akhir_ms.to_string()),
+        ];
+        parse_fiat_orders(&self.get("/api/v2/fiat/orders", &p)?, jenis)
     }
 }
 
