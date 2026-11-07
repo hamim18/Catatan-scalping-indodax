@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 7 November 2026 (T0.6 dan T1.4a selesai)
-Status: **Fase 0 selesai (T0.6 juga selesai). Fase 1 berjalan:** T1.0 sampai T1.3 lolos uji di HP; T0.6 lolos (token WebSocket privat berhasil dengan key v2); T1.4a (protokol WebSocket, logika murni) lolos `cargo test` (51 tes). Berikutnya: T1.4b (sambungan WebSocket sebenarnya di Rust), lalu T1.4c (foreground service Kotlin + jembatan FFI).
+Terakhir diperbarui: 7 November 2026 (T1.4b dan T1.4c selesai)
+Status: **Fase 0 selesai. Fase 1 berjalan:** T1.0 sampai T1.4c lolos uji. Pantauan realtime berjalan di HP sebagai foreground service: order Indodax terdeteksi lewat WebSocket privat, trade ditarik lewat REST dan tercatat tanpa dobel, sambung ulang dan rekonsiliasi bekerja (7 poin uji HP T1.4c lolos). Berikutnya: **T1.5** (notifikasi beli dan jual dengan TP/SL).
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -13,7 +13,7 @@ Status: **Fase 0 selesai (T0.6 juga selesai). Fase 1 berjalan:** T1.0 sampai T1.
 
 ## 1. Sudah dikerjakan
 
-### 1a. Ringkasan riwayat (Fase 0 sampai T1.4a)
+### 1a. Ringkasan riwayat (Fase 0 sampai T1.4c)
 
 | Task | Hasil singkat | Status |
 | --- | --- | --- |
@@ -25,6 +25,8 @@ Status: **Fase 0 selesai (T0.6 juga selesai). Fase 1 berjalan:** T1.0 sampai T1.
 | T1.2 | `store.rs` (SQLite, anti-dobel `trade_id`), `sync.rs` (rekonsiliasi per koin, rentang maks 6 hari, rentang dibelah bila hasil penuh, snapshot saldo awal, simbol ditolak Indodax dilewati), FFI `sinkron_sekarang` dan `order_terbaru`. Lolos uji HP 7 Nov: 32 trade UAI tersinkron, sinkron ulang tanpa dobel, cocok dengan struk | Selesai |
 | T0.6 | `tools/tes_websocket_token.py` (stdlib Python, klien WebSocket minimal). Token privat BERHASIL dibuat dengan key v2 baca saja (HMAC-SHA512), autentikasi dan subscribe channel pribadi berhasil (ttl 86400 detik). Event nyata diterima (UAI, 7 Nov): NEW, FILL, DONE, CANCELLED. Fee WebSocket (`fee + tax + clearing`) = `commission` REST (beli 43 = 43; jual 43+22+0 = 65) | Selesai |
 | T1.4a | `core/src/ws.rs`: token (badan, tanda tangan HMAC-SHA512, parser respons, `Debug` tidak membocorkan token), pesan connect/subscribe, parser pesan masuk (ping `{}`, balasan, galat, event order_update, banyak pesan per frame), `PemicuSinkron` (memicu sinkron REST saat DONE atau CANCELLED setelah sebagian terisi; DONE ganda tidak memicu dua kali), jadwal ulang `jeda_ulang`, `order_sudah_tersimpan`, `umur_sambungan_maks`. Tanpa jaringan. `cargo test -p scalping-core`: 51 lulus | Selesai |
+| T1.4b | `core/src/ws_klien.rs`: sambungan WebSocket privat sebenarnya (`pantau`, `KejadianPantau`): minta token, handshake tanpa Origin, connect, subscribe, balas ping `{}`, sambung ulang otomatis dengan token baru, picu `sinkron_koin` lewat `PemicuSinkron`. Pustaka: rustls (provider `ring` saja, sama dengan ureq), webpki-roots, base64; tanpa aws-lc-rs. Contoh `core/examples/pantau.rs`. Lolos uji komputer: rekonsiliasi awal, subscribe, beli dan jual market UAI terdeteksi dan tercatat tanpa dobel | Selesai |
+| T1.4c | FFI: `Pemantau` (mulai, berhenti, sedang_jalan; thread pantau), callback `PendengarPantau`, enum `KejadianUi`. Android: `LayananLatar.kt` (foreground service tipe `specialUse`, satu notifikasi tetap dengan tombol Hentikan, START_STICKY), `PantauBersama` (status dan log untuk layar), izin notifikasi (Android 13+), permintaan abaikan optimasi baterai, sinkron otomatis saat app dibuka (FR-06, FR-10). Build dan tes berhasil, 7 poin uji HP lolos | Selesai |
 
 ### 1b. Kesimpulan Fase 0 (masih dipakai)
 - **Fee dalam IDR.** Koin yang diterima tidak dipotong fee. Fee selain IDR sengaja ditolak (error) karena belum pernah ditemui.
@@ -91,10 +93,30 @@ Status: **Fase 0 selesai (T0.6 juga selesai). Fase 1 berjalan:** T1.0 sampai T1.
 - Order limit yang terisi sebagian dan dibiarkan terbuka baru tercatat saat DONE/CANCELLED atau saat rekonsiliasi (sesuai FR-07/FR-08).
 
 **Belum ada / catatan**
-- Belum ada: sambungan WebSocket sebenarnya (T1.4b), foreground service dan notifikasi (T1.4c, T1.5).
+- (Saat T1.4a) belum ada sambungan WebSocket sebenarnya dan foreground service; keduanya selesai di T1.4b dan T1.4c (lihat 1f). Notifikasi beli/jual masih T1.5.
 - `tradeId` event WebSocket (contoh 144115188260590414) belum dibandingkan dengan `tradeId` REST; tidak menghalangi karena anti-dobel memakai ID dari REST.
 - `ws.rs` memakai `Error::Json` untuk token ditolak (belum ada varian khusus di `error.rs`).
 - Skrip `tes_websocket_token.py` hanya untuk uji manual; event mentah tersimpan di `data/ws_events_*.json` (tidak di-commit).
+
+
+### 1f. T1.4b dan T1.4c (terbaru, detail)
+
+**Status: Selesai.** T1.4b lolos uji di komputer; T1.4c build dan tes berhasil tanpa error, 7 poin uji HP lolos (dilaporkan pengguna, 7 Nov 2026).
+
+**Cara kerja**
+- WebSocket hanya PEMICU. Saat order DONE (atau CANCELLED setelah sebagian terisi), Rust menarik trade koin itu lewat REST (`sinkron_koin`); angka resmi tetap dari REST. Rekonsiliasi REST juga dijalankan tiap pantauan dimulai dan tiap tersambung ulang.
+- `Pemantau` (ffi) menjalankan `pantau` di thread sendiri, bendera henti baru per sesi, satu sesi pada satu waktu (mulai ganda ditolak). Panic di dalam pantau ditangkap sehingga status tidak macet.
+- `LayananLatar` memakai `foregroundServiceType=specialUse` (bukan `dataSync`, yang dibatasi sekitar 6 jam per hari di Android 15+). Notifikasi tetap menampilkan status koneksi dan order terakhir; boleh disenyapkan lewat saluran notifikasi.
+- Bila sistem mematikan layanan, preferensi `aktif` tetap true sehingga START_STICKY menyalakannya lagi. Galat fatal (contoh kunci dicabut) menghentikan layanan dan memunculkan notifikasi galat biasa.
+- Mulai pantauan butuh sinkron manual pertama (agar snapshot saldo awal ada). Sinkron otomatis saat app dibuka hanya jalan bila pantauan mati, sinkron manual pernah dilakukan, dan jeda minimal 60 detik.
+- Sinkron manual dimatikan saat pantauan berjalan (cegah dua koneksi SQLite menulis bersamaan).
+
+**Belum ada / catatan**
+- Belum ada: notifikasi beli dan jual berisi TP/SL (T1.5). Notifikasi sekarang hanya status koneksi.
+- Belum diketahui apakah `Penyimpanan` memakai `busy_timeout`. Pantau bila muncul error "database is locked" (misal saat hitung posisi bersamaan dengan pantau menulis).
+- Pantauan hanya aktif saat pengguna menyalakannya; belum menyala otomatis setelah HP reboot.
+- Versi Android HP (`ro.build.version.sdk`) belum dilaporkan; kode menangani semua versi dari minSdk 30.
+- Kunci API dibaca layanan dari `KunciAman` dan disalurkan ke Rust; tidak dicatat ke log.
 
 ---
 
@@ -104,7 +126,8 @@ Status: **Fase 0 selesai (T0.6 juga selesai). Fase 1 berjalan:** T1.0 sampai T1.
 | Masalah | Penyebab / dugaan | Status |
 | --- | --- | --- |
 | `tradeId` event WebSocket vs REST belum dibandingkan | Belum ada data pembanding | Tidak menghalangi (anti-dobel dari REST) |
-| Pemilihan pustaka WebSocket Rust + TLS untuk Android (T1.4b) | Risiko dua penyedia kripto rustls bentrok (ureq sudah memakai rustls); belum dicoba | Belum dikerjakan; tunggu T1.4b |
+| Kemungkinan "database is locked" saat dua koneksi SQLite aktif bersamaan | `busy_timeout` belum diperiksa; sinkron manual sudah dimatikan saat pantauan jalan, tapi baca (hitung posisi) dan tulis (pantau) bisa bertabrakan | Pantau saat uji lanjutan |
+| Pantauan tidak menyala sendiri setelah HP reboot | Belum ada penerima BOOT_COMPLETED | Dicatat; belum diputuskan perlu atau tidak |
 | Clearing fee baru teramati bernilai 0 | Hanya 2 sampel kecil (UAI) | Pantau; bila `commission` REST berbeda dari fee+tax+clearing event, andalkan REST |
 | Koin yang sudah tidak dipegang (contoh ICNT) tidak terpindai | Daftar koin dari saldo + riwayat tersimpan | Dikenal; solusi sementara `koin_tambahan`, belum ada isiannya di UI |
 | `pxgidr` ditolak Indodax (kode 1109) | Dugaan: tidak ada pasangan IDR | Dilewati dengan benar; penyebab belum dipastikan |
@@ -113,7 +136,7 @@ Status: **Fase 0 selesai (T0.6 juga selesai). Fase 1 berjalan:** T1.0 sampai T1.
 | Apakah sisa 3 IDR (anggaran order tak terpakai) kembali ke saldo | Belum dicek di saldo | Belum dikonfirmasi; tidak memengaruhi rumus karena saldo diambil dari API |
 
 ### Sudah terselesaikan (ringkas)
-Token WebSocket privat dengan key v2 (T0.6: berhasil); format event order_update dan nama status FILL (terkonfirmasi); fee event = `commission` REST (cocok pada 2 trade); HTTP 403 dari skrip lama (file belum tertimpa); SHA256 untuk TAPI v2; format simbol huruf kecil dan parameter `startTime`/`endTime` maks 7 hari; "Jumlah Order" vs uang keluar (pakai "Order Terisi"); format respons `/account`; `adb: more than one device` (skrip menerima serial); HTTP 400 kode 1109 saat sinkron (simbol ditolak dilewati, terbukti di HP); build SQLite bundled untuk Android (berhasil); aset IDR ada di saldo akunmu (sinkron pertama berhasil membuat snapshot, yang membutuhkan IDR).
+Pemilihan pustaka WebSocket + TLS (T1.4b: rustls provider `ring` + webpki-roots, tidak bentrok dengan ureq, build Android berhasil); foreground service tidak mati saat layar dikunci dan app dibuang dari recent apps (uji HP T1.4c); sambung ulang dan rekonsiliasi setelah koneksi putus (uji HP T1.4c); Token WebSocket privat dengan key v2 (T0.6: berhasil); format event order_update dan nama status FILL (terkonfirmasi); fee event = `commission` REST (cocok pada 2 trade); HTTP 403 dari skrip lama (file belum tertimpa); SHA256 untuk TAPI v2; format simbol huruf kecil dan parameter `startTime`/`endTime` maks 7 hari; "Jumlah Order" vs uang keluar (pakai "Order Terisi"); format respons `/account`; `adb: more than one device` (skrip menerima serial); HTTP 400 kode 1109 saat sinkron (simbol ditolak dilewati, terbukti di HP); build SQLite bundled untuk Android (berhasil); aset IDR ada di saldo akunmu (sinkron pertama berhasil membuat snapshot, yang membutuhkan IDR).
 
 ---
 
@@ -128,9 +151,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 ### Task berikutnya (urut)
 | Task | Isi | Syarat |
 | --- | --- | --- |
-| T1.4b | Sambungan WebSocket sebenarnya di Rust: minta token (POST), handshake tanpa Origin, connect, subscribe, baca pesan, balas ping `{}`, sambung ulang otomatis + token baru, picu `sinkron_koin` lewat `PemicuSinkron`. Pilih pustaka WebSocket + TLS dengan hati-hati (hindari bentrok penyedia rustls dengan ureq) | T1.4a selesai; hasil `cargo test` dan build Android pengguna |
-| T1.4c | Foreground service Kotlin (`LayananLatar.kt`), jembatan FFI untuk mulai/hentikan pantauan dan menerima kejadian, rekonsiliasi saat tersambung ulang dan saat app dibuka (FR-06, FR-10) | T1.4b; berkas `MainActivity.kt`, `AndroidManifest.xml`, `KunciAman.kt`, `ffi/src/lib.rs` terbaru |
-| T1.5 | Notifikasi beli dan jual (FR-15 sampai FR-17) | T1.4c |
+| T1.5 | Notifikasi beli dan jual (FR-15 sampai FR-17): saat order beli terisi tampilkan koin, modal efektif, TP, SL; saat jual tampilkan hasil bersih (Rp dan %). Notifikasi berprioritas tinggi terpisah dari notifikasi layanan. Memakai kejadian `OrderSelesai` dan `hitung_posisi` | T1.4c selesai; berkas `LayananLatar.kt`, `MainActivity.kt`, `ffi/src/lib.rs` versi terbaru (dari T1.4c) |
 
 ### Keputusan yang masih terbuka
 | Hal | Pilihan | Status |
@@ -162,7 +183,8 @@ Kebutuhan: Python 3.8+, git, Rust (rustup), dan toolchain Android (lihat bagian 
 
 Tes inti Rust:
 ```
-cargo test -p scalping-core        # 51 tes lulus per T1.4a
+cargo test -p scalping-core        # 51 tes lulus per T1.4a (periksa jumlah terbaru setelah T1.4b)
+cargo run -p scalping-core --example pantau   # T1.4b: pantau realtime di komputer, Enter untuk berhenti
 cargo run -p scalping-core --example cek_data -- data/raw_icntidr_<waktu>.json
 cargo run -p scalping-core --example cek_koneksi
 ```
@@ -185,7 +207,7 @@ Build dan pasang Android:
 cargo update            # bila dependensi berubah
 bash tools/bangun_android.sh --pasang <serial-adb>
 ```
-Uji di HP: simpan kunci, Sinkron sekarang, lalu Hitung posisi (centang "semua riwayat" untuk data lama).
+Uji di HP: simpan kunci, Sinkron sekarang, lalu Hitung posisi (centang "semua riwayat" untuk data lama). Pantauan: matikan optimasi baterai, Mulai pantauan realtime, izinkan notifikasi, lakukan transaksi kecil di Indodax.
 
 Alur git setiap task:
 ```
@@ -197,7 +219,7 @@ git commit -m "Tx.y: deskripsi singkat"
 
 ## 5. Struktur proyek
 
-### Saat ini (setelah T1.4a)
+### Saat ini (setelah T1.4c)
 ```
 catatan-scalping/
 ├── README.md
@@ -222,13 +244,15 @@ catatan-scalping/
 │   │   ├── store.rs                     (SQLite: trade, snapshot, meta, setelan_tp_sl)
 │   │   ├── sync.rs                      (rekonsiliasi REST per koin, snapshot saldo awal)
 │   │   ├── posisi.rs                    (hitung ulang posisi, trade tertutup, penyesuaian)
-│   │   └── ws.rs                        (protokol WebSocket privat: token, parser event, pemicu sinkron; tanpa jaringan)
+│   │   ├── ws.rs                        (protokol WebSocket privat: token, parser event, pemicu sinkron; tanpa jaringan)
+│   │   └── ws_klien.rs                  (T1.4b: sambungan WebSocket sebenarnya, sambung ulang, picu sinkron_koin; fungsi pantau)
 │   └── examples/
 │       ├── cek_data.rs                  (cek hitungan dari file JSON hasil Fase 0)
-│       └── cek_koneksi.rs               (tes /account dengan key dari .env)
+│       ├── cek_koneksi.rs               (tes /account dengan key dari .env)
+│       └── pantau.rs                    (T1.4b: uji pantauan realtime di komputer, db data/pantau_uji.db)
 ├── ffi/                                 (crate scalping-ffi, jembatan UniFFI)
 │   ├── Cargo.toml
-│   └── src/lib.rs                       (cek_koneksi, sinkron_sekarang, order_terbaru, simpan_setelan, hitung_posisi)
+│   └── src/lib.rs                       (cek_koneksi, sinkron_sekarang, order_terbaru, simpan_setelan, hitung_posisi, Pemantau, PendengarPantau, KejadianUi)
 ├── uniffi-bindgen/                      (pembuat binding Kotlin)
 │   ├── Cargo.toml
 │   └── src/main.rs
@@ -242,7 +266,8 @@ catatan-scalping/
 │       └── src/main/
 │           ├── AndroidManifest.xml
 │           ├── kotlin/id/catatanscalping/app/
-│           │   ├── MainActivity.kt      (layar uji: koneksi, sinkron, order, posisi dan TP/SL)
+│           │   ├── MainActivity.kt      (layar uji: koneksi, sinkron, order, pantauan, posisi dan TP/SL)
+│           │   ├── LayananLatar.kt      (T1.4c: foreground service + PantauBersama)
 │           │   └── KunciAman.kt         (simpan key terenkripsi, Android Keystore)
 │           ├── res/values/themes.xml
 │           ├── res/values-night/themes.xml
@@ -262,16 +287,16 @@ catatan-scalping/
 
 ### Rencana (belum ada)
 ```
-core/src/ (file transport WebSocket)     sambungan WebSocket sebenarnya, nama file ditentukan di T1.4b
 core/src/notif.rs (atau di posisi.rs)    isi notifikasi beli/jual (T1.5)
-app/.../LayananLatar.kt                  foreground service (T1.4c)
-app/.../Notifikasi.kt                    saluran dan notifikasi (T1.5)
+app/.../Notifikasi.kt                    saluran dan notifikasi beli/jual (T1.5)
 ```
 
 ---
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T1.4c: `T1.4c: layanan latar, jembatan FFI pantauan, izin notifikasi dan baterai` (hash: ...)
+- T1.4b: `T1.4b: sambungan WebSocket privat, sambung ulang, pemicu sinkron` (hash: ...)
 - T1.4a: `T1.4a: protokol WebSocket privat (token, parser event, pemicu sinkron)` (hash: ...)
 - T0.6: `T0.6: token WebSocket privat dan format event terkonfirmasi` (hash: ...)
 - T1.3: `T1.3: posisi, modal efektif, TP/SL, setelan` (hash: ...)

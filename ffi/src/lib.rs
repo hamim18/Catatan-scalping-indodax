@@ -7,6 +7,10 @@ use scalping_core::{
     gabung_per_order, hitung, sinkron, IndodaxClient, Opsi, Penyimpanan, RiwayatSetelan, Sisi,
 };
 use std::str::FromStr;
+use scalping_core::{pantau, KejadianPantau};
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 uniffi::setup_scaffolding!();
 
@@ -252,4 +256,130 @@ pub fn hitung_posisi(path_db: String, semua_riwayat: bool) -> Result<RingkasanHi
         jumlah_penyesuaian: h.penyesuaian.len() as u32,
         sejak_ms,
     })
+}
+
+// ---------------------------------------------------------------------------
+// T1.4c: pantauan realtime (WebSocket privat + pemicu sinkron REST).
+// Logika ada di scalping_core::pantau; di sini hanya pembungkus thread dan
+// penerusan kejadian ke Kotlin lewat callback.
+// ---------------------------------------------------------------------------
+
+/// Kejadian pantauan untuk Kotlin (cermin KejadianPantau, semua angka u32).
+#[derive(uniffi::Enum)]
+pub enum KejadianUi {
+    Tersambung,
+    Terputus { alasan: String, coba_lagi_detik: u32 },
+    /// `sisi`: "beli" atau "jual"
+    OrderSelesai { simbol: String, order_id: String, sisi: String, trade_baru: u32 },
+    Rekonsiliasi { trade_baru: u32 },
+    Galat { pesan: String },
+    /// Pantauan berhenti. `galat` = None bila dihentikan secara normal.
+    Berhenti { galat: Option<String> },
+}
+
+/// Diimplementasikan di Kotlin. Dipanggil dari thread latar Rust, bukan thread UI.
+#[uniffi::export(with_foreign)]
+pub trait PendengarPantau: Send + Sync {
+    fn kejadian(&self, k: KejadianUi);
+}
+
+// Asumsi: `match &k` aman baik k bernilai maupun referensi (match ergonomics).
+fn ke_ui(k: &KejadianPantau) -> KejadianUi {
+    match k {
+        KejadianPantau::Tersambung => KejadianUi::Tersambung,
+        KejadianPantau::Terputus { alasan, coba_lagi_detik } => KejadianUi::Terputus {
+            alasan: alasan.to_string(),
+            coba_lagi_detik: *coba_lagi_detik as u32,
+        },
+        KejadianPantau::OrderSelesai { simbol, order_id, sisi, trade_baru } => {
+            KejadianUi::OrderSelesai {
+                simbol: simbol.to_string(),
+                order_id: order_id.to_string(),
+                sisi: match sisi {
+                    Sisi::Beli => "beli",
+                    Sisi::Jual => "jual",
+                }
+                .to_string(),
+                trade_baru: *trade_baru as u32,
+            }
+        }
+        KejadianPantau::Rekonsiliasi { trade_baru } => {
+            KejadianUi::Rekonsiliasi { trade_baru: *trade_baru as u32 }
+        }
+        KejadianPantau::Galat(p) => KejadianUi::Galat { pesan: p.to_string() },
+    }
+}
+
+/// Pengendali pantauan. Satu objek dipakai bersama oleh layanan latar.
+#[derive(uniffi::Object)]
+pub struct Pemantau {
+    /// bendera henti milik sesi yang sedang/terakhir berjalan
+    berhenti: Mutex<Arc<AtomicBool>>,
+    /// true selama thread pantau hidup (termasuk saat sedang berhenti)
+    jalan: Arc<AtomicBool>,
+}
+
+#[uniffi::export]
+impl Pemantau {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            berhenti: Mutex::new(Arc::new(AtomicBool::new(false))),
+            jalan: Arc::new(AtomicBool::new(false)),
+        })
+    }
+
+    /// Mulai memantau di thread baru dan langsung kembali (tidak memblokir).
+    /// Gagal bila pantauan sebelumnya masih berjalan atau masih berhenti.
+    pub fn mulai(
+        &self,
+        key: String,
+        secret: String,
+        path_db: String,
+        pendengar: Arc<dyn PendengarPantau>,
+    ) -> Result<(), ErrorApp> {
+        let key = key.trim().to_string();
+        let secret = secret.trim().to_string();
+        if key.is_empty() || secret.is_empty() {
+            return Err(gagal("Key dan secret wajib diisi"));
+        }
+        // swap atomik: mencegah dua thread pantau berjalan bersamaan
+        if self.jalan.swap(true, Ordering::SeqCst) {
+            return Err(gagal("Pantauan masih berjalan atau belum selesai berhenti"));
+        }
+        // bendera baru per sesi, supaya henti lama tidak membunuh sesi baru
+        let bendera = Arc::new(AtomicBool::new(false));
+        *self.berhenti.lock().unwrap_or_else(|e| e.into_inner()) = bendera.clone();
+
+        let jalan = self.jalan.clone();
+        let hasil_thread = std::thread::Builder::new().name("pantau".into()).spawn(move || {
+            let p = pendengar.clone();
+            // catch_unwind: panic di dalam pantau tidak boleh meninggalkan `jalan` = true
+            let hasil = catch_unwind(AssertUnwindSafe(|| {
+                pantau(&key, &secret, &path_db, &bendera, move |k| p.kejadian(ke_ui(&k)))
+            }));
+            let galat = match hasil {
+                Ok(Ok(())) => None,
+                Ok(Err(e)) => Some(e.to_string()),
+                Err(_) => Some("pantauan berhenti tak terduga".to_string()),
+            };
+            jalan.store(false, Ordering::SeqCst);
+            pendengar.kejadian(KejadianUi::Berhenti { galat });
+        });
+        if let Err(e) = hasil_thread {
+            self.jalan.store(false, Ordering::SeqCst);
+            return Err(gagal(e));
+        }
+        Ok(())
+    }
+
+    /// Minta pantauan berhenti. Berhenti sungguhan terjadi sebentar lagi
+    /// (kejadian `Berhenti` dikirim setelahnya).
+    pub fn berhenti(&self) {
+        self.berhenti.lock().unwrap_or_else(|e| e.into_inner()).store(true, Ordering::SeqCst);
+    }
+
+    pub fn sedang_jalan(&self) -> bool {
+        self.jalan.load(Ordering::SeqCst)
+    }
 }

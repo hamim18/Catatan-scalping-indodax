@@ -1,6 +1,13 @@
 package id.catatanscalping.app
 
+import android.Manifest
 import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import android.os.Bundle
 import android.text.InputType
 import android.view.View
@@ -45,6 +52,14 @@ class MainActivity : Activity() {
     private lateinit var cekSemua: CheckBox
     private lateinit var tombolHitung: Button
     private lateinit var isiPosisi: TextView
+    private lateinit var tombolPantau: Button
+    private lateinit var tombolBaterai: Button
+    private lateinit var isiPantau: TextView
+
+    // true selama sinkron (manual atau otomatis) berjalan
+    @Volatile private var sinkronBerjalan = false
+
+    private val prefs get() = getSharedPreferences(PantauBersama.PREF, MODE_PRIVATE)
 
     private val pathDb: String
         get() {
@@ -105,6 +120,15 @@ class MainActivity : Activity() {
         isiOrder = teks("", 13f)
         isiOrder.typeface = android.graphics.Typeface.MONOSPACE
         isi.addView(isiOrder)
+        isi.addView(teks("Pantauan realtime (T1.4c)", 16f, tebal = true))
+        isi.addView(teks("Menjaga koneksi Indodax di latar belakang agar trade tercatat otomatis.", 13f))
+        tombolPantau = Button(this).apply { setOnClickListener { togglePantau() } }
+        tombolBaterai = Button(this).apply { setOnClickListener { mintaAbaikanBaterai() } }
+        isi.addView(tombolPantau)
+        isi.addView(tombolBaterai)
+        isiPantau = teks("", 12f)
+        isiPantau.typeface = android.graphics.Typeface.MONOSPACE
+        isi.addView(isiPantau)
         isi.addView(teks("Posisi dan TP/SL (T1.3)", 16f, tebal = true))
         isiTp = angka("Take profit % (contoh 1)", "1")
         isiSl = angka("Stop loss % (contoh 1)", "1")
@@ -139,14 +163,117 @@ class MainActivity : Activity() {
         status.text = if (ujung != null) "Kunci tersimpan (berakhiran $ujung)" else "Belum ada kunci"
         tombolTes.isEnabled = ujung != null
         tombolHapus.isEnabled = ujung != null
-        tombolSinkron.isEnabled = ujung != null
+        tombolSinkron.isEnabled = bolehSinkron()
+        segarkanPantau()
+    }
+
+    // Sinkron manual dimatikan saat pantauan berjalan: pantau sudah merekonsiliasi sendiri,
+    // dan dua koneksi SQLite menulis bersamaan bisa saling mengunci.
+    private fun bolehSinkron() = kunci.ujungKey() != null && !pantauAktif() && !sinkronBerjalan
+
+    private fun pantauAktif() = prefs.getBoolean(PantauBersama.PREF_AKTIF, false) || PantauBersama.pemantau.sedangJalan()
+
+    private fun abaikanBaterai() =
+        getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+
+    private fun segarkanPantau() {
+        val aktif = pantauAktif()
+        tombolPantau.text = if (aktif) "Hentikan pantauan realtime" else "Mulai pantauan realtime"
+        tombolPantau.isEnabled = kunci.ujungKey() != null
+        tombolBaterai.text =
+            if (abaikanBaterai()) "Optimasi baterai: sudah dimatikan untuk app ini" else "Matikan optimasi baterai untuk app ini"
+        tombolBaterai.isEnabled = !abaikanBaterai()
+        tombolSinkron.text = if (aktif) "Sinkron manual (matikan pantauan dulu)" else "Sinkron sekarang (T1.2)"
+        tombolSinkron.isEnabled = bolehSinkron()
+        isiPantau.text = PantauBersama.status + "\n\n" + PantauBersama.logTeks()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Layanan memberi tahu lewat callback ini; pindahkan ke thread UI.
+        PantauBersama.pendengarUi = { runOnUiThread { segarkanPantau() } }
+        segarkan()
+        sinkronOtomatis()
+    }
+
+    override fun onPause() {
+        PantauBersama.pendengarUi = null
+        super.onPause()
+    }
+
+    private fun togglePantau() {
+        if (pantauAktif()) {
+            LayananLatar.henti(this)
+            info.text = "Pantauan dihentikan."
+            segarkan()
+            return
+        }
+        if (kunci.ambil() == null) {
+            info.text = "Kunci tersimpan tidak bisa dibuka. Masukkan ulang."
+            return
+        }
+        // Snapshot saldo awal dibuat oleh sinkron pertama; pantauan sebelum itu membuat data tidak konsisten.
+        if (!prefs.getBoolean(PantauBersama.PREF_PERNAH_SINKRON, false)) {
+            info.text = "Jalankan \"Sinkron sekarang\" satu kali dulu, baru mulai pantauan."
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), KODE_NOTIF)
+            return
+        }
+        mulaiPantau()
+    }
+
+    private fun mulaiPantau() {
+        LayananLatar.mulai(this)
+        info.text = "Memulai pantauan..."
+        segarkan()
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == KODE_NOTIF) {
+            if (grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED) {
+                info.text = "Izin notifikasi ditolak: pantauan tetap jalan, tapi notifikasinya tidak terlihat."
+            }
+            mulaiPantau()
+        }
+    }
+
+    private fun mintaAbaikanBaterai() {
+        if (abaikanBaterai()) return
+        try {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+            )
+        } catch (e: Exception) {
+            // Sebagian HP tidak punya dialog ini; buka daftar pengaturan baterai.
+            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        }
+    }
+
+    /** FR-10: tiap aplikasi dibuka, lengkapi trade yang terlewat (hanya bila pantauan mati). */
+    private fun sinkronOtomatis() {
+        val sekarang = System.currentTimeMillis()
+        if (kunci.ujungKey() == null || pantauAktif() || sinkronBerjalan) return
+        if (!prefs.getBoolean(PantauBersama.PREF_PERNAH_SINKRON, false)) return
+        if (sekarang - terakhirOtomatisMs < 60_000) return // jangan berulang saat layar bolak-balik
+        terakhirOtomatisMs = sekarang
+        sinkron(otomatis = true)
+    }
+
+    private companion object {
+        const val KODE_NOTIF = 7
+        @Volatile var terakhirOtomatisMs = 0L
     }
 
     private fun sibuk(ya: Boolean) {
         tombolSimpan.isEnabled = !ya
         tombolTes.isEnabled = !ya && kunci.ujungKey() != null
         tombolHapus.isEnabled = !ya && kunci.ujungKey() != null
-        tombolSinkron.isEnabled = !ya && kunci.ujungKey() != null
+        tombolSinkron.isEnabled = !ya && bolehSinkron()
         if (ya) info.text = "Menghubungi Indodax..."
     }
 
@@ -209,27 +336,45 @@ class MainActivity : Activity() {
         return f.format(Date(ms))
     }
 
-    private fun sinkron() {
+    private fun sinkron(otomatis: Boolean = false) {
         val p = kunci.ambil()
         if (p == null) {
-            info.text = "Kunci tersimpan tidak bisa dibuka. Masukkan ulang."
+            if (!otomatis) info.text = "Kunci tersimpan tidak bisa dibuka. Masukkan ulang."
             return
         }
-        sibuk(true)
-        info.text = "Sinkron berjalan, bisa beberapa puluh detik..."
+        sinkronBerjalan = true
+        if (otomatis) {
+            tombolSinkron.isEnabled = false
+            info.text = "Sinkron otomatis berjalan..."
+        } else {
+            sibuk(true)
+            info.text = "Sinkron berjalan, bisa beberapa puluh detik..."
+        }
         Thread {
             try {
                 val h: HasilSinkronUi = sinkronSekarang(p.first, p.second, pathDb, 7u, emptyList())
+                prefs.edit().putBoolean(PantauBersama.PREF_PERNAH_SINKRON, true).apply()
                 val ringkas = StringBuilder()
-                ringkas.append("Sinkron selesai.\n")
+                ringkas.append(if (otomatis) "Sinkron otomatis selesai.\n" else "Sinkron selesai.\n")
                 ringkas.append("Koin dipindai: ${h.koinDipindai.joinToString(", ").ifEmpty { "(tidak ada)" }}\n")
                 ringkas.append("Trade baru: ${h.tradeBaru}, total tersimpan: ${h.tradeTotal}\n")
                 if (h.koinDilewati.isNotEmpty()) ringkas.append("Dilewati (simbol tidak dikenal Indodax): ${h.koinDilewati.joinToString(", ")}\n")
                 if (h.snapshotAwalDibuat) ringkas.append("Snapshot saldo awal dibuat.")
-                runOnUiThread { sibuk(false); info.text = ringkas.toString(); tampilkanOrder() }
+                runOnUiThread {
+                    sinkronBerjalan = false
+                    sibuk(false)
+                    info.text = ringkas.toString()
+                    tampilkanOrder()
+                    segarkan()
+                }
             } catch (e: Exception) {
                 val pesan = (e as? ErrorApp.Gagal)?.pesan ?: (e.message ?: "Gagal")
-                runOnUiThread { sibuk(false); info.text = "Sinkron gagal: $pesan" }
+                runOnUiThread {
+                    sinkronBerjalan = false
+                    sibuk(false)
+                    info.text = "Sinkron gagal: $pesan"
+                    segarkan()
+                }
             }
         }.start()
     }
@@ -285,6 +430,7 @@ class MainActivity : Activity() {
     }
 
     private fun hapus() {
+        if (pantauAktif()) LayananLatar.henti(this) // tanpa kunci pantauan tidak bisa jalan
         kunci.hapus()
         info.text = "Kunci dihapus dari perangkat."
         segarkan()
