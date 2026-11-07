@@ -11,5 +11,6 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 scalping-core = { path = "../core" }
+rust_decimal = "1"
 uniffi = "0.31"
 thiserror = "1"

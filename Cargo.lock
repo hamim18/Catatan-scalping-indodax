@@ -896,6 +896,7 @@ dependencies = [
 name = "scalping-ffi"
 version = "0.1.0"
 dependencies = [
+ "rust_decimal",
  "scalping-core",
  "thiserror 1.0.69",
  "uniffi",

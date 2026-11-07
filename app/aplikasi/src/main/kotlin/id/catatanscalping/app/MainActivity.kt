@@ -6,6 +6,7 @@ import android.text.InputType
 import android.view.View
 import android.view.WindowInsets
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -13,6 +14,8 @@ import android.widget.TextView
 import uniffi.scalping_ffi.ErrorApp
 import uniffi.scalping_ffi.StatusKoneksi
 import uniffi.scalping_ffi.cekKoneksi
+import uniffi.scalping_ffi.hitungPosisi
+import uniffi.scalping_ffi.simpanSetelan
 import uniffi.scalping_ffi.HasilSinkronUi
 import uniffi.scalping_ffi.orderTerbaru
 import uniffi.scalping_ffi.sinkronSekarang
@@ -37,6 +40,11 @@ class MainActivity : Activity() {
     private lateinit var tombolSinkron: Button
     private lateinit var tombolOrder: Button
     private lateinit var isiOrder: TextView
+    private lateinit var isiTp: EditText
+    private lateinit var isiSl: EditText
+    private lateinit var cekSemua: CheckBox
+    private lateinit var tombolHitung: Button
+    private lateinit var isiPosisi: TextView
 
     private val pathDb: String
         get() {
@@ -52,6 +60,13 @@ class MainActivity : Activity() {
         textSize = ukuran
         if (tebal) setTypeface(typeface, android.graphics.Typeface.BOLD)
         setPadding(0, dp(6), 0, dp(6))
+    }
+
+    private fun angka(petunjuk: String, awal: String) = EditText(this).apply {
+        hint = petunjuk
+        setText(awal)
+        inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        setSingleLine()
     }
 
     private fun kolom(petunjuk: String) = EditText(this).apply {
@@ -90,6 +105,18 @@ class MainActivity : Activity() {
         isiOrder = teks("", 13f)
         isiOrder.typeface = android.graphics.Typeface.MONOSPACE
         isi.addView(isiOrder)
+        isi.addView(teks("Posisi dan TP/SL (T1.3)", 16f, tebal = true))
+        isiTp = angka("Take profit % (contoh 1)", "1")
+        isiSl = angka("Stop loss % (contoh 1)", "1")
+        isi.addView(isiTp)
+        isi.addView(isiSl)
+        cekSemua = CheckBox(this).apply { text = "Hitung dari semua riwayat tersimpan (uji)" }
+        isi.addView(cekSemua)
+        tombolHitung = Button(this).apply { text = "Hitung posisi"; setOnClickListener { hitungPosisiUi() } }
+        isi.addView(tombolHitung)
+        isiPosisi = teks("", 13f)
+        isiPosisi.typeface = android.graphics.Typeface.MONOSPACE
+        isi.addView(isiPosisi)
         info = teks("", 14f)
         isi.addView(info)
         isi.addView(teks("Inti Rust versi ${versiCore()}", 12f))
@@ -221,6 +248,38 @@ class MainActivity : Activity() {
             } catch (e: Exception) {
                 val pesan = (e as? ErrorApp.Gagal)?.pesan ?: (e.message ?: "Gagal")
                 runOnUiThread { isiOrder.text = "Gagal membaca order: $pesan" }
+            }
+        }.start()
+    }
+
+    private fun hitungPosisiUi() {
+        val tp = isiTp.text.toString()
+        val sl = isiSl.text.toString()
+        val semua = cekSemua.isChecked
+        Thread {
+            try {
+                simpanSetelan(pathDb, tp, sl)
+                val h = hitungPosisi(pathDb, semua)
+                val t = StringBuilder()
+                t.append("Dihitung sejak: ${if (h.sejakMs == 0L) "semua riwayat" else waktuWib(h.sejakMs)}\n\n")
+                t.append("POSISI TERBUKA (${h.posisi.size})\n")
+                if (h.posisi.isEmpty()) t.append("  (tidak ada)\n")
+                for (p in h.posisi) {
+                    t.append("${p.simbol}  koin ${p.koin}  buka ${waktuWib(p.waktuBukaMs)}\n")
+                    t.append("  modal efektif ${p.modalEfektif}  (total Rp ${p.totalModal})\n")
+                    t.append("  TP ${p.hargaTp} (+${p.tpPersen}%)   SL ${p.hargaSl} (-${p.slPersen}%)\n")
+                }
+                t.append("\nTERTUTUP (${h.tertutup.size})  total Rp ${h.totalProfit}\n")
+                for (x in h.tertutup.take(10)) {
+                    t.append("${waktuWib(x.waktuTutupMs)} ${x.simbol} koin ${x.koin}\n")
+                    t.append("  modal ${x.modal} diterima ${x.diterima}  hasil ${x.profit} (${x.persen}%)\n")
+                }
+                if (h.tertutup.size > 10) t.append("  ... dan ${h.tertutup.size - 10} lagi\n")
+                t.append("\nPenyesuaian (jual tanpa modal): ${h.jumlahPenyesuaian}")
+                runOnUiThread { isiPosisi.text = t.toString() }
+            } catch (e: Exception) {
+                val pesan = (e as? ErrorApp.Gagal)?.pesan ?: (e.message ?: "Gagal")
+                runOnUiThread { isiPosisi.text = "Gagal menghitung: $pesan" }
             }
         }.start()
     }

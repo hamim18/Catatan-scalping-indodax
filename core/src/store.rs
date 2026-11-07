@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS meta (
     kunci TEXT PRIMARY KEY,
     nilai TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS setelan_tp_sl (
+    berlaku_sejak_ms INTEGER PRIMARY KEY,
+    tp_persen        TEXT NOT NULL,
+    sl_persen        TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS snapshot (
     jenis    TEXT NOT NULL,
     waktu_ms INTEGER NOT NULL,
@@ -168,6 +173,31 @@ impl Penyimpanan {
         Ok(())
     }
 
+    /// Catat setelan TP/SL (persen) yang berlaku sejak `waktu_ms`. Riwayat disimpan,
+    /// supaya posisi lama tetap memakai persen saat ia dibuka (FR-05).
+    pub fn tambah_setelan(&self, waktu_ms: i64, tp: Decimal, sl: Decimal) -> Hasil<()> {
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO setelan_tp_sl (berlaku_sejak_ms, tp_persen, sl_persen)
+                 VALUES (?1, ?2, ?3)",
+                params![waktu_ms, tp.to_string(), sl.to_string()],
+            )
+            .map_err(gagal)?;
+        Ok(())
+    }
+
+    /// Riwayat setelan: (berlaku_sejak_ms, TP%, SL%), urut waktu naik.
+    pub fn riwayat_setelan(&self) -> Hasil<Vec<(i64, Decimal, Decimal)>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT berlaku_sejak_ms, tp_persen, sl_persen FROM setelan_tp_sl ORDER BY berlaku_sejak_ms ASC")
+            .map_err(gagal)?;
+        let baris = st
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, kolom_desimal(r, 1)?, kolom_desimal(r, 2)?)))
+            .map_err(gagal)?;
+        baris.collect::<Result<Vec<_>, _>>().map_err(gagal)
+    }
+
     /// Catat snapshot saldo (jenis: "awal", nanti "harian"/"mingguan" di Fase 2).
     pub fn tambah_snapshot(&self, jenis: &str, waktu_ms: i64, saldo: Decimal) -> Hasil<()> {
         self.conn
@@ -249,6 +279,17 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(s.simbol_tersimpan().unwrap(), vec!["dogeidr", "icntidr"]);
+    }
+
+    #[test]
+    fn riwayat_setelan_tersimpan_berurutan() {
+        let s = Penyimpanan::dalam_memori().unwrap();
+        s.tambah_setelan(2000, d("2"), d("1.5")).unwrap();
+        s.tambah_setelan(1000, d("1"), d("1")).unwrap();
+        assert_eq!(
+            s.riwayat_setelan().unwrap(),
+            vec![(1000, d("1"), d("1")), (2000, d("2"), d("1.5"))]
+        );
     }
 
     #[test]

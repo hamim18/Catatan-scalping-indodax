@@ -22,6 +22,10 @@ pub enum Error {
     Penyimpanan(String),
     #[error("key punya izin trade/withdraw; sinkron ditolak. Pakai key BACA SAJA")]
     KunciBukanBacaSaja,
+    #[error("setelan TP/SL belum diisi")]
+    SetelanBelumDiisi,
+    #[error("setelan tidak valid: {0}")]
+    SetelanTidakValid(String),
     #[error("rentang waktu {simbol} terlalu padat: {jumlah} trade dalam rentang minimal")]
     RentangTerlaluPadat { simbol: String, jumlah: usize },
 }

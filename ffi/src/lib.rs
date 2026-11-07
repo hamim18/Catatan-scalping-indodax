@@ -1,7 +1,12 @@
 //! Jembatan Rust -> Kotlin. Hanya lapisan tipis; logika ada di scalping-core.
 //! Key dan secret tidak pernah dicatat ke log.
+use rust_decimal::Decimal;
 use scalping_core::calc::bulatkan_idr;
-use scalping_core::{gabung_per_order, sinkron, IndodaxClient, Opsi, Penyimpanan, Sisi};
+use scalping_core::posisi::periksa_persen;
+use scalping_core::{
+    gabung_per_order, hitung, sinkron, IndodaxClient, Opsi, Penyimpanan, RiwayatSetelan, Sisi,
+};
+use std::str::FromStr;
 
 uniffi::setup_scaffolding!();
 
@@ -47,6 +52,52 @@ pub struct BarisOrder {
     pub idr: String,
     pub waktu_ms: i64,
     pub pengisian: u32,
+}
+
+/// Posisi terbuka lengkap dengan TP/SL (T1.3). Semua angka sebagai teks.
+#[derive(uniffi::Record)]
+pub struct BarisPosisi {
+    pub simbol: String,
+    pub koin: String,
+    /// IDR per koin, 2 desimal
+    pub modal_efektif: String,
+    /// total IDR modal untuk koin yang masih dipegang (rupiah utuh)
+    pub total_modal: String,
+    pub tp_persen: String,
+    pub sl_persen: String,
+    pub harga_tp: String,
+    pub harga_sl: String,
+    pub waktu_buka_ms: i64,
+}
+
+/// Satu penjualan yang cocok dengan posisi.
+#[derive(uniffi::Record)]
+pub struct BarisTertutup {
+    pub simbol: String,
+    pub koin: String,
+    pub modal: String,
+    pub diterima: String,
+    pub profit: String,
+    pub persen: String,
+    pub waktu_buka_ms: i64,
+    pub waktu_tutup_ms: i64,
+}
+
+#[derive(uniffi::Record)]
+pub struct RingkasanHitung {
+    pub posisi: Vec<BarisPosisi>,
+    /// terbaru di atas
+    pub tertutup: Vec<BarisTertutup>,
+    pub total_profit: String,
+    pub jumlah_penyesuaian: u32,
+    /// trade dengan waktu di bawah ini diabaikan
+    pub sejak_ms: i64,
+}
+
+fn desimal(teks: &str) -> Result<Decimal, ErrorApp> {
+    // pengguna Indonesia boleh mengetik koma
+    Decimal::from_str(&teks.trim().replace(',', "."))
+        .map_err(|_| ErrorApp::Gagal { pesan: format!("angka tidak valid: {teks}") })
 }
 
 #[uniffi::export]
@@ -123,4 +174,82 @@ pub fn order_terbaru(path_db: String, jumlah: u32) -> Result<Vec<BarisOrder>, Er
             }
         })
         .collect())
+}
+
+/// Simpan setelan TP/SL (persen). Hanya berlaku untuk posisi yang dibuka SETELAH ini
+/// (kecuali belum ada setelan sebelumnya). Bila sama dengan setelan terakhir, tidak menambah catatan.
+#[uniffi::export]
+pub fn simpan_setelan(path_db: String, tp_persen: String, sl_persen: String) -> Result<(), ErrorApp> {
+    let tp = desimal(&tp_persen)?;
+    let sl = desimal(&sl_persen)?;
+    periksa_persen(tp, sl).map_err(gagal)?;
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    if let Some((_, tp0, sl0)) = simpan.riwayat_setelan().map_err(gagal)?.last() {
+        if *tp0 == tp && *sl0 == sl {
+            return Ok(());
+        }
+    }
+    let sekarang = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    simpan.tambah_setelan(sekarang, tp, sl).map_err(gagal)
+}
+
+/// Hitung ulang posisi, TP/SL, dan trade tertutup dari trade tersimpan. Tanpa jaringan.
+/// `semua_riwayat` = true: hitung dari semua trade tersimpan (untuk uji).
+/// false: hanya trade sejak snapshot saldo awal (aturan PRD).
+#[uniffi::export]
+pub fn hitung_posisi(path_db: String, semua_riwayat: bool) -> Result<RingkasanHitung, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let sejak_ms = if semua_riwayat {
+        0
+    } else {
+        simpan
+            .snapshot_awal()
+            .map_err(gagal)?
+            .map(|(w, _)| w)
+            .ok_or_else(|| ErrorApp::Gagal { pesan: "Belum ada snapshot saldo awal; sinkron dulu".into() })?
+    };
+    let trades = simpan.semua_trade().map_err(gagal)?;
+    let setelan = RiwayatSetelan::baru(simpan.riwayat_setelan().map_err(gagal)?);
+    let h = hitung(&trades, sejak_ms, &setelan).map_err(gagal)?;
+
+    let total_profit: Decimal = h.tertutup.iter().map(|t| t.profit).sum();
+    let mut tertutup = h.tertutup;
+    tertutup.sort_by_key(|t| std::cmp::Reverse(t.waktu_tutup_ms));
+
+    Ok(RingkasanHitung {
+        posisi: h
+            .posisi
+            .iter()
+            .map(|p| BarisPosisi {
+                simbol: p.simbol.clone(),
+                koin: p.koin.normalize().to_string(),
+                modal_efektif: p.modal_efektif.round_dp(2).to_string(),
+                total_modal: bulatkan_idr(p.total_idr_keluar).to_string(),
+                tp_persen: p.tp_persen.normalize().to_string(),
+                sl_persen: p.sl_persen.normalize().to_string(),
+                harga_tp: bulatkan_idr(p.harga_tp).to_string(),
+                harga_sl: bulatkan_idr(p.harga_sl).to_string(),
+                waktu_buka_ms: p.waktu_buka_ms,
+            })
+            .collect(),
+        tertutup: tertutup
+            .iter()
+            .map(|t| BarisTertutup {
+                simbol: t.simbol.clone(),
+                koin: t.koin.normalize().to_string(),
+                modal: bulatkan_idr(t.modal).to_string(),
+                diterima: bulatkan_idr(t.idr_diterima).to_string(),
+                profit: bulatkan_idr(t.profit).to_string(),
+                persen: t.persen.round_dp(2).to_string(),
+                waktu_buka_ms: t.waktu_buka_ms,
+                waktu_tutup_ms: t.waktu_tutup_ms,
+            })
+            .collect(),
+        total_profit: bulatkan_idr(total_profit).to_string(),
+        jumlah_penyesuaian: h.penyesuaian.len() as u32,
+        sejak_ms,
+    })
 }
