@@ -2,6 +2,7 @@ package id.catatanscalping.app
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -24,7 +25,13 @@ import uniffi.scalping_ffi.StatusKoneksi
 import uniffi.scalping_ffi.aturAmountSudahBersih
 import uniffi.scalping_ffi.daftarArusKas
 import uniffi.scalping_ffi.hitungTarget
+import uniffi.scalping_ffi.SelisihSaldoUi
+import uniffi.scalping_ffi.cekSelisihSaldo
+import uniffi.scalping_ffi.daftarKoreksiSaldo
+import uniffi.scalping_ffi.dataGrafik
+import uniffi.scalping_ffi.riwayatTertutup
 import uniffi.scalping_ffi.sinkronArusKas
+import uniffi.scalping_ffi.terapkanKoreksiSaldo
 import uniffi.scalping_ffi.bacaTarget
 import uniffi.scalping_ffi.cekKoneksi
 import uniffi.scalping_ffi.hitungPosisi
@@ -70,6 +77,14 @@ class MainActivity : Activity() {
     private lateinit var cekBersih: CheckBox
     private lateinit var tombolProgress: Button
     private lateinit var isiProgress: TextView
+    private lateinit var grafik: GrafikView
+    private lateinit var isiGrafik: TextView
+    private lateinit var tombolRiwayat: Button
+    private lateinit var isiRiwayat: TextView
+    private lateinit var tombolCekSelisih: Button
+    private lateinit var tombolKoreksi: Button
+    private lateinit var isiKoreksi: TextView
+    @Volatile private var selisihTerakhir: SelisihSaldoUi? = null
 
     // true selama sinkron (manual atau otomatis) berjalan
     @Volatile private var sinkronBerjalan = false
@@ -183,6 +198,30 @@ class MainActivity : Activity() {
         isiProgress = teks("", 13f)
         isiProgress.typeface = android.graphics.Typeface.MONOSPACE
         isi.addView(isiProgress)
+
+        isi.addView(teks("Grafik saldo (T3.2)", 16f, tebal = true))
+        isi.addView(teks("Garis tebal: saldo versi aplikasi. Putus-putus: modal aktif. Jarak keduanya = hasil trading.", 13f))
+        grafik = GrafikView(this)
+        isi.addView(grafik, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        isiGrafik = teks("", 12f)
+        isi.addView(isiGrafik)
+
+        isi.addView(teks("Riwayat trade tertutup (T3.1)", 16f, tebal = true))
+        tombolRiwayat = Button(this).apply { text = "Tampilkan riwayat"; setOnClickListener { tampilkanRiwayat() } }
+        isi.addView(tombolRiwayat)
+        isiRiwayat = teks("", 13f)
+        isiRiwayat.typeface = android.graphics.Typeface.MONOSPACE
+        isi.addView(isiRiwayat)
+
+        isi.addView(teks("Koreksi saldo (T3.3)", 16f, tebal = true))
+        isi.addView(teks("Bandingkan saldo aplikasi dengan saldo IDR asli di Indodax. Sinkron trade dulu; jangan cek saat ada order terisi sebagian. Selisih dicatat sebagai penyesuaian (tidak dihitung sebagai profit), tidak menghapus catatan apa pun.", 13f))
+        tombolCekSelisih = Button(this).apply { text = "Cek selisih saldo"; setOnClickListener { cekSelisih() } }
+        tombolKoreksi = Button(this).apply { text = "Catat koreksi"; isEnabled = false; setOnClickListener { konfirmasiKoreksi() } }
+        isi.addView(tombolCekSelisih)
+        isi.addView(tombolKoreksi)
+        isiKoreksi = teks("", 13f)
+        isiKoreksi.typeface = android.graphics.Typeface.MONOSPACE
+        isi.addView(isiKoreksi)
         info = teks("", 14f)
         isi.addView(info)
         isi.addView(teks("Inti Rust versi ${versiCore()}", 12f))
@@ -200,6 +239,124 @@ class MainActivity : Activity() {
         segarkan()
         muatTarget()
         tampilkanProgress()
+        tampilkanRiwayat()
+        tampilkanKoreksi()
+        tampilkanGrafik()
+    }
+
+    /** T3.1: trade tertutup terbaru dan ringkasan hari ini. Tanpa jaringan. */
+    private fun tampilkanRiwayat() {
+        Thread {
+            try {
+                val r = riwayatTertutup(pathDb, 15u)
+                val t = StringBuilder()
+                t.append("Hari ini: ${r.hariIniJumlah} trade, ${r.hariIniUntung} untung, hasil Rp ${r.hariIniProfit}\n")
+                t.append("Semua: ${r.totalTrade} trade, hasil Rp ${r.totalProfit}\n\n")
+                if (r.baris.isEmpty()) t.append("(belum ada trade tertutup)")
+                for (x in r.baris) {
+                    t.append("${waktuWib(x.waktuTutupMs)} ${x.simbol}\n")
+                    t.append("  modal ${x.modal} diterima ${x.diterima}\n")
+                    t.append("  hasil ${x.profit} (${x.persen}%), buka ${waktuWib(x.waktuBukaMs)}\n")
+                }
+                runOnUiThread { isiRiwayat.text = t.toString() }
+            } catch (e: Exception) {
+                runOnUiThread { isiRiwayat.text = "Riwayat belum bisa dihitung: ${pesanGalat(e)}" }
+            }
+        }.start()
+    }
+
+    /** T3.2: grafik saldo dan modal aktif. Tanpa jaringan. */
+    private fun tampilkanGrafik() {
+        Thread {
+            try {
+                val data = dataGrafik(pathDb, 120u)
+                runOnUiThread {
+                    grafik.setData(data)
+                    isiGrafik.text = "${data.size} titik, dari ${waktuWib(data.first().waktuMs)} sampai ${waktuWib(data.last().waktuMs)}"
+                }
+            } catch (e: Exception) {
+                runOnUiThread { grafik.setData(emptyList()); isiGrafik.text = "Grafik belum bisa dibuat: ${pesanGalat(e)}" }
+            }
+        }.start()
+    }
+
+    private fun teksKoreksiTersimpan(): String {
+        val daftar = daftarKoreksiSaldo(pathDb, 5u)
+        if (daftar.isEmpty()) return "Belum ada koreksi dicatat."
+        val t = StringBuilder("Koreksi tercatat:\n")
+        for (k in daftar) t.append("${waktuWib(k.waktuMs)}  Rp ${k.jumlah}  ${k.catatan}\n")
+        return t.toString()
+    }
+
+    private fun tampilkanKoreksi(awalan: String = "") {
+        Thread {
+            val isi = try { teksKoreksiTersimpan() } catch (e: Exception) { "Gagal membaca koreksi: ${pesanGalat(e)}" }
+            runOnUiThread { isiKoreksi.text = if (awalan.isEmpty()) isi else awalan + "\n\n" + isi }
+        }.start()
+    }
+
+    private fun cekSelisih() {
+        val p = kunci.ambil()
+        if (p == null) {
+            isiKoreksi.text = "Kunci tersimpan tidak bisa dibuka. Masukkan ulang."
+            return
+        }
+        tombolCekSelisih.isEnabled = false
+        tombolKoreksi.isEnabled = false
+        isiKoreksi.text = "Mengambil saldo asli dari Indodax..."
+        Thread {
+            try {
+                val s = cekSelisihSaldo(p.first, p.second, pathDb)
+                selisihTerakhir = s
+                val t = StringBuilder()
+                t.append("Saldo IDR asli Indodax : Rp ${s.idrAsli}\n")
+                t.append("IDR menurut aplikasi   : Rp ${s.idrMenurutAplikasi}\n")
+                t.append("Modal posisi terbuka   : Rp ${s.nilaiPosisi}\n")
+                t.append("Saldo versi aplikasi   : Rp ${s.saldoAplikasi}\n")
+                t.append("SELISIH (asli - aplikasi): Rp ${s.selisih}\n")
+                t.append(if (s.perluKoreksi) "Ada selisih. Bila yakin semua trade sudah tersinkron, tekan \"Catat koreksi\"." else "Cocok (selisih di bawah Rp 1).")
+                val perlu = s.perluKoreksi
+                runOnUiThread {
+                    tombolCekSelisih.isEnabled = true
+                    tombolKoreksi.isEnabled = perlu
+                    tampilkanKoreksi(t.toString())
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    tombolCekSelisih.isEnabled = true
+                    isiKoreksi.text = "Cek selisih gagal: ${pesanGalat(e)}"
+                }
+            }
+        }.start()
+    }
+
+    private fun konfirmasiKoreksi() {
+        val s = selisihTerakhir ?: return
+        AlertDialog.Builder(this)
+            .setTitle("Catat koreksi saldo?")
+            .setMessage("Selisih Rp ${s.selisih} akan dicatat sebagai penyesuaian. Saldo dan modal aktif ikut berubah sebesar itu, hasil trading (profit) tidak berubah. Saldo asli diambil ulang saat dicatat.")
+            .setPositiveButton("Catat") { _, _ -> terapkanKoreksi() }
+            .setNegativeButton("Batal", null)
+            .show()
+    }
+
+    private fun terapkanKoreksi() {
+        val p = kunci.ambil() ?: return
+        tombolKoreksi.isEnabled = false
+        Thread {
+            val pesan = try {
+                val j = terapkanKoreksiSaldo(p.first, p.second, pathDb, "Koreksi manual")
+                if (j == null) "Tidak ada selisih yang perlu dikoreksi." else "Koreksi dicatat: Rp $j."
+            } catch (e: Exception) {
+                "Koreksi gagal: ${pesanGalat(e)}"
+            }
+            selisihTerakhir = null
+            runOnUiThread {
+                tampilkanKoreksi(pesan)
+                tampilkanProgress()
+                tampilkanGrafik()
+            }
+        }.start()
     }
 
     private fun pesanGalat(e: Exception): String = (e as? ErrorApp.Gagal)?.pesan ?: (e.message ?: "Gagal")
@@ -226,6 +383,7 @@ class MainActivity : Activity() {
                 arusKasBerjalan = false
                 tombolArusKas.isEnabled = kunci.ujungKey() != null
                 tampilkanProgress(pesan)
+                tampilkanGrafik()
             }
         }.start()
     }
@@ -571,6 +729,8 @@ class MainActivity : Activity() {
                     tampilkanOrder()
                     segarkan()
                     tampilkanProgress()
+                    tampilkanRiwayat()
+                    tampilkanGrafik()
                 }
             } catch (e: Exception) {
                 val pesan = (e as? ErrorApp.Gagal)?.pesan ?: (e.message ?: "Gagal")

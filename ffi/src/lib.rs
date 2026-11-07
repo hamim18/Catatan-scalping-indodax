@@ -8,7 +8,8 @@ use scalping_core::{
 };
 use std::str::FromStr;
 use scalping_core::arus_kas::{sinkron_arus_kas as sinkron_arus_kas_inti, ArusKas};
-use scalping_core::periode::{DataSaldo, Pencapaian, RingkasanTarget};
+use scalping_core::periode::{DataSaldo, Pencapaian, RingkasanTarget, SelisihSaldo};
+use scalping_core::{awal_hari_wib, TradeTertutup};
 use scalping_core::{pantau, HasilHitung, KejadianPantau};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -803,6 +804,7 @@ fn muat_data_saldo(simpan: &Penyimpanan, h: &HasilHitung) -> Result<DataSaldo, E
         profit_tertutup: h.tertutup.iter().map(|t| (t.waktu_tutup_ms, t.profit)).collect(),
         arus_kas: simpan.semua_arus_kas().map_err(gagal)?,
         amount_sudah_bersih: simpan.amount_sudah_bersih().map_err(gagal)?,
+        penyesuaian: simpan.semua_koreksi().map_err(gagal)?.iter().map(|k| (k.waktu_ms, k.jumlah)).collect(),
     })
 }
 
@@ -919,6 +921,307 @@ fn progres_untuk_notif(simpan: &Penyimpanan, h: &HasilHitung, waktu_tutup: i64, 
         rinci.push_str("\nTarget mingguan TERCAPAI.");
     }
     (ringkas, rinci)
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3: riwayat trade tertutup (FR-23), grafik saldo dan modal aktif (FR-22),
+// koreksi saldo terhadap saldo asli Indodax (T3.3). Hitungan di scalping_core.
+// ---------------------------------------------------------------------------
+
+/// Titik grafik: saldo versi aplikasi dan modal aktif (rupiah utuh). Jarak keduanya = profit.
+#[derive(uniffi::Record)]
+pub struct TitikGrafikUi {
+    pub waktu_ms: i64,
+    pub saldo: String,
+    pub modal_aktif: String,
+}
+
+/// Deret grafik sejak snapshot saldo awal sampai sekarang, paling banyak `maks_titik` titik.
+/// Tanpa jaringan.
+#[uniffi::export]
+pub fn data_grafik(path_db: String, maks_titik: u32) -> Result<Vec<TitikGrafikUi>, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let h = hitung_aplikasi(&simpan)?;
+    let data = muat_data_saldo(&simpan, &h)?;
+    Ok(data
+        .deret(sekarang_ms(), maks_titik as usize)
+        .into_iter()
+        .map(|t| TitikGrafikUi {
+            waktu_ms: t.waktu_ms,
+            saldo: bulatkan_idr(t.saldo).to_string(),
+            modal_aktif: bulatkan_idr(t.modal_aktif).to_string(),
+        })
+        .collect())
+}
+
+fn baris_tertutup(t: &TradeTertutup) -> BarisTertutup {
+    BarisTertutup {
+        simbol: t.simbol.clone(),
+        koin: t.koin.normalize().to_string(),
+        modal: bulatkan_idr(t.modal).to_string(),
+        diterima: bulatkan_idr(t.idr_diterima).to_string(),
+        profit: bulatkan_idr(t.profit).to_string(),
+        persen: t.persen.round_dp(2).to_string(),
+        waktu_buka_ms: t.waktu_buka_ms,
+        waktu_tutup_ms: t.waktu_tutup_ms,
+    }
+}
+
+/// Riwayat trade tertutup (FR-23) dengan ringkasan hari ini (WIB).
+#[derive(uniffi::Record)]
+pub struct RiwayatUi {
+    pub total_trade: u32,
+    pub total_profit: String,
+    pub hari_ini_jumlah: u32,
+    pub hari_ini_untung: u32,
+    pub hari_ini_profit: String,
+    /// terbaru di atas, paling banyak `jumlah`
+    pub baris: Vec<BarisTertutup>,
+}
+
+/// Trade tertutup sejak snapshot saldo awal. Tanpa jaringan.
+#[uniffi::export]
+pub fn riwayat_tertutup(path_db: String, jumlah: u32) -> Result<RiwayatUi, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let h = hitung_aplikasi(&simpan)?;
+    let mut tertutup: Vec<&TradeTertutup> = h.tertutup.iter().collect();
+    tertutup.sort_by_key(|t| std::cmp::Reverse(t.waktu_tutup_ms));
+    let awal_hari = awal_hari_wib(sekarang_ms());
+    let hari_ini: Vec<&&TradeTertutup> = tertutup.iter().filter(|t| t.waktu_tutup_ms >= awal_hari).collect();
+    let total: Decimal = tertutup.iter().map(|t| t.profit).sum();
+    let profit_hari: Decimal = hari_ini.iter().map(|t| t.profit).sum();
+    Ok(RiwayatUi {
+        total_trade: tertutup.len() as u32,
+        total_profit: bulatkan_idr(total).to_string(),
+        hari_ini_jumlah: hari_ini.len() as u32,
+        hari_ini_untung: hari_ini.iter().filter(|t| t.profit > Decimal::ZERO).count() as u32,
+        hari_ini_profit: bulatkan_idr(profit_hari).to_string(),
+        baris: tertutup.iter().take(jumlah as usize).map(|t| baris_tertutup(t)).collect(),
+    })
+}
+
+/// Selisih saldo aplikasi dengan saldo IDR asli di Indodax.
+#[derive(uniffi::Record)]
+pub struct SelisihSaldoUi {
+    pub idr_asli: String,
+    pub idr_menurut_aplikasi: String,
+    pub nilai_posisi: String,
+    pub saldo_aplikasi: String,
+    /// idr asli - idr menurut aplikasi, maksimal 2 desimal. Positif: IDR asli lebih besar.
+    pub selisih: String,
+    /// true bila selisih sedikitnya Rp 1
+    pub perlu_koreksi: bool,
+}
+
+/// Selisih di bawah ini dianggap pembulatan dan tidak dikoreksi.
+fn batas_koreksi() -> Decimal {
+    Decimal::ONE
+}
+
+fn selisih_ui(s: &SelisihSaldo) -> SelisihSaldoUi {
+    SelisihSaldoUi {
+        idr_asli: s.idr_asli.round_dp(2).normalize().to_string(),
+        idr_menurut_aplikasi: s.idr_menurut_aplikasi.round_dp(2).normalize().to_string(),
+        nilai_posisi: bulatkan_idr(s.nilai_posisi).to_string(),
+        saldo_aplikasi: bulatkan_idr(s.saldo_aplikasi).to_string(),
+        selisih: s.selisih.round_dp(2).normalize().to_string(),
+        perlu_koreksi: s.selisih.abs() >= batas_koreksi(),
+    }
+}
+
+/// Ambil saldo IDR asli (tersedia + terkunci) lewat GET /api/v2/account. Hanya membaca;
+/// menolak key yang punya izin trade/withdraw.
+fn ambil_idr_asli(key: String, secret: String) -> Result<Decimal, ErrorApp> {
+    let key = key.trim().to_string();
+    let secret = secret.trim().to_string();
+    if key.is_empty() || secret.is_empty() {
+        return Err(gagal("Key dan secret wajib diisi"));
+    }
+    let akun = IndodaxClient::new(key, secret).ambil_akun().map_err(gagal)?;
+    if !akun.kunci_baca_saja() {
+        return Err(gagal("Key punya izin trade/withdraw; pakai key BACA SAJA"));
+    }
+    akun.saldo_idr_total().map_err(gagal)
+}
+
+fn hitung_selisih(simpan: &Penyimpanan, idr_asli: Decimal, sekarang: i64) -> Result<SelisihSaldo, ErrorApp> {
+    let h = hitung_aplikasi(simpan)?;
+    let data = muat_data_saldo(simpan, &h)?;
+    let nilai_posisi: Decimal = h.posisi.iter().map(|p| p.total_idr_keluar).sum();
+    Ok(data.selisih_saldo(idr_asli, nilai_posisi, sekarang))
+}
+
+/// Catat koreksi sebesar selisih bila minimal Rp 1; mengembalikan jumlah yang dicatat.
+/// Koreksi diperlakukan seperti setoran: mengubah saldo dan modal aktif, bukan profit.
+fn catat_koreksi(simpan: &Penyimpanan, idr_asli: Decimal, sekarang: i64, catatan: &str) -> Result<Option<Decimal>, ErrorApp> {
+    let s = hitung_selisih(simpan, idr_asli, sekarang)?;
+    if s.selisih.abs() < batas_koreksi() {
+        return Ok(None);
+    }
+    let catatan = if catatan.trim().is_empty() { "Koreksi saldo" } else { catatan.trim() };
+    simpan.tambah_koreksi(sekarang, s.selisih, catatan).map_err(gagal)?;
+    Ok(Some(s.selisih))
+}
+
+/// Bandingkan saldo aplikasi dengan saldo asli Indodax (baca saja, tidak mengubah apa pun).
+/// Sinkron trade dulu dan jangan memeriksa saat ada order terisi sebagian. Memblokir.
+#[uniffi::export]
+pub fn cek_selisih_saldo(key: String, secret: String, path_db: String) -> Result<SelisihSaldoUi, ErrorApp> {
+    let idr_asli = ambil_idr_asli(key, secret)?;
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    Ok(selisih_ui(&hitung_selisih(&simpan, idr_asli, sekarang_ms())?))
+}
+
+/// Catat koreksi saldo (T3.3). Mengambil saldo asli lagi, lalu mencatat selisihnya sebagai
+/// penyesuaian. None bila selisih kurang dari Rp 1. Memblokir.
+#[uniffi::export]
+pub fn terapkan_koreksi_saldo(key: String, secret: String, path_db: String, catatan: String) -> Result<Option<String>, ErrorApp> {
+    let idr_asli = ambil_idr_asli(key, secret)?;
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let dicatat = catat_koreksi(&simpan, idr_asli, sekarang_ms(), &catatan)?;
+    Ok(dicatat.map(|d| d.round_dp(2).normalize().to_string()))
+}
+
+#[derive(uniffi::Record)]
+pub struct BarisKoreksi {
+    pub waktu_ms: i64,
+    /// positif = saldo dinaikkan, negatif = diturunkan
+    pub jumlah: String,
+    pub catatan: String,
+}
+
+/// Koreksi saldo tersimpan, terbaru di atas. Tanpa jaringan.
+#[uniffi::export]
+pub fn daftar_koreksi_saldo(path_db: String, jumlah: u32) -> Result<Vec<BarisKoreksi>, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let mut k = simpan.semua_koreksi().map_err(gagal)?;
+    k.sort_by_key(|x| std::cmp::Reverse((x.waktu_ms, x.id)));
+    Ok(k
+        .into_iter()
+        .take(jumlah as usize)
+        .map(|x| BarisKoreksi {
+            waktu_ms: x.waktu_ms,
+            jumlah: x.jumlah.round_dp(2).normalize().to_string(),
+            catatan: x.catatan,
+        })
+        .collect())
+}
+
+#[cfg(test)]
+mod tes_fase3 {
+    use super::*;
+    use scalping_core::Trade;
+
+    const SABTU: i64 = 1_793_984_400_000; // Sabtu 7 Nov 2026 00:00 WIB
+    const JAM: i64 = 3_600_000;
+
+    fn d(s: &str) -> Decimal {
+        Decimal::from_str(s).unwrap()
+    }
+
+    fn trade(id: &str, order: &str, beli: bool, quote: &str, fee: &str, waktu: i64) -> Trade {
+        Trade {
+            trade_id: id.into(),
+            order_id: order.into(),
+            symbol: "icntidr".into(),
+            price: d("3998"),
+            qty: d("16.35667833"),
+            quote_qty: d(quote),
+            commission: d(fee),
+            commission_asset: "idr".into(),
+            is_buyer: beli,
+            is_maker: false,
+            time: waktu,
+        }
+    }
+
+    /// Snapshot awal Rp 1.000.000, satu trade ICNT tertutup (+380) pada Sabtu 10:00 WIB.
+    fn siapkan(nama: &str) -> (String, Penyimpanan) {
+        let p = std::env::temp_dir().join(format!("catatan_tes_{nama}_{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&p);
+        let db = p.to_string_lossy().to_string();
+        let mut simpan = Penyimpanan::buka(&db).unwrap();
+        simpan.tambah_snapshot("awal", SABTU - 20 * JAM, d("1000000")).unwrap();
+        simpan.tambah_setelan(0, d("1"), d("1")).unwrap();
+        simpan
+            .simpan_banyak(&[
+                trade("t1", "o1", true, "65393", "133", SABTU + 10 * JAM),
+                trade("t2", "o2", false, "66113", "207", SABTU + 10 * JAM + 600_000),
+            ])
+            .unwrap();
+        (db, simpan)
+    }
+
+    #[test]
+    fn koreksi_dicatat_sekali_dan_tidak_mengubah_profit() {
+        let (db, simpan) = siapkan("koreksi");
+        let sekarang = SABTU + 12 * JAM;
+        // menurut catatan IDR = 1.000.380; asli Indodax 1.000.400
+        let s = hitung_selisih(&simpan, d("1000400"), sekarang).unwrap();
+        assert_eq!(s.selisih.round_dp(0), d("20"));
+        assert!(selisih_ui(&s).perlu_koreksi);
+
+        let dicatat = catat_koreksi(&simpan, d("1000400"), sekarang, "  ").unwrap().unwrap();
+        assert_eq!(dicatat.round_dp(0), d("20"));
+        let k = simpan.semua_koreksi().unwrap();
+        assert_eq!(k.len(), 1);
+        assert_eq!(k[0].catatan, "Koreksi saldo"); // catatan kosong diganti bawaan
+
+        // diulang dengan saldo asli yang sama: tidak ada selisih lagi, tidak ada catatan ganda
+        assert_eq!(catat_koreksi(&simpan, d("1000400"), sekarang, "").unwrap(), None);
+        assert_eq!(simpan.semua_koreksi().unwrap().len(), 1);
+
+        // profit tetap +380; saldo naik 20 dan modal aktif ikut naik 20
+        let h = hitung_aplikasi(&simpan).unwrap();
+        let data = muat_data_saldo(&simpan, &h).unwrap();
+        let r = data.ringkasan(sekarang, (None, None));
+        assert_eq!(r.harian.profit.round_dp(0), d("380"));
+        assert_eq!(r.saldo_sekarang.round_dp(0), d("1000400"));
+        assert_eq!(r.modal_aktif.round_dp(0), d("1000020"));
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn selisih_di_bawah_satu_rupiah_diabaikan() {
+        let (db, simpan) = siapkan("kecil");
+        let sekarang = SABTU + 12 * JAM;
+        assert_eq!(catat_koreksi(&simpan, d("1000380.4"), sekarang, "").unwrap(), None);
+        assert!(simpan.semua_koreksi().unwrap().is_empty());
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn koreksi_negatif_menurunkan_saldo() {
+        let (db, simpan) = siapkan("negatif");
+        let sekarang = SABTU + 12 * JAM;
+        let dicatat = catat_koreksi(&simpan, d("1000300"), sekarang, "selisih fee").unwrap().unwrap();
+        assert_eq!(dicatat.round_dp(0), d("-80"));
+        let ringkas = daftar_koreksi_saldo(db.clone(), 10).unwrap();
+        assert_eq!(ringkas.len(), 1);
+        assert_eq!(ringkas[0].jumlah, "-80");
+        assert_eq!(ringkas[0].catatan, "selisih fee");
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn riwayat_dan_grafik_dari_database() {
+        let (db, simpan) = siapkan("riwayat");
+        simpan.tambah_koreksi(SABTU + 11 * JAM, d("20"), "uji").unwrap();
+        let r = riwayat_tertutup(db.clone(), 10).unwrap();
+        assert_eq!(r.total_trade, 1);
+        assert_eq!(r.total_profit, "380");
+        assert_eq!(r.baris.len(), 1);
+        assert_eq!(r.baris[0].simbol, "icntidr");
+        assert_eq!(r.baris[0].profit, "380");
+
+        let g = data_grafik(db.clone(), 50).unwrap();
+        assert!(g.len() >= 3); // awal, trade tutup, koreksi, sekarang
+        assert_eq!(g.first().unwrap().saldo, "1000000");
+        assert_eq!(g.first().unwrap().modal_aktif, "1000000");
+        assert_eq!(g.last().unwrap().saldo, "1000400");
+        assert_eq!(g.last().unwrap().modal_aktif, "1000020");
+        let _ = std::fs::remove_file(&db);
+    }
 }
 
 #[cfg(test)]

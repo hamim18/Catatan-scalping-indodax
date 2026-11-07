@@ -22,9 +22,9 @@ pub use calc::{gabung_per_order, OrderRingkas, Posisi, Sisi};
 pub use client::IndodaxClient;
 pub use error::{Error, Hasil};
 pub use model::{parse_my_trades, Trade};
-pub use periode::{awal_hari_wib, awal_minggu_wib, DataSaldo, Pencapaian, RingkasanTarget};
+pub use periode::{awal_hari_wib, awal_minggu_wib, DataSaldo, Pencapaian, RingkasanTarget, SelisihSaldo, TitikGrafik};
 pub use posisi::{hitung, HasilHitung, Penyesuaian, PosisiTerbuka, RiwayatSetelan, TradeTertutup};
-pub use store::Penyimpanan;
+pub use store::{KoreksiSaldo, Penyimpanan};
 pub use sync::{sinkron, sinkron_koin, HasilSinkron, Opsi, SumberTrade};
 pub use ws::{
     parse_pesan, parse_token, AlasanPemicu, EventOrder, PemicuSinkron, PesanMasuk, StatusOrder, TokenWs,

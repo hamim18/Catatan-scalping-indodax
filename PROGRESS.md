@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 7 November 2026 (T2.2, T2.3, T2.4 ditulis, BELUM diuji)
-Status: **Fase 0 dan Fase 1 (MVP) selesai. Fase 2: T2.1 lolos uji. T2.2, T2.3, T2.4 KODE SUDAH DITULIS tetapi belum dibangun maupun diuji** (tidak ada `cargo` di lingkungan penulisan). Langkah berikutnya: jalankan `cargo test`, build Android, uji HP (lihat 1i), lalu commit. Setelah itu Fase 3.
+Terakhir diperbarui: 7 November 2026 (Fase 3 dan T2.5 ditulis, BELUM diuji)
+Status: **Fase 0, Fase 1 (MVP), dan Fase 2 (T2.1 sampai T2.4) selesai dan lolos uji** (build, tes, dan uji HP dilaporkan pengguna 7 Nov 2026). **Fase 3 (T3.1 sampai T3.3) dan T2.5 KODE SUDAH DITULIS tetapi belum dibangun maupun diuji.** Langkah berikutnya: `cargo test`, build Android, uji HP (lihat 1j), lalu commit. Setelah itu Fase 4.
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -29,9 +29,13 @@ Status: **Fase 0 dan Fase 1 (MVP) selesai. Fase 2: T2.1 lolos uji. T2.2, T2.3, T
 | T1.4c | FFI: `Pemantau` (mulai, berhenti, sedang_jalan; thread pantau), callback `PendengarPantau`, enum `KejadianUi`. Android: `LayananLatar.kt` (foreground service tipe `specialUse`, satu notifikasi tetap dengan tombol Hentikan, START_STICKY), `PantauBersama` (status dan log untuk layar), izin notifikasi (Android 13+), permintaan abaikan optimasi baterai, sinkron otomatis saat app dibuka (FR-06, FR-10). Build dan tes berhasil, 7 poin uji HP lolos | Selesai |
 | T1.5 | FFI `isi_notifikasi` dan `ringkasan_posisi_notif` (isi notifikasi dihitung di Rust, format Indonesia, 6 tes di `scalping-ffi`; estimasi hasil bersih dengan fee jual perkiraan 0,31%; beli tambahan menampilkan TP/SL order itu dan posisi keseluruhan). `LayananLatar.kt`: saluran "Order terisi" (prioritas tinggi), satu notifikasi per order, pekerja satu thread, tanpa notifikasi ganda (trade_baru > 0), ringkasan TP/SL saat rekonsiliasi menemukan trade terlewat. Mulai pantauan menyimpan setelan TP/SL (FR-15 sampai FR-17). Build dan tes berhasil, 7 poin uji HP lolos | Selesai |
 | T2.1 | Target harian dan mingguan (FR-04): `Penyimpanan::atur_target/target` (tabel `meta`, kunci `target_harian_persen` dan `target_mingguan_persen`), `periksa_target` (lebih dari 0 dan paling banyak 100), FFI `simpan_target`/`baca_target` (`SetelanTarget`), kolom target di layar uji. 4 tes baru. Build dan tes berhasil, uji HP 6 poin lolos | Selesai |
-| T2.2 | Arus kas: `core/src/arus_kas.rs` (parser `fiat/orders`, hanya status success dan IDR, ID sumber `<jenis>:<orderNo>`, jendela 29 hari, belah rentang bila hasil >= 100, `sinkron_arus_kas`), tabel `arus_kas` dan fungsi terkait di `store.rs`, `IndodaxClient::ambil_arus_kas`, FFI `sinkron_arus_kas`/`daftar_arus_kas`/`atur_amount_sudah_bersih`, tombol di layar uji. Juga: `busy_timeout` 5 detik pada koneksi SQLite | Kode selesai, belum diuji |
-| T2.3 | `core/src/periode.rs`: periode WIB (hari 00:00, minggu mulai Senin), `DataSaldo` (saldo versi aplikasi dari catatan), pencapaian dan progress (FR-19 sampai FR-21), FFI `hitung_target` (sekalian mencatat snapshot harian/mingguan) | Kode selesai, belum diuji |
-| T2.4 | Progress target harian dan mingguan di notifikasi jual (FR-16), penanda "TERCAPAI" saat target baru tercapai oleh penjualan itu (FR-18, di dalam notifikasi yang sama), tampilan progress di layar uji | Kode selesai, belum diuji |
+| T2.2 | Arus kas: `core/src/arus_kas.rs` (parser `fiat/orders`, hanya status success dan IDR, ID sumber `<jenis>:<orderNo>`, jendela 29 hari, belah rentang bila hasil >= 100, `sinkron_arus_kas`), tabel `arus_kas` dan fungsi terkait di `store.rs`, `IndodaxClient::ambil_arus_kas`, FFI `sinkron_arus_kas`/`daftar_arus_kas`/`atur_amount_sudah_bersih`, tombol di layar uji. Juga: `busy_timeout` 5 detik pada koneksi SQLite | Selesai (build, tes, uji HP lulus 7 Nov) |
+| T2.3 | `core/src/periode.rs`: periode WIB (hari 00:00, minggu mulai Senin), `DataSaldo` (saldo versi aplikasi dari catatan), pencapaian dan progress (FR-19 sampai FR-21), FFI `hitung_target` (sekalian mencatat snapshot harian/mingguan) | Selesai (build, tes, uji HP lulus 7 Nov) |
+| T2.4 | Progress target harian dan mingguan di notifikasi jual (FR-16), penanda "TERCAPAI" saat target baru tercapai oleh penjualan itu (FR-18, di dalam notifikasi yang sama), tampilan progress di layar uji | Selesai (build, tes, uji HP lulus 7 Nov) |
+| T2.5 | `LayananLatar.kt`: sinkron arus kas (deposit/withdraw IDR) tiap pantauan tersambung atau tersambung ulang, paling sering sekali per 5 menit, di thread sendiri (`pekerjaArusKas`) agar notifikasi order tidak tertunda | Kode selesai, belum diuji |
+| T3.1 | Riwayat trade tertutup: FFI `riwayat_tertutup` (ringkasan hari ini WIB: jumlah, untung, hasil; daftar terbaru di atas), bagian "Riwayat" di layar uji (FR-23) | Kode selesai, belum diuji |
+| T3.2 | Grafik saldo versi aplikasi dan modal aktif: `DataSaldo::deret` (core), FFI `data_grafik`, komponen `GrafikView.kt` (garis tebal saldo, putus-putus modal berundak) (FR-22) | Kode selesai, belum diuji |
+| T3.3 | Koreksi saldo: tabel `koreksi_saldo`, `DataSaldo::selisih_saldo`, FFI `cek_selisih_saldo`/`terapkan_koreksi_saldo`/`daftar_koreksi_saldo`, tombol "Cek selisih saldo" dan "Catat koreksi" (dengan dialog konfirmasi) di layar uji | Kode selesai, belum diuji |
 
 ### 1b. Kesimpulan Fase 0 (masih dipakai)
 - **Fee dalam IDR.** Koin yang diterima tidak dipotong fee. Fee selain IDR sengaja ditolak (error) karena belum pernah ditemui.
@@ -189,6 +193,38 @@ Status: **Fase 0 dan Fase 1 (MVP) selesai. Fase 2: T2.1 lolos uji. T2.2, T2.3, T
 - Layar uji menampilkan progress sebagai teks dan bar karakter; layar asli sesuai prototype ada di fase UI.
 - Perilaku yang perlu diuji di HP: (1) sinkron arus kas, deposit terlihat benar; (2) progress hari/minggu cocok hitungan manual; (3) deposit baru tidak menaikkan pencapaian; (4) notifikasi jual memuat progress; (5) target tercapai muncul sekali; (6) tidak ada "database is locked" saat pantauan hidup.
 
+### 1j. T2.5 dan Fase 3 (terbaru, detail)
+
+**Status: kode ditulis 7 Nov 2026, BELUM dibuild dan BELUM diuji.** Tandai Selesai hanya setelah `cargo test` dan uji HP lolos.
+
+**Koreksi saldo (T3.3)**
+- Perbandingan: IDR yang diharapkan menurut aplikasi = saldo versi aplikasi - modal posisi terbuka (pada modal efektif). Selisih = saldo IDR asli (`/account`, tersedia + terkunci) - IDR menurut aplikasi.
+- Koreksi dicatat di tabel `koreksi_saldo` (waktu, jumlah, catatan) dan diperlakukan seperti setoran: mengubah saldo DAN modal aktif, tetapi bukan profit, jadi tidak masuk pencapaian; jarak garis saldo dan modal aktif di grafik tetap = profit. Tidak ada catatan lain yang dihapus atau diubah (sesuai PRD bagian 12).
+- Selisih di bawah Rp 1 dianggap pembulatan dan tidak dicatat. Mencatat dua kali berturut-turut aman (selisih kedua nol).
+- `terapkan_koreksi_saldo` mengambil saldo asli lagi saat dicatat (bukan memakai angka lama di layar).
+- Hal yang menimbulkan selisih sementara dan BUKAN kesalahan: order limit terisi sebagian (belum dicatat sampai DONE/CANCELLED, FR-08), trade yang belum tersinkron, koin lama yang dijual (penyesuaian), deposit/withdraw koin (diabaikan di versi ini). Jangan koreksi pada saat itu; sinkron dulu.
+- Dua hal pengguna: kunci wajib baca saja (cek ditolak bila key punya izin trade/withdraw).
+
+**Grafik (T3.2)**: titik di snapshot awal, di tiap kejadian (trade tertutup, arus kas, koreksi), dan sekarang; dijarangkan bila lebih dari 120 titik (ujung selalu ada, nilai tetap tepat). Nilai diubah ke Double hanya untuk koordinat gambar di `GrafikView`.
+
+**T2.5**: sinkron arus kas dipicu `KejadianUi.Tersambung`. Gagal tidak mengganggu pantauan (dicatat di log layar).
+
+**Keputusan pengguna (7 Nov 2026)**
+- Koin lama yang dipegang sebelum aplikasi dipasang: dibiarkan seperti sekarang (saldo aplikasi = IDR saja). Pengguna memastikan tidak ada koin menggantung dan saldo hanya dari kas sebelum peluncuran. T2.6 (isi modal koin lama) TIDAK dikerjakan. Pertanyaan terbuka no. 6 di PRD: dijawab "diabaikan".
+
+**Yang perlu diuji di HP (7 poin)**
+1. Bagian Riwayat menampilkan trade tertutup dan ringkasan hari ini; total cocok dengan "Hitung posisi".
+2. Grafik tampil: saldo (tebal) dan modal aktif (putus-putus); setelah satu trade tertutup, jarak keduanya = hasil trade.
+3. "Cek selisih saldo" menampilkan saldo asli dan selisih; saat tidak ada order menggantung dan sinkron baru selesai, selisih mendekati 0.
+4. "Catat koreksi" memunculkan dialog; setelah dicatat, selisih menjadi 0, saldo dan modal aktif berubah sebesar koreksi, hasil hari ini tidak berubah.
+5. Mencatat koreksi kedua langsung setelahnya menjawab "Tidak ada selisih".
+6. Mulai pantauan lalu matikan data seluler sebentar dan nyalakan lagi: log menampilkan sinkron arus kas (atau "0 baru") setelah tersambung ulang.
+7. Tidak ada "database is locked" saat pantauan hidup dan tombol dipakai bergantian.
+
+**Belum diverifikasi sejak Fase 2**: mode fee deposit (kotak centang "Nominal sudah bersih"), karena belum ada deposit nyata sejak aplikasi dipasang (arus kas = 0). Verifikasi saat ada deposit pertama.
+
+**Untuk pembaruan PRD (v1.3)**: FR-22 dan koreksi saldo sudah diimplementasikan di layar uji (belum layar UI akhir); saldo versi aplikasi dihitung dari catatan; koreksi diperlakukan seperti setoran.
+
 ---
 
 ## 2. Masalah
@@ -209,6 +245,8 @@ Status: **Fase 0 dan Fase 1 (MVP) selesai. Fase 2: T2.1 lolos uji. T2.2, T2.3, T
 | Bentuk baris withdraw belum teramati | Respons withdraw akun masih kosong | Parser toleran; validasi saat ada withdraw nyata |
 | Ukuran halaman `fiat/orders` tidak diketahui | Tidak ada dokumen/uji | Rentang >= 100 baris dibelah; pantau |
 | Fee jual market ±0,61% (struk UAI 7 Nov: 123 dari 20.112), estimasi notifikasi memakai 0,31% | Fee jual perkiraan tetap 0,31% | Dikenal; estimasi bisa terlalu optimistis untuk jual market |
+| Selisih saldo sementara saat order limit terisi sebagian | Order dicatat saat DONE/CANCELLED (FR-08), tetapi saldo asli sudah berubah | Dikenal (T3.3); jangan koreksi saat ada order menggantung, sinkron dulu |
+| Fee jual perkiraan 0,31% tetap (jual market sekitar 0,61%) | Belum ada setelan | Dikenal; relevan untuk Fase 4 (statistik fee) |
 | Selisih 1 rupiah antara hasil jual dan modal beli berikutnya (data 3 Nov) | Diduga pembulatan | Belum dikonfirmasi, tidak berdampak |
 | Apakah sisa 3 IDR (anggaran order tak terpakai) kembali ke saldo | Belum dicek di saldo | Belum dikonfirmasi; tidak memengaruhi rumus karena saldo diambil dari API |
 
@@ -228,9 +266,9 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 ### Task berikutnya (urut)
 | Task | Isi | Syarat |
 | --- | --- | --- |
-| Uji T2.2 sampai T2.4 | `cargo test`, build Android, uji HP 6 poin (lihat 1i), lalu `git commit` per task atau satu commit gabungan | Kode di 1i sudah ditempatkan |
-| T2.5 (kecil) | Panggil sinkron arus kas dari `LayananLatar.kt` saat tersambung ulang | Lampirkan `LayananLatar.kt` |
-| T3.1 | Daftar trade tertutup, grafik saldo dan modal aktif (dua garis), tombol koreksi saldo (bandingkan dengan `/account`) | T2.x lolos uji; lampirkan `account.rs` dan `sync.rs` |
+| Uji T2.5 dan T3.1 sampai T3.3 | `cargo test`, build Android, uji HP 7 poin (lihat 1j), lalu `git commit` per task | Kode di 1j sudah ditempatkan |
+| T4.1 | Statistik: win rate, rata-rata profit dan loss, total fee, persen profit termakan fee (FR-25). Total fee butuh fee tiap trade dari tabel `trade` (kolom `commission` sudah tersimpan) | T3 lolos uji |
+| Fase UI | Layar asli sesuai prototype (Beranda, Posisi, Riwayat, Setelan), tombol "Jual di Indodax", pemisah ribuan, ekspor/cadangan data | Keputusan pertanyaan terbuka no. 3 dan no. 8 |
 
 ### Keputusan yang masih terbuka
 | Hal | Pilihan | Status |
@@ -245,6 +283,8 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 ### Keputusan yang sudah terjawab
 - Estimasi hasil bersih di bawah TP/SL: tampil (T1.5, permintaan pengguna).
 - Beli tambahan koin yang sama: tampil TP/SL order itu dan posisi keseluruhan (T1.5).
+- Koin lama sebelum aplikasi dipasang: dibiarkan (saldo aplikasi = IDR saja); pengguna memastikan tidak ada koin menggantung saat peluncuran (7 Nov 2026).
+- Koreksi saldo diperlakukan seperti setoran (mengubah saldo dan modal aktif, bukan profit); selisih di bawah Rp 1 diabaikan (T3.3, usulan, belum dikonfirmasi).
 - Saldo versi aplikasi dihitung dari catatan (bukan dari panggilan `/account`) dan notifikasi "tercapai" digabung ke notifikasi jual (T2.3/T2.4, usulan, belum dikonfirmasi).
 - Target harian dan mingguan: hanya nilai terbaru, batas lebih dari 0 dan paling banyak 100 persen (T2.1).
 
@@ -269,7 +309,7 @@ Kebutuhan: Python 3.8+, git, Rust (rustup), dan toolchain Android (lihat bagian 
 Tes inti Rust:
 ```
 cargo test -p scalping-core        # 51 tes lulus per T1.4a (periksa jumlah terbaru setelah T1.4b)
-cargo test -p scalping-ffi         # T1.5: 6 tes; T2.1: +2 tes target (8); T2.3/T2.4: +2 tes progres (10)
+cargo test -p scalping-ffi         # T1.5: 6 tes; T2.1: +2 (8); T2.3/T2.4: +2 (10); T3: +4 tes fase 3 (14)
 python tools/fase2_fiat.py             # T2.2: bentuk respons deposit (--jenis 1 untuk withdraw)
 cargo run -p scalping-core --example pantau   # T1.4b: pantau realtime di komputer, Enter untuk berhenti
 cargo run -p scalping-core --example cek_data -- data/raw_icntidr_<waktu>.json
@@ -306,7 +346,7 @@ git commit -m "Tx.y: deskripsi singkat"
 
 ## 5. Struktur proyek
 
-### Saat ini (setelah T2.1; T2.2 sampai T2.4 menambah arus_kas.rs dan periode.rs)
+### Saat ini (setelah T2.4; Fase 3 menambah GrafikView.kt dan memperluas periode.rs, store.rs, ffi)
 ```
 catatan-scalping/
 ├── README.md
@@ -356,6 +396,7 @@ catatan-scalping/
 │           ├── AndroidManifest.xml
 │           ├── kotlin/id/catatanscalping/app/
 │           │   ├── MainActivity.kt      (layar uji: koneksi, sinkron, order, pantauan, posisi dan TP/SL)
+│           │   ├── GrafikView.kt        (T3.2: grafik saldo dan modal aktif, hanya menggambar)
 │           │   ├── LayananLatar.kt      (T1.4c: foreground service + PantauBersama; T1.5: saluran "Order terisi" dan pekerja notifikasi)
 │           │   └── KunciAman.kt         (simpan key terenkripsi, Android Keystore)
 │           ├── res/values/themes.xml
@@ -382,6 +423,10 @@ Struktur Fase 2 (snapshot harian/mingguan, arus kas deposit/withdraw, pencapaian
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T3.3: `T3.3: koreksi saldo terhadap saldo asli Indodax` (hash: ...)
+- T3.2: `T3.2: grafik saldo dan modal aktif` (hash: ...)
+- T3.1: `T3.1: riwayat trade tertutup` (hash: ...)
+- T2.5: `T2.5: sinkron arus kas dari layanan latar` (hash: ...)
 - T2.4: `T2.4: progress target di notifikasi jual dan layar uji` (hash: ...)
 - T2.3: `T2.3: periode WIB, saldo versi aplikasi, pencapaian dan progress` (hash: ...)
 - T2.2: `T2.2: arus kas deposit dan withdraw IDR` (hash: ...)

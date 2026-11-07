@@ -17,6 +17,7 @@ import uniffi.scalping_ffi.ErrorApp
 import uniffi.scalping_ffi.IsiNotifOrder
 import uniffi.scalping_ffi.isiNotifikasi
 import uniffi.scalping_ffi.ringkasanPosisiNotif
+import uniffi.scalping_ffi.sinkronArusKas
 import uniffi.scalping_ffi.KejadianUi
 import uniffi.scalping_ffi.Pemantau
 import uniffi.scalping_ffi.PendengarPantau
@@ -71,6 +72,11 @@ class LayananLatar : Service() {
     // Satu thread kerja: menyusun isi notifikasi memakai database, tanpa menahan thread pantau
     // dan menjaga urutan notifikasi sesuai urutan order.
     private val pekerja = Executors.newSingleThreadExecutor()
+
+    // T2.5: sinkron arus kas (deposit/withdraw IDR) di thread sendiri supaya notifikasi order
+    // tidak tertunda oleh permintaan jaringan tambahan.
+    private val pekerjaArusKas = Executors.newSingleThreadExecutor()
+    @Volatile private var arusKasTerakhirMs = 0L
 
     // Callback dari thread Rust. Tidak boleh melempar exception ke Rust.
     private val penerima = object : PendengarPantau {
@@ -172,6 +178,7 @@ class LayananLatar : Service() {
             is KejadianUi.Tersambung -> {
                 statusKoneksi = "Tersambung, memantau order"
                 PantauBersama.catat("Tersambung")
+                sinkronArusKasLatar()
             }
             is KejadianUi.Terputus -> {
                 statusKoneksi = "Terputus (${k.alasan}), coba lagi ${k.cobaLagiDetik} dtk"
@@ -207,6 +214,28 @@ class LayananLatar : Service() {
         }
         PantauBersama.status = statusKoneksi
         perbaruiNotif()
+    }
+
+    /**
+     * T2.5: lengkapi deposit/withdraw IDR tiap tersambung (termasuk sambung ulang), paling sering
+     * sekali per 5 menit. Gagal tidak mengganggu pantauan; deposit lama tertangkap lewat
+     * tumpang tindih 14 hari di Rust.
+     */
+    private fun sinkronArusKasLatar() {
+        val sekarang = System.currentTimeMillis()
+        if (sekarang - arusKasTerakhirMs < 5 * 60_000L) return
+        arusKasTerakhirMs = sekarang
+        pekerjaArusKas.execute {
+            val k = KunciAman(this).ambil() ?: return@execute
+            try {
+                val h = sinkronArusKas(k.first, k.second, pathDb)
+                if (h.baru > 0u) PantauBersama.catat("Arus kas: ${h.baru} deposit/withdraw baru")
+            } catch (e: ErrorApp.Gagal) {
+                PantauBersama.catat("Arus kas gagal: ${e.pesan}")
+            } catch (e: Exception) {
+                PantauBersama.catat("Arus kas gagal: ${e.message}")
+            }
+        }
     }
 
     // ---- notifikasi ----
@@ -323,6 +352,7 @@ class LayananLatar : Service() {
     override fun onDestroy() {
         hidup = false
         pekerja.shutdown() // tugas yang sudah antre tetap selesai
+        pekerjaArusKas.shutdown()
         utama.removeCallbacksAndMessages(null)
         // Bila dimatikan sistem, preferensi "aktif" tetap true supaya START_STICKY menyambung lagi.
         PantauBersama.pemantau.berhenti()

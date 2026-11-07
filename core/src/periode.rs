@@ -65,6 +65,31 @@ pub struct DataSaldo {
     pub profit_tertutup: Vec<(i64, Decimal)>,
     pub arus_kas: Vec<ArusKas>,
     pub amount_sudah_bersih: bool,
+    /// (waktu ms, jumlah) koreksi saldo yang dicatat pengguna (T3.3). Diperlakukan seperti
+    /// setoran: mengubah saldo dan modal aktif tetapi BUKAN profit, jadi tidak masuk pencapaian.
+    pub penyesuaian: Vec<(i64, Decimal)>,
+}
+
+/// Satu titik grafik (FR-22): saldo versi aplikasi dan modal aktif pada `waktu_ms`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TitikGrafik {
+    pub waktu_ms: i64,
+    pub saldo: Decimal,
+    pub modal_aktif: Decimal,
+}
+
+/// Perbandingan saldo aplikasi dengan saldo asli Indodax (T3.3).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SelisihSaldo {
+    /// saldo IDR asli dari /account (tersedia + terkunci)
+    pub idr_asli: Decimal,
+    /// saldo IDR yang diharapkan menurut catatan aplikasi
+    pub idr_menurut_aplikasi: Decimal,
+    /// modal posisi terbuka (pada modal efektif)
+    pub nilai_posisi: Decimal,
+    pub saldo_aplikasi: Decimal,
+    /// idr_asli - idr_menurut_aplikasi. Positif: IDR asli lebih besar dari catatan.
+    pub selisih: Decimal,
 }
 
 impl DataSaldo {
@@ -77,7 +102,13 @@ impl DataSaldo {
     }
 
     fn arus_antara(&self, setelah_ms: i64, sampai_ms: i64) -> Decimal {
-        setoran_bersih(&self.arus_kas, setelah_ms, sampai_ms, self.amount_sudah_bersih)
+        let koreksi: Decimal = self
+            .penyesuaian
+            .iter()
+            .filter(|(w, _)| *w > setelah_ms && *w <= sampai_ms)
+            .map(|(_, j)| *j)
+            .sum::<Decimal>();
+        setoran_bersih(&self.arus_kas, setelah_ms, sampai_ms, self.amount_sudah_bersih) + koreksi
     }
 
     /// Saldo versi aplikasi pada waktu `t`. Sebelum snapshot awal = saldo awal.
@@ -114,6 +145,50 @@ impl DataSaldo {
             target_persen: target_valid,
             progress_persen: target_valid.map(|t| persen / t * seratus),
             tercapai: target_valid.map_or(false, |t| persen >= t),
+        }
+    }
+
+    /// Deret saldo dan modal aktif untuk grafik (FR-22): satu titik di snapshot awal, satu di tiap
+    /// kejadian (trade tertutup, arus kas, koreksi) dan satu di `sekarang_ms`. Jarak antara kedua
+    /// garis = profit. Bila titik lebih dari `maks_titik`, titik dijarangkan (titik pertama dan
+    /// terakhir selalu ada); nilai tiap titik tetap tepat.
+    pub fn deret(&self, sekarang_ms: i64, maks_titik: usize) -> Vec<TitikGrafik> {
+        let sekarang_ms = sekarang_ms.max(self.snapshot_awal_ms);
+        let mut waktu: Vec<i64> = vec![self.snapshot_awal_ms, sekarang_ms];
+        waktu.extend(self.profit_tertutup.iter().map(|(w, _)| *w));
+        waktu.extend(self.arus_kas.iter().map(|a| a.waktu_ms));
+        waktu.extend(self.penyesuaian.iter().map(|(w, _)| *w));
+        waktu.retain(|w| *w >= self.snapshot_awal_ms && *w <= sekarang_ms);
+        waktu.sort_unstable();
+        waktu.dedup();
+        let maks = maks_titik.max(2);
+        if waktu.len() > maks {
+            let langkah = (waktu.len() + maks - 1) / maks;
+            let terakhir = waktu.len() - 1;
+            waktu = waktu
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| i % langkah == 0 || *i == terakhir)
+                .map(|(_, w)| *w)
+                .collect();
+        }
+        waktu
+            .into_iter()
+            .map(|w| TitikGrafik { waktu_ms: w, saldo: self.saldo_pada(w), modal_aktif: self.modal_aktif_pada(w) })
+            .collect()
+    }
+
+    /// Bandingkan dengan saldo IDR asli. `nilai_posisi` = jumlah modal posisi terbuka.
+    /// IDR yang diharapkan = saldo aplikasi - nilai posisi (posisi dinilai pada modal efektif).
+    pub fn selisih_saldo(&self, idr_asli: Decimal, nilai_posisi: Decimal, sekarang_ms: i64) -> SelisihSaldo {
+        let saldo_aplikasi = self.saldo_pada(sekarang_ms);
+        let idr_menurut_aplikasi = saldo_aplikasi - nilai_posisi;
+        SelisihSaldo {
+            idr_asli,
+            idr_menurut_aplikasi,
+            nilai_posisi,
+            saldo_aplikasi,
+            selisih: idr_asli - idr_menurut_aplikasi,
         }
     }
 
@@ -175,7 +250,7 @@ mod tests {
     #[test]
     fn saldo_pada_menjumlah_profit_dan_arus_kas() {
         let data = DataSaldo {
-            snapshot_awal_ms: 1000,
+            snapshot_awal_ms: 1000, penyesuaian: vec![],
             saldo_awal: d("1000000"),
             profit_tertutup: vec![(2000, d("380")), (3000, d("-100"))],
             arus_kas: vec![deposit("d1", "100000", 2500)],
@@ -191,7 +266,7 @@ mod tests {
     #[test]
     fn pencapaian_mengeluarkan_setoran() {
         let data = DataSaldo {
-            snapshot_awal_ms: 1000,
+            snapshot_awal_ms: 1000, penyesuaian: vec![],
             saldo_awal: d("1000000"),
             profit_tertutup: vec![(2000, d("380")), (3000, d("-100"))],
             arus_kas: vec![deposit("d1", "100000", 2500)],
@@ -209,7 +284,7 @@ mod tests {
     #[test]
     fn progress_dan_tercapai() {
         let data = DataSaldo {
-            snapshot_awal_ms: 0,
+            snapshot_awal_ms: 0, penyesuaian: vec![],
             saldo_awal: d("1000000"),
             profit_tertutup: vec![(10, d("15000"))],
             arus_kas: vec![],
@@ -232,7 +307,7 @@ mod tests {
     #[test]
     fn rugi_memberi_persen_dan_progress_negatif() {
         let data = DataSaldo {
-            snapshot_awal_ms: 0,
+            snapshot_awal_ms: 0, penyesuaian: vec![],
             saldo_awal: d("1000000"),
             profit_tertutup: vec![(10, d("-10000"))],
             arus_kas: vec![],
@@ -246,7 +321,7 @@ mod tests {
 
     #[test]
     fn saldo_awal_nol_tidak_membagi_nol() {
-        let data = DataSaldo { snapshot_awal_ms: 0, saldo_awal: Decimal::ZERO, profit_tertutup: vec![(10, d("100"))], arus_kas: vec![], amount_sudah_bersih: true };
+        let data = DataSaldo { snapshot_awal_ms: 0, penyesuaian: vec![], saldo_awal: Decimal::ZERO, profit_tertutup: vec![(10, d("100"))], arus_kas: vec![], amount_sudah_bersih: true };
         let p = data.pencapaian(0, 100, Some(d("1")));
         assert_eq!(p.persen, Decimal::ZERO);
     }
@@ -255,7 +330,7 @@ mod tests {
     fn ringkasan_harian_dan_mingguan_wib() {
         let awal = SABTU - 20 * MS_JAM; // Jumat 04:00 WIB
         let data = DataSaldo {
-            snapshot_awal_ms: awal,
+            snapshot_awal_ms: awal, penyesuaian: vec![],
             saldo_awal: d("1000000"),
             profit_tertutup: vec![(awal + MS_JAM, d("500")), (SABTU + 10 * MS_JAM, d("380"))],
             arus_kas: vec![deposit("d1", "100000", SABTU + 11 * MS_JAM)],
@@ -273,11 +348,81 @@ mod tests {
         assert_eq!(r.modal_aktif, d("1100000"));
     }
 
+    fn data_koreksi() -> DataSaldo {
+        DataSaldo {
+            snapshot_awal_ms: 1000,
+            penyesuaian: vec![(2500, d("-300"))],
+            saldo_awal: d("1000000"),
+            profit_tertutup: vec![(2000, d("380"))],
+            arus_kas: vec![deposit("d1", "100000", 3000)],
+            amount_sudah_bersih: true,
+        }
+    }
+
+    #[test]
+    fn koreksi_mengubah_saldo_dan_modal_tetapi_bukan_profit() {
+        let data = data_koreksi();
+        assert_eq!(data.saldo_pada(2400), d("1000380"));
+        assert_eq!(data.saldo_pada(2500), d("1000080"));
+        assert_eq!(data.modal_aktif_pada(2500), d("999700"));
+        // selisih saldo - modal tetap = profit (380)
+        assert_eq!(data.saldo_pada(4000) - data.modal_aktif_pada(4000), d("380"));
+        let p = data.pencapaian(1000, 4000, None);
+        assert_eq!(p.profit, d("380"));
+        assert_eq!(p.setoran_bersih, d("99700")); // deposit 100000 + koreksi -300
+    }
+
+    #[test]
+    fn deret_grafik_dua_garis() {
+        let data = data_koreksi();
+        let t = data.deret(4000, 100);
+        let waktu: Vec<i64> = t.iter().map(|x| x.waktu_ms).collect();
+        assert_eq!(waktu, vec![1000, 2000, 2500, 3000, 4000]);
+        assert_eq!(t[0].saldo, d("1000000"));
+        assert_eq!(t[0].modal_aktif, d("1000000"));
+        assert_eq!(t[4].saldo, d("1100080"));
+        assert_eq!(t[4].modal_aktif, d("1099700"));
+        for x in &t {
+            assert_eq!(x.saldo - x.modal_aktif, if x.waktu_ms >= 2000 { d("380") } else { Decimal::ZERO });
+        }
+    }
+
+    #[test]
+    fn deret_dijarangkan_tetapi_ujung_tetap_ada() {
+        let profit: Vec<(i64, Decimal)> = (1..=50).map(|i| (i * 10, d("1"))).collect();
+        let data = DataSaldo { snapshot_awal_ms: 0, penyesuaian: vec![], saldo_awal: d("100"), profit_tertutup: profit, arus_kas: vec![], amount_sudah_bersih: true };
+        let t = data.deret(1000, 10);
+        assert!(t.len() <= 12);
+        assert_eq!(t.first().unwrap().waktu_ms, 0);
+        assert_eq!(t.last().unwrap().waktu_ms, 1000);
+        assert_eq!(t.last().unwrap().saldo, d("150"));
+    }
+
+    #[test]
+    fn deret_tanpa_kejadian_dua_titik() {
+        let data = DataSaldo { snapshot_awal_ms: 5, penyesuaian: vec![], saldo_awal: d("10"), profit_tertutup: vec![], arus_kas: vec![], amount_sudah_bersih: true };
+        let t = data.deret(5, 100);
+        assert_eq!(t.len(), 1); // awal dan sekarang sama
+        assert_eq!(data.deret(50, 100).len(), 2);
+    }
+
+    #[test]
+    fn selisih_saldo_dengan_posisi_terbuka() {
+        // saldo aplikasi 1.000.380 = IDR 940.380 + posisi 60.000
+        let data = DataSaldo { snapshot_awal_ms: 0, penyesuaian: vec![], saldo_awal: d("1000000"), profit_tertutup: vec![(10, d("380"))], arus_kas: vec![], amount_sudah_bersih: true };
+        let s = data.selisih_saldo(d("940400"), d("60000"), 100);
+        assert_eq!(s.saldo_aplikasi, d("1000380"));
+        assert_eq!(s.idr_menurut_aplikasi, d("940380"));
+        assert_eq!(s.selisih, d("20"));
+        let cocok = data.selisih_saldo(d("940380"), d("60000"), 100);
+        assert_eq!(cocok.selisih, Decimal::ZERO);
+    }
+
     #[test]
     fn fee_deposit_mengubah_saldo_sesuai_mode() {
         let mut a = deposit("d1", "50000", 5);
         a.biaya = d("2500");
-        let data = |bersih| DataSaldo { snapshot_awal_ms: 0, saldo_awal: d("1000"), profit_tertutup: vec![], arus_kas: vec![a.clone()], amount_sudah_bersih: bersih };
+        let data = |bersih| DataSaldo { snapshot_awal_ms: 0, penyesuaian: vec![], saldo_awal: d("1000"), profit_tertutup: vec![], arus_kas: vec![a.clone()], amount_sudah_bersih: bersih };
         assert_eq!(data(true).saldo_pada(10), d("51000"));
         assert_eq!(data(false).saldo_pada(10), d("48500"));
     }

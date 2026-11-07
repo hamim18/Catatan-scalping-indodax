@@ -46,6 +46,12 @@ CREATE TABLE IF NOT EXISTS arus_kas (
     waktu_ms  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_arus_kas_waktu ON arus_kas(waktu_ms);
+CREATE TABLE IF NOT EXISTS koreksi_saldo (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    waktu_ms INTEGER NOT NULL,
+    jumlah   TEXT NOT NULL,
+    catatan  TEXT NOT NULL
+);
 ";
 
 const META_TARGET_HARIAN: &str = "target_harian_persen";
@@ -62,6 +68,17 @@ fn kolom_desimal(r: &Row, i: usize) -> rusqlite::Result<Decimal> {
     Decimal::from_str(&s).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(i, rusqlite::types::Type::Text, Box::new(e))
     })
+}
+
+/// Koreksi saldo yang dicatat pengguna (T3.3): selisih terhadap saldo asli Indodax.
+/// Dicatat sebagai penyesuaian, tidak pernah menghapus atau mengubah catatan lain.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KoreksiSaldo {
+    pub id: i64,
+    pub waktu_ms: i64,
+    /// positif = saldo dinaikkan, negatif = diturunkan
+    pub jumlah: Decimal,
+    pub catatan: String,
 }
 
 pub struct Penyimpanan {
@@ -291,6 +308,31 @@ impl Penyimpanan {
         Ok(n as usize)
     }
 
+    /// T3.3: catat koreksi saldo. Mengembalikan id baris.
+    pub fn tambah_koreksi(&self, waktu_ms: i64, jumlah: Decimal, catatan: &str) -> Hasil<i64> {
+        self.conn
+            .execute(
+                "INSERT INTO koreksi_saldo (waktu_ms, jumlah, catatan) VALUES (?1, ?2, ?3)",
+                params![waktu_ms, jumlah.to_string(), catatan],
+            )
+            .map_err(gagal)?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Semua koreksi, urut waktu naik.
+    pub fn semua_koreksi(&self) -> Hasil<Vec<KoreksiSaldo>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT id, waktu_ms, jumlah, catatan FROM koreksi_saldo ORDER BY waktu_ms ASC, id ASC")
+            .map_err(gagal)?;
+        let baris = st
+            .query_map([], |r| {
+                Ok(KoreksiSaldo { id: r.get(0)?, waktu_ms: r.get(1)?, jumlah: kolom_desimal(r, 2)?, catatan: r.get(3)? })
+            })
+            .map_err(gagal)?;
+        baris.collect::<Result<Vec<_>, _>>().map_err(gagal)
+    }
+
     /// Apakah `amount` deposit/withdraw sudah bersih (fee tidak dikurangkan lagi). Bawaan: false.
     pub fn amount_sudah_bersih(&self) -> Hasil<bool> {
         Ok(self.meta(META_AMOUNT_BERSIH)?.as_deref() == Some("1"))
@@ -429,6 +471,19 @@ mod tests {
         assert_eq!(s.simpan_arus_kas(&[a.clone()]).unwrap(), 0);
         assert_eq!(s.jumlah_arus_kas().unwrap(), 2);
         assert_eq!(s.semua_arus_kas().unwrap(), vec![b, a]); // urut waktu
+    }
+
+    #[test]
+    fn koreksi_saldo_tersimpan_berurutan_dengan_presisi() {
+        let s = Penyimpanan::dalam_memori().unwrap();
+        assert!(s.semua_koreksi().unwrap().is_empty());
+        let id2 = s.tambah_koreksi(2000, d("-12.5"), "kedua").unwrap();
+        let id1 = s.tambah_koreksi(1000, d("300"), "pertama").unwrap();
+        assert!(id2 < id1);
+        let k = s.semua_koreksi().unwrap();
+        assert_eq!(k.len(), 2);
+        assert_eq!(k[0].catatan, "pertama");
+        assert_eq!(k[1].jumlah, d("-12.5"));
     }
 
     #[test]
