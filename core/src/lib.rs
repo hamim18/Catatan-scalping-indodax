@@ -9,6 +9,7 @@ pub mod posisi;
 pub mod sign;
 pub mod store;
 pub mod sync;
+pub mod ws;
 
 pub use account::{parse_akun, Akun, Saldo};
 pub use calc::{gabung_per_order, OrderRingkas, Posisi, Sisi};
@@ -18,3 +19,6 @@ pub use model::{parse_my_trades, Trade};
 pub use posisi::{hitung, HasilHitung, Penyesuaian, PosisiTerbuka, RiwayatSetelan, TradeTertutup};
 pub use store::Penyimpanan;
 pub use sync::{sinkron, sinkron_koin, HasilSinkron, Opsi, SumberTrade};
+pub use ws::{
+    parse_pesan, parse_token, AlasanPemicu, EventOrder, PemicuSinkron, PesanMasuk, StatusOrder, TokenWs,
+};
