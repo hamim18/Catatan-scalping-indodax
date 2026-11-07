@@ -289,6 +289,82 @@ pub fn hitung_posisi(path_db: String, semua_riwayat: bool) -> Result<RingkasanHi
     })
 }
 
+/// Setelan TP/SL terbaru (persen). None bila belum pernah disimpan.
+#[derive(uniffi::Record)]
+pub struct SetelanTpSl {
+    pub tp_persen: Option<String>,
+    pub sl_persen: Option<String>,
+}
+
+/// Baca setelan TP/SL terbaru untuk mengisi kolom di layar Setelan. Tanpa jaringan.
+#[uniffi::export]
+pub fn baca_setelan(path_db: String) -> Result<SetelanTpSl, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let riwayat = simpan.riwayat_setelan().map_err(gagal)?;
+    Ok(match riwayat.last() {
+        Some((_, tp, sl)) => SetelanTpSl {
+            tp_persen: Some(tp.normalize().to_string()),
+            sl_persen: Some(sl.normalize().to_string()),
+        },
+        None => SetelanTpSl { tp_persen: None, sl_persen: None },
+    })
+}
+
+/// Satu posisi terbuka siap tampil di layar Posisi. Semua teks sudah berformat Indonesia
+/// (titik ribuan, koma desimal) dan angkanya sama dengan notifikasi beli.
+#[derive(uniffi::Record)]
+pub struct PosisiUi {
+    pub simbol: String,
+    /// contoh "DOGE"
+    pub nama: String,
+    pub koin: String,
+    pub total_modal: String,
+    pub modal_efektif: String,
+    pub harga_tp: String,
+    pub harga_sl: String,
+    pub tp_persen: String,
+    pub sl_persen: String,
+    /// estimasi hasil bersih bila TP tercapai (fee jual perkiraan), contoh "+0,69%" dan "+Rp 450"
+    pub estimasi_tp_persen: String,
+    pub estimasi_tp_rp: String,
+    /// estimasi hasil bersih bila SL tercapai, contoh "−1,31%" dan "−Rp 856"
+    pub estimasi_sl_persen: String,
+    pub estimasi_sl_rp: String,
+    pub waktu_buka_ms: i64,
+}
+
+/// Posisi terbuka (aturan PRD: trade sejak snapshot saldo awal), terbaru di atas. Tanpa jaringan.
+#[uniffi::export]
+pub fn daftar_posisi(path_db: String) -> Result<Vec<PosisiUi>, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let h = hitung_aplikasi(&simpan)?;
+    let mut posisi: Vec<_> = h.posisi.iter().collect();
+    posisi.sort_by_key(|p| std::cmp::Reverse(p.waktu_buka_ms));
+    Ok(posisi
+        .into_iter()
+        .map(|p| {
+            let (rp_tp, pers_tp) = estimasi_bersih(p.koin, p.total_idr_keluar, p.harga_tp);
+            let (rp_sl, pers_sl) = estimasi_bersih(p.koin, p.total_idr_keluar, p.harga_sl);
+            PosisiUi {
+                simbol: p.simbol.clone(),
+                nama: nama_koin(&p.simbol),
+                koin: ribuan(&p.koin.normalize().to_string()),
+                total_modal: fmt_rupiah(p.total_idr_keluar),
+                modal_efektif: fmt_harga(p.modal_efektif),
+                harga_tp: fmt_harga(p.harga_tp),
+                harga_sl: fmt_harga(p.harga_sl),
+                tp_persen: fmt_persen(p.tp_persen),
+                sl_persen: fmt_persen(p.sl_persen),
+                estimasi_tp_persen: fmt_persen_bertanda(pers_tp),
+                estimasi_tp_rp: fmt_untung(rp_tp),
+                estimasi_sl_persen: fmt_persen_bertanda(pers_sl),
+                estimasi_sl_rp: fmt_untung(rp_sl),
+                waktu_buka_ms: p.waktu_buka_ms,
+            }
+        })
+        .collect())
+}
+
 // ---------------------------------------------------------------------------
 // T1.4c: pantauan realtime (WebSocket privat + pemicu sinkron REST).
 // Logika ada di scalping_core::pantau; di sini hanya pembungkus thread dan
@@ -776,6 +852,8 @@ pub struct RingkasanTargetUi {
     pub mingguan: PencapaianUi,
     pub amount_sudah_bersih: bool,
     pub jumlah_arus_kas: u32,
+    /// (saldo sekarang - modal aktif) / modal aktif x 100, 2 desimal; "0" bila modal aktif nol (layar Beranda)
+    pub hasil_persen: String,
 }
 
 fn pencapaian_ui(p: &Pencapaian) -> PencapaianUi {
@@ -819,6 +897,14 @@ fn ringkasan_target_ui(r: &RingkasanTarget, data: &DataSaldo) -> RingkasanTarget
         mingguan: pencapaian_ui(&r.mingguan),
         amount_sudah_bersih: data.amount_sudah_bersih,
         jumlah_arus_kas: data.arus_kas.len() as u32,
+        hasil_persen: if r.modal_aktif.is_zero() {
+            "0".to_string()
+        } else {
+            ((r.saldo_sekarang - r.modal_aktif) / r.modal_aktif * Decimal::from(100))
+                .round_dp(2)
+                .normalize()
+                .to_string()
+        },
     }
 }
 
@@ -1289,6 +1375,34 @@ mod tes_fase3 {
         assert_eq!(g.first().unwrap().modal_aktif, "1000000");
         assert_eq!(g.last().unwrap().saldo, "1000400");
         assert_eq!(g.last().unwrap().modal_aktif, "1000020");
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn data_layar_ui_setelan_hasil_persen_dan_posisi() {
+        let (db, mut simpan) = siapkan("ui");
+        // belum ada posisi terbuka (ICNT sudah terjual), setelan terbaca apa adanya
+        assert!(daftar_posisi(db.clone()).unwrap().is_empty());
+        let s = baca_setelan(db.clone()).unwrap();
+        assert_eq!(s.tp_persen.as_deref(), Some("1"));
+        assert_eq!(s.sl_persen.as_deref(), Some("1"));
+
+        // hasil 380 dari modal aktif 1.000.000 = 0,038% -> 0,04
+        assert_eq!(hitung_target(db.clone()).unwrap().hasil_persen, "0.04");
+
+        // beli ICNT lagi: posisi terbuka dengan angka yang sama seperti contoh notifikasi
+        simpan.simpan_banyak(&[trade("t3", "o3", true, "65393", "133", SABTU + 11 * JAM)]).unwrap();
+        let p = daftar_posisi(db.clone()).unwrap();
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0].nama, "ICNT");
+        assert_eq!(p[0].koin, "16,35667833");
+        assert_eq!(p[0].total_modal, "65.526");
+        assert_eq!(p[0].modal_efektif, "4.006");
+        assert_eq!(p[0].harga_tp, "4.046");
+        assert_eq!(p[0].harga_sl, "3.966");
+        assert_eq!(p[0].tp_persen, "1");
+        assert_eq!(p[0].estimasi_tp_persen, "+0,69%");
+        assert_eq!(p[0].estimasi_sl_persen, "−1,31%");
         let _ = std::fs::remove_file(&db);
     }
 }

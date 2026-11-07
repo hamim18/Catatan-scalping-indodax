@@ -2,7 +2,6 @@ package id.catatanscalping.app
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
@@ -14,19 +13,19 @@ import uniffi.scalping_ffi.TitikGrafikUi
  * berundak karena hanya berubah oleh setoran/koreksi). Jarak antara keduanya adalah profit.
  * Hanya menggambar; angka sudah dihitung di Rust. Nilai diubah ke Double HANYA untuk koordinat gambar.
  */
-class GrafikView(ctx: Context) : View(ctx) {
+class GrafikView(ctx: Context, t: Tema) : View(ctx) {
     private var titik: List<TitikGrafikUi> = emptyList()
 
     private val garisSaldo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#4F8CFF"); style = Paint.Style.STROKE; strokeWidth = dp(3f)
+        color = t.accent; style = Paint.Style.STROKE; strokeWidth = dp(3f)
         strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND
     }
     private val garisModal = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#9AA5B1"); style = Paint.Style.STROKE; strokeWidth = dp(2f)
+        color = t.mute; style = Paint.Style.STROKE; strokeWidth = dp(2f)
         pathEffect = DashPathEffect(floatArrayOf(dp(6f), dp(5f)), 0f)
     }
     private val teksLabel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#9AA5B1"); textSize = dp(11f)
+        color = t.mute; textSize = dp(11f)
     }
 
     private fun dp(n: Float) = n * resources.displayMetrics.density
@@ -37,7 +36,7 @@ class GrafikView(ctx: Context) : View(ctx) {
     }
 
     override fun onMeasure(lebarSpec: Int, tinggiSpec: Int) {
-        setMeasuredDimension(getDefaultSize(suggestedMinimumWidth, lebarSpec), dp(180f).toInt())
+        setMeasuredDimension(getDefaultSize(suggestedMinimumWidth, lebarSpec), dp(150f).toInt())
     }
 
     override fun onDraw(c: Canvas) {
@@ -73,6 +72,7 @@ class GrafikView(ctx: Context) : View(ctx) {
             pm.lineTo(x(i), y(modal[i - 1]))
             pm.lineTo(x(i), y(modal[i]))
         }
+        if (titik.size == 1) pm.lineTo(kanan, y(modal[0]))
         c.drawPath(pm, garisModal)
 
         val ps = Path()
@@ -81,7 +81,7 @@ class GrafikView(ctx: Context) : View(ctx) {
         if (titik.size == 1) ps.lineTo(kanan, y(saldo[0]))
         c.drawPath(ps, garisSaldo)
 
-        c.drawText("Rp ${maks0.toLong()}", kiri, dp(12f), teksLabel)
-        c.drawText("Rp ${min0.toLong()}", kiri, height - dp(1f), teksLabel)
+        c.drawText(Format.rupiah(maks0.toLong().toString()), kiri, dp(12f), teksLabel)
+        c.drawText(Format.rupiah(min0.toLong().toString()), kiri, height - dp(1f), teksLabel)
     }
 }
