@@ -75,7 +75,7 @@ object Cadangan {
 
     /**
      * Impor, dua langkah: (1) salin berkas ke cache dan periksa, (2) setelah pengguna setuju,
-     * ganti database. Pemanggil harus memastikan pantauan sudah mati.
+     * ganti database. Pemanggil harus memastikan pantauan sudah mati; sinkron yang sedang berjalan dicek ulang (T6.6).
      */
     fun impor(a: MainActivity, uri: Uri, selesai: (pesan: String, berhasil: Boolean) -> Unit) {
         Latar.baca({
@@ -112,12 +112,25 @@ object Cadangan {
                     "Kunci API tidak berubah."
             )
             .setPositiveButton("Ganti") { _, _ ->
+                // T6.6: dialog bisa terbuka lama; periksa lagi tepat sebelum database diganti.
+                if (!Sinkron.mulaiImpor()) {
+                    tmp.delete()
+                    selesai("Impor dibatalkan: sinkron sedang berjalan. Coba lagi setelah selesai.", false)
+                    return@setPositiveButton
+                }
+                if (Sinkron.pantauAktif(a)) {
+                    Sinkron.selesaiImpor()
+                    tmp.delete()
+                    selesai("Impor dibatalkan: pantauan menyala. Hentikan pantauan dulu.", false)
+                    return@setPositiveButton
+                }
                 val db = a.pathDb
                 Latar.baca({
                     try {
                         pulihkanCadangan(db, tmp.path)
                     } finally {
                         tmp.delete()
+                        Sinkron.selesaiImpor()
                     }
                 }) { r ->
                     r.onSuccess { selesai("Impor selesai: ${ringkas(it)}.", true) }

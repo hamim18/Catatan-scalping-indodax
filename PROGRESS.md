@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 8 November 2026 (T6.4 dan T6.5 lulus tes dan uji HP; Fase 6 selesai; lihat 1s dan 1t)
-Status: **Fase 6 SELESAI (8 Nov 2026, lihat 1r, 1s, 1t): hanya ada satu angka saldo, yaitu TOTAL ASET nilai pasar (IDR sebagai "Buying power" + koin × harga terakhir). Target dan grafik dihitung dari profit trade yang sudah ditutup; kerugian koin yang sedang dipegang tampil terpisah sebagai floating P/L. T6.1 sampai T6.5 SUDAH lulus tes dan uji HP (tes terakhir: core 99, ffi 24). Saldo versi aplikasi, snapshot periode, modal aktif, setoran bersih, koreksi saldo, dan sisa kode grafik dua garis sudah dihapus.** Semua fase rencana selesai dan lolos uji (Fase 0 sampai 6, Fase UI U1 sampai U5, T4.1, T5.1, T5.2). Tersisa pekerjaan opsional saja: uji withdraw nyata, cegah impor cadangan saat sinkron berjalan, dan ID order di notifikasi beli (lihat bagian 3).
+Terakhir diperbarui: 8 November 2026 (T6.6 lulus uji HP: impor cadangan dicegah saat sinkron berjalan; Fase 6 selesai; lihat 1u)
+Status: **Fase 6 SELESAI (8 Nov 2026, lihat 1r, 1s, 1t): hanya ada satu angka saldo, yaitu TOTAL ASET nilai pasar (IDR sebagai "Buying power" + koin × harga terakhir). Target dan grafik dihitung dari profit trade yang sudah ditutup; kerugian koin yang sedang dipegang tampil terpisah sebagai floating P/L. T6.1 sampai T6.5 SUDAH lulus tes dan uji HP (tes terakhir: core 99, ffi 24); T6.6 (celah impor cadangan, hanya Kotlin) lulus uji HP. Saldo versi aplikasi, snapshot periode, modal aktif, setoran bersih, koreksi saldo, dan sisa kode grafik dua garis sudah dihapus.** Semua fase rencana selesai dan lolos uji (Fase 0 sampai 6, Fase UI U1 sampai U5, T4.1, T5.1, T5.2). Tersisa pekerjaan opsional saja: uji withdraw nyata dan ID order di notifikasi beli (lihat bagian 3).
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -50,6 +50,7 @@ Status: **Fase 6 SELESAI (8 Nov 2026, lihat 1r, 1s, 1t): hanya ada satu angka sa
 | T6.3 | Floating P/L: FFI `ambil_harga_terakhir` (jaringan) dan `floating_posisi` (database), harga sekarang sebagai penanda di tangga layar Posisi (merah bila di bawah SL), satu baris "Floating" di Beranda. Floating dihitung SEBELUM fee jual dan tidak masuk target/grafik. Lihat 1r | Lulus: `cargo test` (ffi 25) dan uji HP sesuai kriteria (dilaporkan pengguna 8 Nov 2026) |
 | T6.4 | Pembersihan saldo lama: dihapus snapshot periode, modal aktif, setoran bersih, koreksi saldo (`DataSaldo` dan turunannya, fungsi FFI terkait, 13+3 tes lama); deposit/withdraw jadi riwayat di layar Riwayat; notifikasi jual memakai total aset terakhir yang disimpan Beranda (Opsi A); PRD v1.6. Lihat 1s | Lulus: `cargo test` (core 99, ffi 24) dan uji HP sesuai kriteria (dilaporkan pengguna 8 Nov 2026) |
 | T6.5 | Pembersihan kode grafik lama: `GrafikView.setData` (dua garis) dan record `TitikGrafikUi` di FFI dihapus. Hanya `setProfit` yang tersisa. Lihat 1t | Lulus: `cargo test` (core 99, ffi 24, jumlah tidak berubah) dan uji HP sesuai kriteria (dilaporkan pengguna 8 Nov 2026) |
+| T6.6 | Cegah impor cadangan saat sinkron berjalan: penanda `Sinkron.imporBerjalan`, `sedangSinkron()`, `mulaiImpor()/selesaiImpor()`; sinkron trade dan arus kas menolak mulai saat impor; impor dicek ulang saat tombol "Ganti" ditekan. Hanya Kotlin (3 berkas). Lihat 1u | Lulus: build berhasil dan uji HP sesuai kriteria (dilaporkan pengguna 8 Nov 2026). Tes Rust tidak berubah (core 99, ffi 24) |
 | T5.1 | Pantauan menyala otomatis setelah HP restart: `PenerimaBoot.kt` (BOOT_COMPLETED), izin `RECEIVE_BOOT_COMPLETED` dan `<receiver>` di `AndroidManifest.xml`. Hanya bila preferensi `aktif` = true (pantauan terakhir menyala), kunci ada, dan pernah sinkron; bila tidak, penanda dimatikan dan alasan dicatat di log | Selesai (build, tes, uji HP lulus 8 Nov) |
 
 ### 1b. Kesimpulan Fase 0 (masih dipakai)
@@ -303,7 +304,7 @@ Status: **Fase 6 SELESAI (8 Nov 2026, lihat 1r, 1s, 1t): hanya ada satu angka sa
 - Kunci API TIDAK ikut dicadangkan (database tidak menyimpannya). Di HP baru, setelah impor: masukkan kunci, jalankan "Sinkron sekarang" satu kali, baru mulai pantauan (penanda sinkron pertama ada di preferensi aplikasi, bukan di database).
 
 **Catatan dan batasan**
-- Impor hanya mengecek pantauan (harus mati); belum mencegah impor saat sinkron manual atau sinkron otomatis sedang berjalan. Hindari impor pada saat itu.
+- Impor mengecek pantauan (harus mati). Sejak T6.6 impor juga ditolak saat sinkron manual atau otomatis berjalan (lihat 1u).
 - Berkas `.sebelum-impor` disimpan di folder privat aplikasi dan ditimpa pada impor berikutnya (hanya satu salinan terakhir).
 - Cadangan manual saja; belum ada cadangan terjadwal.
 
@@ -530,11 +531,25 @@ Hasil harus kosong (selain `TitikGrafikUi`/`TitikGrafik` di `GrafikView.kt` yang
 - `cargo test -p scalping-core`: 99 lulus. `cargo test -p scalping-ffi`: 24 lulus. Jumlah tes tidak berubah (record itu tidak punya tes).
 - Build lewat `tools/bangun_android.sh` berhasil tanpa error. Uji HP: grafik Beranda sama seperti sebelumnya (satu garis profit, garis putus-putus di Rp 0).
 
+### 1u. T6.6: cegah impor cadangan saat sinkron berjalan (detail; LULUS uji HP, dilaporkan pengguna 8 Nov 2026)
+
+**Latar:** celah dari U5. Impor hanya mengecek pantauan mati, padahal sinkron manual atau otomatis bisa sedang menulis ke database yang akan diganti. Dialog konfirmasi juga bisa terbuka lama sehingga sinkron otomatis sempat menyelip sebelum tombol "Ganti".
+
+**Yang diubah (3 berkas Kotlin; tanpa perubahan Rust, FFI, atau manifest)**
+- `Sinkron.kt`: `imporBerjalan` (volatile), `sedangSinkron()` (trade atau arus kas berjalan), `mulaiImpor()` (pemeriksaan dan penandaan satu kesatuan lewat `synchronized`; gagal bila sinkron atau impor lain berjalan), `selesaiImpor()`. `bolehSinkron`, `sinkronTrade`, dan `jalankanArusKas` menolak mulai saat `imporBerjalan`; pemeriksaan dan penandaan `tradeBerjalan`/`arusKasBerjalan` kini juga di dalam `synchronized`.
+- `Cadangan.kt`: saat "Ganti" ditekan, `mulaiImpor()` dipanggil dan `pantauAktif` dicek lagi; bila gagal, berkas sementara dihapus dan pesan penolakan ditampilkan. Penanda dilepas di blok `finally` setelah `pulihkanCadangan`, jadi tidak macet bila impor gagal.
+- `LayarSetelan.kt`: tombol Impor nonaktif saat pantauan menyala, sinkron berjalan, atau impor berjalan; pilih berkas saat sinkron berjalan ditolak ("Tunggu sinkron selesai dulu sebelum impor."); "Mulai pantauan" dan "Sinkron deposit/withdraw" menampilkan pesan bila impor berjalan; `segarkanStatus()` dipanggil setelah impor selesai.
+
+**Hasil uji HP (lulus, dilaporkan pengguna 8 Nov 2026):** sinkron manual dan arus kas normal; tombol Impor nonaktif selama sinkron lalu aktif lagi; impor normal saat pantauan mati dan tidak ada sinkron; tombol Impor nonaktif saat pantauan menyala; ekspor tetap normal.
+
+**Catatan dan batasan**
+- Thread arus kas di `LayananLatar.kt` (`pekerjaArusKas`) tidak tercatat di penanda ini (berkasnya belum diperiksa). Risiko kecil karena impor mensyaratkan pantauan mati. Bila ingin ditutup rapat, periksa `LayananLatar.kt`.
+- Skenario "sinkron otomatis menyelip saat dialog terbuka" sulit dipancing di HP (sinkron otomatis hanya jalan bila pantauan mati dan jeda minimal 60 detik); logikanya dijaga oleh pemeriksaan ulang di tombol "Ganti".
+
 ### Belum terselesaikan atau dikenal
 | Masalah | Penyebab / dugaan | Status |
 | --- | --- | --- |
 | Layar menampilkan deposit "saldo +Rp 4.340" padahal kode sumber benar (T5.2) | Build Rust memakai sumber lama (Cargo tidak mengompilasi ulang file yang diganti) | TERJAWAB (8 Nov 2026): selesai setelah `touch` + `cargo clean` + build ulang; lihat 1q |
-| Impor cadangan saat sinkron manual atau otomatis berjalan tidak dicegah | Impor hanya mengecek pantauan mati | Dikenal (U5); jangan impor saat sinkron berjalan |
 | `tradeId` event WebSocket vs REST belum dibandingkan | Belum ada data pembanding | Tidak menghalangi (anti-dobel dari REST) |
 | Kemungkinan "database is locked" saat dua koneksi SQLite aktif bersamaan | `busy_timeout` 5 detik ada; layar kini membaca lewat antrean satu thread, tulis oleh pantau tetap bisa bersamaan | Pantau saat uji lanjutan |
 | Pantauan tidak menyala sendiri setelah HP reboot | Belum ada penerima BOOT_COMPLETED | Selesai (T5.1, lulus uji HP 8 Nov 2026) |
@@ -573,8 +588,8 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 | T6.4 | Pembersihan snapshot/modal aktif/setoran/koreksi saldo; deposit-withdraw jadi riwayat saja; PRD v1.6 | SELESAI, lulus tes (core 99, ffi 24) dan uji HP 8 Nov 2026 (lihat 1s) |
 | T6.5 | Hapus `GrafikView.setData` dan `TitikGrafikUi` | SELESAI, lulus tes (core 99, ffi 24) dan uji HP 8 Nov 2026 (lihat 1t) |
 | T5.2 | Perbaiki logika deposit | SELESAI, lulus uji HP 8 Nov 2026 (lihat 1p dan 1q) |
-| Opsional | Uji withdraw nyata saat saldo cukup (bentuk baris dan mode fee) | Menunggu saldo di atas batas minimum penarikan |
-| Opsional | Cegah impor cadangan saat sinkron manual/otomatis sedang berjalan | Celah kecil (U5); saat ini hanya pantauan yang dicek |
+| Opsional | Uji withdraw nyata saat saldo cukup (bentuk baris dan mode fee) | Menunggu saldo di atas batas minimum penarikan (8 Nov 2026: pengguna menunda uji karena fee penarikan besar, sekitar 11 ribu dari 100 ribu) |
+| T6.6 | Cegah impor cadangan saat sinkron manual/otomatis sedang berjalan | SELESAI, lulus uji HP 8 Nov 2026 (lihat 1u) |
 | Opsional | ID order di notifikasi beli (dua beli koin sama yang selesai nyaris bersamaan) | Butuh pengecekan ID order event WebSocket vs REST lebih dulu |
 | Opsional | Verifikasi mode fee deposit saat ada deposit nyata pertama | Menunggu deposit nyata |
 
@@ -590,6 +605,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 
 ### Keputusan yang sudah terjawab
 - T6.4 dan T6.5 lulus tes (core 99, ffi 24) dan uji HP sesuai kriteria; Fase 6 selesai (8 Nov 2026). `GrafikView.setData` dan `TitikGrafikUi` dihapus.
+- T6.6 lulus uji HP (8 Nov 2026): impor cadangan ditolak saat sinkron trade, sinkron arus kas, atau pantauan berjalan; sinkron tidak bisa mulai selama impor berjalan.
 - Notifikasi jual memakai total aset terakhir yang disimpan Beranda (Opsi A, 8 Nov 2026); bila belum ada, hanya rupiah profit. Saldo versi aplikasi, snapshot periode, modal aktif, setoran bersih, dan koreksi saldo dihapus di T6.4 (tabel lama dibiarkan).
 - Hanya satu angka saldo: Total aset nilai pasar, IDR berlabel "Buying power" (8 Nov 2026, lihat 1r). Menggantikan keputusan awal "saldo/snapshot/target/grafik dari total aset".
 - T6.1 lulus tes Rust dan uji HP (8 Nov 2026).
@@ -617,7 +633,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - T2.5, Fase 3, dan koreksi saldo lolos uji HP 7 Nov 2026.
 - Koreksi saldo ditempatkan di layar Riwayat, deposit/withdraw dan mode fee di layar Setelan (U1/U4).
 - Layar asli U1 sampai U4 lolos uji HP, semua sesuai kriteria (8 Nov 2026).
-- U5: salinan database lama otomatis disimpan sebagai `.sebelum-impor`; kunci API tidak dicadangkan; impor wajib dengan pantauan mati (usulan, lolos uji HP).
+- U5: salinan database lama otomatis disimpan sebagai `.sebelum-impor`; kunci API tidak dicadangkan; impor wajib dengan pantauan mati (usulan, lolos uji HP); sejak T6.6 juga wajib tanpa sinkron berjalan.
 
 ### Usulan T5.2 (dikerjakan 8 Nov 2026 sesuai usulan ini; hasil di 1p; lulus uji HP, lihat 1q)
 - Deposit: selalu `+amount`; `totalFee` hanya disimpan dan ditampilkan sebagai informasi di baris deposit. Kotak "Nominal sudah bersih" tidak lagi memengaruhi deposit.
@@ -639,7 +655,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - **Fase 4**: selesai (T4.1)
 - **Fase UI**: selesai (U1 sampai U5, lulus uji HP 8 Nov 2026)
 - **Fase 5 (penyempurnaan)**: selesai. T5.1 lulus uji HP (8 Nov 2026); T5.2 (logika deposit) lulus uji HP (8 Nov 2026)
-- **Fase 6 (Total aset tunggal)**: selesai. T6.1 sampai T6.5 lulus tes dan uji HP (8 Nov 2026)
+- **Fase 6 (Total aset tunggal)**: selesai. T6.1 sampai T6.5 lulus tes dan uji HP (8 Nov 2026); T6.6 (celah impor) lulus uji HP (8 Nov 2026)
 
 ---
 
@@ -749,13 +765,13 @@ catatan-scalping/
 │           │   ├── LayarPosisi.kt       (U3: posisi terbuka, tangga SL/modal/TP, tanpa tombol Jual; T6.3: harga sekarang, penanda di tangga, floating per posisi)
 │           │   ├── LayarRiwayat.kt      (U4: ringkasan, daftar trade, statistik; T6.4: riwayat deposit/withdraw, koreksi saldo dihapus)
 │           │   ├── LayarSetelan.kt      (U1: TP/SL, target, kunci, pantauan, sinkron, arus kas, log; U5: kartu Cadangan data)
-│           │   ├── Cadangan.kt          (U5: ekspor/impor lewat pemilih berkas sistem)
+│           │   ├── Cadangan.kt          (U5: ekspor/impor lewat pemilih berkas sistem; T6.6: cek ulang sinkron/pantauan sebelum database diganti)
 │           │   ├── PenerimaBoot.kt      (T5.1: menyalakan pantauan lagi setelah HP restart)
 │           │   ├── Tema.kt              (U1: warna terang/gelap sesuai prototype)
 │           │   ├── Format.kt            (U1: titik ribuan, koma desimal, tanda, waktu WIB)
 │           │   ├── Komponen.kt          (U1: kartu, tombol, kolom isian, chip, bar)
 │           │   ├── Latar.kt             (U1: antrean baca database dan pool jaringan)
-│           │   ├── Sinkron.kt           (U1: sinkron trade dan arus kas, manual dan otomatis)
+│           │   ├── Sinkron.kt           (U1: sinkron trade dan arus kas, manual dan otomatis; T6.6: penanda imporBerjalan, mulaiImpor/selesaiImpor)
 │           │   ├── GrafikView.kt        (T3.2; U2: bertema; T6.2: mode profit via setProfit; T6.5: hanya grafik profit, setData dihapus)
 │           │   ├── LayananLatar.kt      (T1.4c: foreground service + PantauBersama; T1.5: saluran "Order terisi" dan pekerja notifikasi)
 │           │   └── KunciAman.kt         (simpan key terenkripsi, Android Keystore)
@@ -777,12 +793,13 @@ catatan-scalping/
 ```
 
 ### Rencana
-Semua task pada rencana selesai, termasuk Fase 6 (T6.1 sampai T6.5); PRD v1.6 selesai. Tersisa hanya yang opsional: uji withdraw nyata saat saldo di atas batas minimum penarikan (bentuk baris dan mode fee withdraw), cegah impor cadangan saat sinkron berjalan, dan ID order di notifikasi beli (lihat bagian 3). Struktur di atas sudah mencakup semua file; tidak ada file baru yang direncanakan.
+Semua task pada rencana selesai, termasuk Fase 6 (T6.1 sampai T6.6); PRD v1.6 selesai. Tersisa hanya yang opsional: uji withdraw nyata saat saldo di atas batas minimum penarikan (bentuk baris dan mode fee withdraw; pengguna menunda karena fee penarikan besar, 8 Nov 2026) dan ID order di notifikasi beli (lihat bagian 3). Struktur di atas sudah mencakup semua file; tidak ada file baru yang direncanakan.
 
 ---
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T6.6: `T6.6: cegah impor cadangan saat sinkron berjalan` (hash: ...) (commit bersama PROGRESS ini; isi hash dari `git log --oneline`)
 - T6.5: `T6.5: hapus GrafikView.setData dan TitikGrafikUi` (hash: 3db3e8e)
 - T6.4: `T6.4: pembersihan saldo lama` (hash: 483cfc8)
 - Dokumen: `Dokumen: PRD v1.6 dan PROGRESS (Fase 6, T6.4)` (hash: ...)

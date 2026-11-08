@@ -7,13 +7,15 @@ import uniffi.scalping_ffi.sinkronSekarang
 /**
  * Sinkron manual dan otomatis (FR-10), dipakai bersama oleh layar. Logikanya sama dengan layar uji lama:
  * sinkron trade hanya bila pantauan mati (cegah dua koneksi SQLite menulis bersamaan), arus kas
- * boleh kapan saja. Semua hitungan tetap di Rust; di sini hanya urutan pemanggilan dan pesan.
+ * boleh kapan saja. T6.6: tidak ada sinkron yang boleh mulai saat impor cadangan berjalan. Semua hitungan tetap di Rust; di sini hanya urutan pemanggilan dan pesan.
  */
 object Sinkron {
     class Hasil(val berhasil: Boolean, val pesan: String)
 
     @Volatile var tradeBerjalan = false
     @Volatile var arusKasBerjalan = false
+    /** T6.6: true selama impor cadangan mengganti database. Sinkron dan pantauan tidak boleh mulai. */
+    @Volatile var imporBerjalan = false
     @Volatile private var terakhirOtomatisMs = 0L
     @Volatile private var terakhirArusKasMs = 0L
 
@@ -31,7 +33,23 @@ object Sinkron {
     fun pernahSinkron(ctx: Context): Boolean = prefs(ctx).getBoolean(PantauBersama.PREF_PERNAH_SINKRON, false)
 
     fun bolehSinkron(ctx: Context): Boolean =
-        KunciAman(ctx).ujungKey() != null && !pantauAktif(ctx) && !tradeBerjalan
+        KunciAman(ctx).ujungKey() != null && !pantauAktif(ctx) && !tradeBerjalan && !imporBerjalan
+
+    /** T6.6: true bila sinkron trade atau arus kas sedang menulis ke database. */
+    fun sedangSinkron(): Boolean = tradeBerjalan || arusKasBerjalan
+
+    /**
+     * T6.6: tandai impor dimulai. Gagal (false) bila sinkron atau impor lain sedang berjalan.
+     * Pemeriksaan dan penandaan dilakukan satu kesatuan supaya sinkron tidak menyelip di antaranya.
+     */
+    fun mulaiImpor(): Boolean = synchronized(this) {
+        if (tradeBerjalan || arusKasBerjalan || imporBerjalan) false
+        else { imporBerjalan = true; true }
+    }
+
+    fun selesaiImpor() {
+        imporBerjalan = false
+    }
 
     /**
      * Sinkron trade (dan arus kas). Mengembalikan false bila tidak bisa dimulai (kunci tidak ada
@@ -40,8 +58,10 @@ object Sinkron {
     fun sinkronTrade(ctx: Context, otomatis: Boolean, selesai: (Hasil) -> Unit): Boolean {
         val app = ctx.applicationContext
         val kunci = KunciAman(app).ambil() ?: return false
-        if (tradeBerjalan) return false
-        tradeBerjalan = true
+        synchronized(this) {
+            if (tradeBerjalan || imporBerjalan) return false
+            tradeBerjalan = true
+        }
         val db = pathDb(app)
         Latar.jaringan.execute {
             val hasil = try {
@@ -81,8 +101,10 @@ object Sinkron {
     fun jalankanArusKas(ctx: Context, selesai: (Hasil) -> Unit): Boolean {
         val app = ctx.applicationContext
         val kunci = KunciAman(app).ambil() ?: return false
-        if (arusKasBerjalan) return false
-        arusKasBerjalan = true
+        synchronized(this) {
+            if (arusKasBerjalan || imporBerjalan) return false
+            arusKasBerjalan = true
+        }
         val db = pathDb(app)
         Latar.jaringan.execute {
             val hasil = try {

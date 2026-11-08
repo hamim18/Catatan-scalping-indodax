@@ -224,7 +224,7 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         tombolTes.aktif(punyaKunci)
         tombolHapus.aktif(punyaKunci)
         tombolArusKas.aktif(punyaKunci && !Sinkron.arusKasBerjalan)
-        tombolImpor.aktif(!pantau)
+        tombolImpor.aktif(!pantau && !Sinkron.sedangSinkron() && !Sinkron.imporBerjalan)
         teksLog.text = PantauBersama.logTeks()
     }
 
@@ -281,6 +281,10 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
             infoCadangan.text = "Hentikan pantauan dulu sebelum impor."
             return
         }
+        if (Sinkron.sedangSinkron() || Sinkron.imporBerjalan) {
+            infoCadangan.text = "Tunggu sinkron selesai dulu sebelum impor."
+            return
+        }
         infoCadangan.text = "Memeriksa berkas..."
         Cadangan.impor(a, uri) { pesan, berhasil ->
             infoCadangan.text = pesan
@@ -288,6 +292,7 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
                 muatNilaiTersimpan()
                 a.dataBerubah()
             }
+            segarkanStatus()
         }
     }
 
@@ -317,6 +322,8 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         if (mulai) {
             infoKoneksi.text = "Menarik riwayat deposit/withdraw..."
             segarkanStatus()
+        } else if (Sinkron.imporBerjalan) {
+            infoKoneksi.text = "Impor data sedang berjalan. Coba lagi sebentar."
         } else if (!Sinkron.arusKasBerjalan) {
             infoKoneksi.text = "Kunci tersimpan tidak bisa dibuka. Masukkan ulang."
         }
@@ -330,6 +337,10 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
             LayananLatar.henti(a)
             infoKoneksi.text = "Pantauan dihentikan."
             segarkanStatus()
+            return
+        }
+        if (Sinkron.imporBerjalan) {
+            infoKoneksi.text = "Impor data sedang berjalan. Mulai pantauan setelah selesai."
             return
         }
         if (a.kunci.ambil() == null) {
