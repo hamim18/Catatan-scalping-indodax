@@ -13,9 +13,8 @@ import uniffi.scalping_ffi.riwayatTertutup
 import uniffi.scalping_ffi.statistikTrading
 
 /**
- * Riwayat (prototype): ringkasan hari ini dan daftar trade tertutup. Ditambah statistik (T4.1)
- * dan riwayat deposit/withdraw IDR (T6.4: hanya riwayat, tidak memengaruhi saldo, target, atau
- * grafik). Hanya tampilan; semua angka dari Rust.
+ * Riwayat (prototype; disederhanakan di T7.2): ringkasan hari ini, daftar trade tertutup, statistik (T4.1),
+ * dan riwayat deposit/withdraw IDR di bagian bawah (hanya riwayat). Hanya tampilan; semua angka dari Rust.
  */
 class LayarRiwayat(a: MainActivity) : Layar(a) {
     private var jumlahTampil = 30
@@ -31,7 +30,7 @@ class LayarRiwayat(a: MainActivity) : Layar(a) {
     private lateinit var tombolLagiArus: Button
 
     init {
-        header("Riwayat", ui.Chip().apply { atur("Hari ini", null) }.root)
+        header("Riwayat")
 
         isi.tambah(kartuRingkasan, bawah = 12)
         isi.tambah(daftar)
@@ -52,10 +51,6 @@ class LayarRiwayat(a: MainActivity) : Layar(a) {
 
         // --- Deposit dan withdraw (T6.4: hanya riwayat) ---
         isi.tambah(ui.judulBagian("Deposit dan withdraw"), atas = 22, bawah = 10)
-        isi.tambah(
-            ui.mute("Hanya riwayat. Tidak memengaruhi total aset, target, atau grafik. Disinkronkan dari Setelan.", 12f),
-            bawah = 10,
-        )
         isi.tambah(daftarArus)
         tombolLagiArus = ui.tombol("Tampilkan lebih banyak") { jumlahArus += 10; muatArus() }
         isi.tambah(tombolLagiArus, atas = 12)
@@ -100,10 +95,6 @@ class LayarRiwayat(a: MainActivity) : Layar(a) {
         kartuRingkasan.tambah(
             ui.mute("${r.hariIniJumlah} trade · ${r.hariIniUntung} untung · fee ${Format.rupiah(hari.totalFee)}"),
             atas = 4,
-        )
-        kartuRingkasan.tambah(
-            ui.mute("Semua: ${r.totalTrade} trade · hasil ${Format.untung(r.totalProfit)}", 12f),
-            atas = 2,
         )
 
         daftar.removeAllViews()
@@ -167,14 +158,18 @@ class LayarRiwayat(a: MainActivity) : Layar(a) {
         kartuStatistik.removeAllViews()
         kartuStatistik.tambah(ui.teks("$judul · ${s.jumlah} trade", 14f, tebal = true))
         val baris = listOf(
-            barisStat("Untung · rugi · impas", "${s.untung} · ${s.rugi} · ${s.impas}"),
-            barisStat("Win rate", Format.persen(s.winRate)),
+            barisStat(
+                "Win rate",
+                Format.persen(s.winRate) + "  (${s.untung} untung · ${s.rugi} rugi" +
+                    (if (s.impas > 0u) " · ${s.impas} impas" else "") + ")",
+            ),
             barisStat("Rata-rata untung", Format.untung(s.rataUntung), t.warnaTanda(s.rataUntung)),
             barisStat("Rata-rata rugi", Format.untung(s.rataRugi), t.warnaTanda(s.rataRugi)),
             barisStat("Hasil bersih", Format.untung(s.hasilBersih), t.warnaTanda(s.hasilBersih)),
-            barisStat("Total fee", Format.rupiah(s.totalFee)),
-            barisStat("Profit kotor", Format.rupiah(s.profitKotor)),
-            barisStat("Profit termakan fee", Format.persen(s.persenFee)),
+            barisStat(
+                "Fee",
+                Format.rupiah(s.totalFee) + (if (s.persenFee != "-") " (${Format.persen(s.persenFee)} dari profit)" else ""),
+            ),
         )
         for (b in baris) kartuStatistik.tambah(b, atas = 8)
     }
@@ -214,12 +209,7 @@ class LayarRiwayat(a: MainActivity) : Layar(a) {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.END
             tambah(
-                ui.teks((if (deposit) "Masuk " else "Keluar ") + Format.rupiah(x.jumlah), 15f, t.ink, tebal = true),
-                lebar = WRAP_CONTENT,
-            )
-            tambah(
-                ui.mute("fee ${Format.rupiah(x.biaya)}" + if (deposit) " (sudah dipotong)" else ""),
-                atas = 4,
+                ui.teks(Format.rupiah(x.jumlah), 15f, t.ink, tebal = true),
                 lebar = WRAP_CONTENT,
             )
         }

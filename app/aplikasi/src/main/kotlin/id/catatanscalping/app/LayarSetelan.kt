@@ -18,20 +18,20 @@ import uniffi.scalping_ffi.StatusKoneksi
 import uniffi.scalping_ffi.bacaSetelan
 import uniffi.scalping_ffi.bacaTarget
 import uniffi.scalping_ffi.cekKoneksi
-import uniffi.scalping_ffi.daftarArusKas
 import uniffi.scalping_ffi.simpanSetelan
 import uniffi.scalping_ffi.simpanTarget
-import uniffi.scalping_ffi.versiCore
 
 /**
- * Layar Setelan (prototype): TP/SL per trade, target periode, koneksi Indodax (kunci, pantauan realtime,
- * sinkron), deposit/withdraw. Hanya tampilan; validasi dan penyimpanan dilakukan Rust.
+ * Layar Setelan (prototype; disederhanakan di T7.2): TP/SL per trade, target periode, koneksi Indodax
+ * (kunci, pantauan realtime, sinkron), cadangan data, log (tersembunyi sampai diketuk).
+ * Sinkron deposit/withdraw berjalan otomatis (setelah sinkron trade dan saat pantauan tersambung).
+ * Hanya tampilan; validasi dan penyimpanan dilakukan Rust.
  */
 class LayarSetelan(a: MainActivity) : Layar(a) {
     private val isiTp = ui.input("contoh 1").apply { setText("1") }
     private val isiSl = ui.input("contoh 1").apply { setText("1") }
-    private val isiHarian = ui.input("contoh 1,5")
-    private val isiMingguan = ui.input("contoh 5")
+    private val isiHarian = ui.input("kosong = tanpa target")
+    private val isiMingguan = ui.input("kosong = tanpa target")
     private val infoSimpan = ui.mute("")
 
     private val nilaiKunci = ui.teks("", 14f, tebal = true)
@@ -50,8 +50,6 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
     private lateinit var tombolHapus: Button
     private var formTerbuka = false
 
-    private val infoArusKas = ui.mono("")
-    private lateinit var tombolArusKas: Button
     private lateinit var tombolEkspor: Button
     private lateinit var tombolImpor: Button
     private val infoCadangan = ui.mute("", 12f)
@@ -67,10 +65,6 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         kTrade.tambah(barisPersen(isiTp), atas = 6)
         kTrade.tambah(ui.teks("Stop loss (SL)", 13f, tebal = true), atas = 14)
         kTrade.tambah(barisPersen(isiSl), atas = 6)
-        kTrade.tambah(
-            ui.mute("TP dan SL dihitung dari modal efektif, yaitu harga beli ditambah fee beli. Perubahan berlaku untuk posisi yang dibuka sesudahnya.", 12f),
-            atas = 10,
-        )
         isi.tambah(kTrade)
 
         // --- Target periode ---
@@ -80,10 +74,6 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         kPeriode.tambah(barisPersen(isiHarian), atas = 6)
         kPeriode.tambah(ui.teks("Target mingguan", 13f, tebal = true), atas = 14)
         kPeriode.tambah(barisPersen(isiMingguan), atas = 6)
-        kPeriode.tambah(
-            ui.mute("Persen dari saldo awal periode. Hari mulai 00.00 WIB, minggu mulai Senin. Kosongkan keduanya bila belum ingin memakai target.", 12f),
-            atas = 10,
-        )
         isi.tambah(kPeriode, atas = 12)
 
         isi.tambah(ui.tombol("Simpan setelan", primer = true) { simpanSemua() }, atas = 12)
@@ -92,8 +82,8 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         // --- Koneksi Indodax ---
         val kKoneksi = ui.kartu()
         kKoneksi.tambah(ui.teks("Koneksi Indodax", 14f, tebal = true))
-        kKoneksi.tambah(ui.baris(ui.teks("Kunci API (izin baca saja)", 14f), nilaiKunci), atas = 10)
-        kKoneksi.tambah(ui.baris(ui.teks("Pantau order realtime", 14f), nilaiPantau), atas = 8)
+        kKoneksi.tambah(ui.baris(ui.teks("Kunci API", 14f), nilaiKunci), atas = 10)
+        kKoneksi.tambah(ui.baris(ui.teks("Pantauan order", 14f), nilaiPantau), atas = 8)
         kKoneksi.tambah(statusPantau, atas = 4)
 
         tombolSinkron = ui.tombol("Sinkron sekarang") { sinkronManual() }
@@ -106,7 +96,7 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
 
         // Formulir kunci: tampil bila belum ada kunci atau setelah "Ganti kunci".
         formKunci.orientation = LinearLayout.VERTICAL
-        formKunci.tambah(ui.mute("Gunakan key TAPI v2 dengan izin BACA SAJA. Aplikasi menolak key yang punya izin trade atau withdraw.", 12f))
+        formKunci.tambah(ui.mute("Key TAPI v2, izin baca saja.", 12f))
         formKunci.tambah(isiKey, atas = 8)
         formKunci.tambah(isiSecret, atas = 8)
         tombolSimpanKunci = ui.tombol("Tes dan simpan kunci", primer = true) { simpanKunciBaru() }
@@ -119,38 +109,28 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         kKoneksi.tambah(infoKoneksi, atas = 10)
         isi.tambah(kKoneksi, atas = 12)
 
-        // --- Deposit dan withdraw ---
-        val kArus = ui.kartu()
-        kArus.tambah(ui.teks("Deposit dan withdraw IDR", 14f, tebal = true))
-        kArus.tambah(
-            ui.mute("Hanya riwayat (daftarnya ada di layar Riwayat); tidak memengaruhi total aset, target, atau grafik. Dilengkapi otomatis; tombol ini untuk memaksa.", 12f),
-            atas = 6,
-        )
-        tombolArusKas = ui.tombol("Sinkron deposit/withdraw") { sinkronArusKasManual() }
-        kArus.tambah(tombolArusKas, atas = 10)
-        kArus.tambah(infoArusKas, atas = 6)
-        isi.tambah(kArus, atas = 12)
-
         // --- Cadangan data (U5) ---
         val kCadangan = ui.kartu()
         kCadangan.tambah(ui.teks("Cadangan data", 14f, tebal = true))
-        kCadangan.tambah(
-            ui.mute("Simpan atau pulihkan catatan trade ke penyimpanan HP (berkas .db). Kunci API tidak ikut dicadangkan; setelah impor di HP baru, masukkan kunci lagi.", 12f),
-            atas = 6,
-        )
+        kCadangan.tambah(ui.mute("Berkas .db di penyimpanan HP. Kunci API tidak ikut.", 12f), atas = 6)
         tombolEkspor = ui.tombol("Ekspor data") { Cadangan.mintaEkspor(a) }
         tombolImpor = ui.tombol("Impor data") { Cadangan.mintaImpor(a) }
         kCadangan.tambah(barisTombol(tombolEkspor, tombolImpor), atas = 10)
         kCadangan.tambah(infoCadangan, atas = 8)
         isi.tambah(kCadangan, atas = 12)
 
-        // --- Log pantauan ---
+        // --- Log pantauan (tersembunyi; ketuk judul untuk membuka) ---
         val kLog = ui.kartu()
-        kLog.tambah(ui.teks("Log pantauan", 14f, tebal = true))
+        val judulLog = ui.teks("Log pantauan  ▸", 14f, tebal = true)
+        judulLog.setOnClickListener {
+            val buka = teksLog.visibility != View.VISIBLE
+            teksLog.visibility = if (buka) View.VISIBLE else View.GONE
+            judulLog.text = if (buka) "Log pantauan  ▾" else "Log pantauan  ▸"
+        }
+        teksLog.visibility = View.GONE
+        kLog.tambah(judulLog)
         kLog.tambah(teksLog, atas = 8)
         isi.tambah(kLog, atas = 12)
-
-        isi.tambah(ui.mute("Inti Rust versi ${versiCore()}", 12f).apply { gravity = Gravity.CENTER }, atas = 16)
 
         muatNilaiTersimpan()
         segarkanStatus()
@@ -189,7 +169,6 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
 
     override fun segarkan() {
         segarkanStatus()
-        muatArusKas()
     }
 
     override fun pantauBerubah() = segarkanStatus()
@@ -211,32 +190,18 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
 
         tombolPantau.text = if (pantau) "Hentikan pantauan" else "Mulai pantauan"
         tombolPantau.aktif(punyaKunci)
-        tombolSinkron.text = if (pantau) "Sinkron (matikan pantauan dulu)" else "Sinkron sekarang"
         tombolSinkron.aktif(Sinkron.bolehSinkron(a))
         tombolGanti.text = if (formTerbuka && punyaKunci) "Tutup formulir" else "Ganti kunci"
         tombolGanti.aktif(punyaKunci)
 
         val bateraiAman = abaikanBaterai()
-        tombolBaterai.text = if (bateraiAman) "Baterai: sudah dimatikan" else "Matikan optimasi baterai"
-        tombolBaterai.aktif(!bateraiAman)
+        tombolBaterai.visibility = if (bateraiAman) View.GONE else View.VISIBLE // sembunyi bila sudah aman
 
         formKunci.visibility = if (!punyaKunci || formTerbuka) View.VISIBLE else View.GONE
         tombolTes.aktif(punyaKunci)
         tombolHapus.aktif(punyaKunci)
-        tombolArusKas.aktif(punyaKunci && !Sinkron.arusKasBerjalan)
         tombolImpor.aktif(!pantau && !Sinkron.sedangSinkron() && !Sinkron.imporBerjalan)
         teksLog.text = PantauBersama.logTeks()
-    }
-
-    private fun muatArusKas() {
-        val db = a.pathDb
-        Latar.baca({ daftarArusKas(db, 1000u).size }) { r ->
-            r.onSuccess { n ->
-                infoArusKas.text =
-                    if (n == 0) "(belum ada deposit/withdraw tercatat)" else "$n tercatat. Lihat daftarnya di layar Riwayat."
-            }
-            r.onFailure { infoArusKas.text = "Gagal membaca arus kas: ${Latar.pesan(it)}" }
-        }
     }
 
     // ---------- simpan setelan ----------
@@ -306,29 +271,12 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
             a.dataBerubah()
         }
         if (mulai) {
-            infoKoneksi.text = "Sinkron berjalan, bisa beberapa puluh detik..."
+            infoKoneksi.text = "Sinkron berjalan..."
             segarkanStatus()
         } else {
             infoKoneksi.text = "Kunci tersimpan tidak bisa dibuka. Masukkan ulang."
         }
     }
-
-    private fun sinkronArusKasManual() {
-        val mulai = Sinkron.jalankanArusKas(a) { h ->
-            infoKoneksi.text = h.pesan
-            segarkanStatus()
-            a.dataBerubah()
-        }
-        if (mulai) {
-            infoKoneksi.text = "Menarik riwayat deposit/withdraw..."
-            segarkanStatus()
-        } else if (Sinkron.imporBerjalan) {
-            infoKoneksi.text = "Impor data sedang berjalan. Coba lagi sebentar."
-        } else if (!Sinkron.arusKasBerjalan) {
-            infoKoneksi.text = "Kunci tersimpan tidak bisa dibuka. Masukkan ulang."
-        }
-    }
-
 
     // ---------- pantauan realtime ----------
 
@@ -374,7 +322,7 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         Latar.baca({ simpanSetelan(db, tp, sl) }) { r ->
             r.onSuccess {
                 LayananLatar.mulai(a)
-                infoKoneksi.text = "Memulai pantauan (TP ${tp}% / SL ${sl}%)..."
+                infoKoneksi.text = "Memulai pantauan..."
                 segarkanStatus()
             }
             r.onFailure { infoKoneksi.text = "Setelan TP/SL tidak valid: ${Latar.pesan(it)}" }
@@ -428,23 +376,21 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
             infoKoneksi.text = "Gagal: ${Latar.pesan(it)}"
             return
         }
-        val t = StringBuilder()
-        t.append("Tersambung. Jenis akun: ${h.jenisAkun}\n")
-        t.append("Jumlah aset di daftar saldo: ${h.jumlahAset}\n")
-        t.append("Aset IDR ada: ${if (h.idrAda) "ya" else "TIDAK"}\n")
+        val sb = StringBuilder()
         if (h.bacaSaja) {
-            t.append("Izin key: baca saja (benar).")
+            sb.append("Tersambung, izin baca saja.")
+            if (!h.idrAda) sb.append(" Aset IDR tidak ada.")
             if (simpanBila) {
                 a.kunci.simpan(k, s)
                 isiKey.setText("")
                 isiSecret.setText("")
                 formTerbuka = false
-                t.append("\nKunci disimpan terenkripsi.")
+                sb.append(" Kunci disimpan.")
             }
         } else {
-            t.append("PERINGATAN: key ini punya izin trade/withdraw. Kunci TIDAK disimpan. Buat key baru dengan izin BACA SAJA.")
+            sb.append("Key punya izin trade/withdraw, TIDAK disimpan. Buat key baru dengan izin baca saja.")
         }
-        infoKoneksi.text = t.toString()
+        infoKoneksi.text = sb.toString()
         segarkanStatus()
         a.dataBerubah()
     }
