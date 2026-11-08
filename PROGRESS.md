@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 8 November 2026 (T5.2 perbaiki logika deposit: LULUS uji HP; penyebab sempat gagal = build Rust memakai sumber lama, lihat 1q)
-Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2, Fase 3, T4.1 (statistik), Fase UI (U1 sampai U5), T5.1 (pantauan menyala otomatis setelah HP restart), dan T5.2 (logika deposit)** (build, tes Rust, dan uji HP dilaporkan pengguna 7 sampai 8 Nov 2026). Uji deposit nyata (8 Nov): `amount` deposit sudah bersih, fee hanya informasi (lihat 1o); setelah T5.2 baris deposit di HP menampilkan `saldo +Rp 7.670` (dilaporkan pengguna, 8 Nov; lihat 1p dan 1q). Withdraw belum bisa diuji (saldo di bawah batas minimum penarikan Indodax). Tersisa hanya pekerjaan opsional: uji withdraw nyata dan verifikasi lanjutan saat ada data.
+Terakhir diperbarui: 8 November 2026 (T6.1: tes Rust bagian A lulus; bagian B Kotlin `LayarBeranda.kt` ditulis, menunggu build dan uji HP; rencana T6.2 dan T6.3 dicatat, lihat 1r dan bagian 3)
+Status: **Arah baru (8 Nov 2026): saldo, target, dan grafik akan dihitung dari TOTAL ASET nilai pasar (IDR + koin × harga terakhir), dikerjakan bertahap T6.1 sampai T6.3 (lihat 1r). Yang sudah ada di bawah ini (Fase 0 sampai T5.2) tetap berlaku sampai T6.2 dan T6.3 selesai.** Semua fase rencana lama selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2, Fase 3, T4.1 (statistik), Fase UI (U1 sampai U5), T5.1 (pantauan menyala otomatis setelah HP restart), dan T5.2 (logika deposit)** (build, tes Rust, dan uji HP dilaporkan pengguna 7 sampai 8 Nov 2026). Uji deposit nyata (8 Nov): `amount` deposit sudah bersih, fee hanya informasi (lihat 1o); setelah T5.2 baris deposit di HP menampilkan `saldo +Rp 7.670` (dilaporkan pengguna, 8 Nov; lihat 1p dan 1q). Withdraw belum bisa diuji (saldo di bawah batas minimum penarikan Indodax). Tersisa hanya pekerjaan opsional: uji withdraw nyata dan verifikasi lanjutan saat ada data.
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -45,6 +45,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 | U4 | Riwayat: ringkasan hari ini, daftar trade tertutup (tombol "Tampilkan lebih banyak"), statistik tiga rentang, koreksi saldo | Selesai (build berhasil, uji HP lulus 8 Nov) |
 | U5 | Ekspor/impor data lokal: `Penyimpanan::ekspor_ke/periksa_cadangan/pulihkan` di `store.rs` (VACUUM INTO, cek integritas dan tabel wajib, verifikasi angka desimal, salinan `catatan.db.sebelum-impor`, ganti lewat rename), FFI `ekspor_cadangan/periksa_cadangan/pulihkan_cadangan` (`RingkasanCadanganUi`), `Cadangan.kt` (SAF), kartu "Cadangan data" di Setelan, `MainActivity.onActivityResult`. Kunci API tidak ikut. 4 tes baru di core, 1 di ffi (16 tes ffi) | Selesai (build, tes, uji HP lulus 8 Nov) |
 | T5.2 | Logika deposit: `ArusKas::efek_saldo` untuk deposit selalu `+amount` (fee hanya informasi); kotak centang "nominal sudah bersih" DIHAPUS dari layar (withdraw tetap `-(amount + fee)`); teks baris deposit di Setelan diperjelas; 2 tes baru dan 2 tes diubah. Lihat 1p dan 1q | Selesai (build, tes, uji HP lulus 8 Nov: baris deposit `saldo +Rp 7.670`) |
+| T6.1 | Total aset (nilai pasar) di Beranda: bagian A (Rust: `harga.rs`, `ambil_harga_idr`, FFI `total_aset`) dan bagian B (Kotlin `LayarBeranda.kt`: kartu Total aset). Lihat 1r | Bagian A: `cargo test` lulus (core 105, ffi 16, dilaporkan pengguna 8 Nov). Bagian B: ditulis, menunggu build dan uji HP |
 | T5.1 | Pantauan menyala otomatis setelah HP restart: `PenerimaBoot.kt` (BOOT_COMPLETED), izin `RECEIVE_BOOT_COMPLETED` dan `<receiver>` di `AndroidManifest.xml`. Hanya bila preferensi `aktif` = true (pantauan terakhir menyala), kunci ada, dan pernah sinkron; bila tidak, penanda dimatikan dan alasan dicatat di log | Selesai (build, tes, uji HP lulus 8 Nov) |
 
 ### 1b. Kesimpulan Fase 0 (masih dipakai)
@@ -404,6 +405,49 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 6. Setelah lulus: catat penyebab di sini, ubah status T5.2 menjadi lulus uji HP, lalu commit. (Dilakukan 8 Nov 2026.)
 
 
+### 1r. T6.1 sampai T6.3: saldo dari total aset nilai pasar (rencana dan T6.1 bagian A, 8 Nov 2026)
+
+**Keputusan pengguna (8 Nov 2026)**
+- Saldo = total semua aset di akun: saldo IDR (tersedia + terkunci) + Σ (saldo koin × harga terakhir). Koin lama, koin dari deposit, dan fee otomatis ikut terhitung karena angka langsung dari akun asli.
+- Snapshot awal hari dan awal minggu diambil dari total aset itu. Pencapaian dan grafik = total aset sekarang dikurangi snapshot awal periode (dikoreksi setoran bersih). Perhitungan "realized" dari trade tidak lagi dipakai untuk saldo.
+- Pencatatan trade tetap untuk: TP/SL, notifikasi, riwayat, statistik, estimasi profit/loss.
+- Harga yang dipakai: **last** (harga transaksi terakhir) saja. Bid sebagai angka tambahan ("nilai jual cepat") boleh ditambahkan nanti tanpa memengaruhi target.
+- Konsekuensi yang disadari: target harian ikut naik-turun harga pasar walau tidak ada trade; angka target berbeda dari profit trade di Riwayat (beri label jelas); koin tanpa pasangan IDR (contoh `pxgidr`) tidak dihitung dan ditandai di layar.
+
+**Tahap (tiap tahap diuji di HP dan di-commit sendiri)**
+| Task | Isi | Catatan |
+| --- | --- | --- |
+| T6.1 | Sumber harga + total aset + kartu "Total aset" di Beranda (tampilan saja, target/grafik/statistik belum berubah) | Bagian A dan B ditulis; menunggu build dan uji HP |
+| T6.2 | Snapshot awal hari/minggu dari total aset (dicatat saat itu juga) dan titik grafik nilai pasar (tabel baru, disimpan berkala saat pantauan hidup) | Butuh `periode.rs`, `store.rs`, `arus_kas.rs`, `GrafikView.kt`. Snapshot yang terlewat (pantauan mati saat pergantian periode) hanya perkiraan: diambil saat sinkron pertama sesudahnya. Nilai pasar lampau tidak bisa dihitung ulang tanpa harga historis |
+| T6.3 | Target harian/mingguan dari saldo baru; koreksi saldo (FR-27) disederhanakan atau dihapus; PRD v1.6 (non-tujuan "harga pasar realtime" dicabut, rumus bagian 8 diganti) | Setoran IDR tetap dikurangkan lewat `fiat/orders`. Deposit/withdraw KOIN kini memengaruhi saldo dan endpoint riwayatnya belum diketahui; bila tidak ada, dicatat manual lewat koreksi. Butuh `LayarRiwayat.kt` dan `ffi/src/lib.rs` terbaru |
+
+**T6.1 bagian A (tes Rust lulus: core 105 tes, ffi 16 tes, dilaporkan pengguna 8 Nov 2026; tes `harga::` belum dipastikan terpisah lewat filter nama)**
+- `core/src/harga.rs` (baru): `parse_ticker_all` (ambil `last` pasangan `*_idr`; last nol atau hilang dilewati; error bila bentuk tidak dikenal), `hitung_total_aset` (Decimal; saldo koin nol dilewati; koin tanpa harga masuk `tanpa_harga`, tidak dihitung; daftar diurutkan nilai terbesar; error bila aset IDR tidak ada), 5 tes (data dari curl nyata 8 Nov: `btc_idr` last 1368000000, `ab_idr` last 8.953, `ach_idr` last 79).
+- `core/src/client.rs`: `BASE_PUBLIK = https://indodax.com` dan `IndodaxClient::ambil_harga_idr()` (GET publik `/api/ticker_all`, tanpa key dan tanda tangan, User-Agent yang sama).
+- `core/src/lib.rs`: `pub mod harga;` dan ekspor.
+- `ffi/src/lib.rs`: `AsetUi`, `TotalAsetUi`, `total_aset(key, secret)` (dua panggilan jaringan: `/account` dan `ticker_all`; teks sudah berformat Indonesia dengan "Rp"; tidak menyentuh database).
+- Bentuk respons `ticker_all` diverifikasi dari curl pengguna: `{"tickers":{"btc_idr":{"buy","high","last","low","sell","server_time",...}}}`, nilai berupa teks. Belum ada dokumentasi resmi yang dibaca langsung.
+
+**T6.1 bagian B (Kotlin, ditulis 8 Nov 2026, BELUM dibangun dan BELUM diuji di HP)**
+- Hanya `LayarBeranda.kt` yang berubah. Kartu "Total aset (nilai pasar)" di bawah kartu Saldo: total, rincian IDR dan nilai koin, per koin (jumlah × harga, nilai), daftar koin tanpa harga, waktu pembaruan, catatan "harga = transaksi terakhir".
+- Pembaruan: saat layar dibuka (`segarkan()`) dan tiap 10 detik selama Beranda terlihat dan jendela aplikasi di depan (`root.isShown` dan `windowVisibility`). Satu permintaan pada satu waktu, jeda minimal 5 detik. Putaran berhenti sendiri bila layar sudah dilepas dari jendela.
+- Panggilan jaringan lewat `Latar.jaringan` (tidak menahan antrean baca database); kunci dari `a.kunci.ambil()`. Tanpa kunci, kartu disembunyikan.
+- Bila gagal memperbarui, angka terakhir tetap tampil dengan keterangan galat; bila belum pernah berhasil, tampil pesan galat.
+- Kartu ini berdiri sendiri: kartu Saldo, target, dan grafik tidak berubah.
+
+**Yang diuji di HP (T6.1)**
+1. Beranda menampilkan kartu "Total aset (nilai pasar)" dengan total = IDR + nilai koin; cocokkan dengan total di aplikasi Indodax (boleh selisih kecil karena harga `last` bergerak).
+2. Koin yang dipegang muncul dengan jumlah, harga, nilai; koin tanpa pasangan IDR muncul di baris "Tanpa harga IDR" dan tidak masuk total.
+3. Biarkan Beranda terbuka sekitar 30 detik: waktu "Diperbarui" berubah. Pindah tab atau ke aplikasi lain: tidak ada pembaruan berjalan (periksa log bila perlu).
+4. Matikan internet lalu tunggu: angka terakhir tetap tampil dengan "gagal memperbarui". Nyalakan lagi: pulih sendiri.
+5. Kartu Saldo, target, dan grafik tidak berubah dari sebelumnya. Tanpa kunci: kartu tidak tampil.
+6. Bila HTTP 403 dari `indodax.com`: catat isi galat (host publik berbeda dari `api.indodax.com`).
+
+**Yang harus dilakukan setelah bagian A**
+1. (Selesai) Salin file ke repo, `touch`, `cargo test`: lulus.
+2. Salin `LayarBeranda.kt`, `touch` file itu, build lewat `bash tools/bangun_android.sh --pasang <serial>`, uji 6 poin di atas. Commit hanya setelah uji HP lulus; lalu ubah status T6.1 di file ini menjadi lulus.
+3. Perhatian: `ambil_harga_idr` memakai host `indodax.com`, bukan `api.indodax.com`. Bila HP mendapat HTTP 403 dari Cloudflare, laporkan isi galatnya.
+
 ### Belum terselesaikan atau dikenal
 | Masalah | Penyebab / dugaan | Status |
 | --- | --- | --- |
@@ -441,6 +485,9 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 ### Task berikutnya (urut)
 | Task | Isi | Syarat |
 | --- | --- | --- |
+| T6.1 | Total aset nilai pasar di Beranda (A: Rust, B: Kotlin) | Bagian A ditulis, menunggu build/tes; bagian B menunggu file Kotlin (lihat 1r) |
+| T6.2 | Snapshot awal hari/minggu dan titik grafik dari total aset | Setelah T6.1 lulus uji HP (lihat 1r) |
+| T6.3 | Target dari saldo baru, sederhanakan koreksi saldo, PRD v1.6 | Setelah T6.2 (lihat 1r) |
 | T5.2 | Perbaiki logika deposit | SELESAI, lulus uji HP 8 Nov 2026 (lihat 1p dan 1q) |
 | Opsional | Uji withdraw nyata saat saldo cukup (bentuk baris dan mode fee) | Menunggu saldo di atas batas minimum penarikan |
 | Opsional | Verifikasi mode fee deposit saat ada deposit nyata pertama | Menunggu deposit nyata |
@@ -448,12 +495,16 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 ### Keputusan yang masih terbuka
 | Hal | Pilihan | Status |
 | --- | --- | --- |
+| Deposit/withdraw KOIN setelah saldo dari total aset (T6.3) | Endpoint riwayat koin ada atau tidak; bila tidak, catat manual lewat koreksi | Terbuka; cek dokumentasi Indodax saat T6.3 |
+| Snapshot awal periode yang terlewat (T6.2) | Perkiraan saat sinkron pertama sesudahnya cukup atau tidak | Terbuka; usulan: cukup, dengan penanda "perkiraan" |
 | Setelan TP/SL baru | Hanya posisi baru atau juga yang terbuka | Terjawab: hanya posisi baru (dikonfirmasi 8 Nov 2026) |
 | Koin yang dipegang sebelum app dipasang | Diabaikan atau diisi modalnya | Terjawab: diabaikan (7 Nov 2026) |
 | Mode fee deposit/withdraw (`amount` bersih atau tidak) | Lihat 1i dan 1o | Deposit: TERJAWAB, bersih (8 Nov 2026). Withdraw: dipakai `-(amount + fee)` tanpa pilihan di layar, belum terverifikasi (batas minimum penarikan) |
 | Pantauan menyala otomatis setelah HP reboot | Perlu atau tidak | Terjawab: dikerjakan di T5.1, lulus uji HP (8 Nov 2026) |
 
 ### Keputusan yang sudah terjawab
+- Saldo, snapshot, target, dan grafik akan memakai total aset nilai pasar (IDR + koin × harga); trade hanya untuk TP/SL, notifikasi, riwayat, statistik (8 Nov 2026, lihat 1r).
+- Harga koin memakai `last` saja (8 Nov 2026); bid mungkin sebagai informasi tambahan nanti.
 - Deposit: `amount` dari API sudah bersih, `totalFee` hanya informasi (uji nyata 8 Nov 2026, Rp 11.000 menjadi Rp 7.670 masuk). Perbaikan logika = T5.2.
 - Withdraw nyata tidak bisa diuji sekarang (saldo di bawah batas minimum penarikan); dicatat, diuji nanti (8 Nov 2026).
 - Setelan TP/SL baru: berlaku untuk posisi baru saja (dikonfirmasi 8 Nov 2026).
@@ -566,6 +617,7 @@ catatan-scalping/
 │   │   ├── sign.rs                      (HMAC-SHA256 TAPI v2)
 │   │   ├── client.rs                    (klien REST, GET saja)
 │   │   ├── account.rs                   (parser /account, saldo, cek key baca saja)
+│   │   ├── harga.rs                     (T6.1: parser ticker_all, total aset = IDR + koin x harga last)
 │   │   ├── calc.rs                      (gabung per order, anti-dobel, modal efektif, TP/SL, profit jual)
 │   │   ├── store.rs                     (SQLite: trade, snapshot, meta, setelan_tp_sl, arus_kas, koreksi_saldo; U5: ekspor_ke, periksa_cadangan, pulihkan)
 │   │   ├── sync.rs                      (rekonsiliasi REST per koin, snapshot saldo awal)
@@ -597,7 +649,7 @@ catatan-scalping/
 │           ├── kotlin/id/catatanscalping/app/
 │           │   ├── MainActivity.kt      (U1: kerangka 4 tab, navigasi bawah, insets, siklus hidup; U5: onActivityResult)
 │           │   ├── Layar.kt             (U1: dasar tiap layar)
-│           │   ├── LayarBeranda.kt      (U2: saldo, grafik, progress target, status koneksi)
+│           │   ├── LayarBeranda.kt      (U2: saldo, grafik, progress target, status koneksi; T6.1: kartu Total aset nilai pasar)
 │           │   ├── LayarPosisi.kt       (U3: posisi terbuka, tangga SL/modal/TP, tanpa tombol Jual)
 │           │   ├── LayarRiwayat.kt      (U4: ringkasan, daftar trade, statistik, koreksi saldo)
 │           │   ├── LayarSetelan.kt      (U1: TP/SL, target, kunci, pantauan, sinkron, arus kas, log; U5: kartu Cadangan data)
@@ -635,6 +687,7 @@ Semua task pada rencana awal selesai, termasuk T5.2; PRD v1.5 selesai. Tersisa h
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T6.1: `T6.1: total aset nilai pasar di Beranda (harga ticker_all, total aset)` (hash: ...) <- commit setelah uji HP lulus
 - Alat: `Alat: bangun_android.sh memeriksa .text kode Rust di APK dan memakai APK terbaru` (hash: ...)
 - T5.2: `T5.2: deposit amount sudah bersih, fee hanya informasi` (hash: ...)
 - Dokumen: `Dokumen: PRD v1.5 dan PROGRESS (hasil uji deposit nyata, rencana T5.2)` (hash: ...)

@@ -1,5 +1,7 @@
 package id.catatanscalping.app
 
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
@@ -7,12 +9,18 @@ import android.widget.TextView
 import uniffi.scalping_ffi.PencapaianUi
 import uniffi.scalping_ffi.RingkasanTargetUi
 import uniffi.scalping_ffi.TitikGrafikUi
+import uniffi.scalping_ffi.TotalAsetUi
 import uniffi.scalping_ffi.dataGrafik
 import uniffi.scalping_ffi.hitungTarget
+import uniffi.scalping_ffi.totalAset
 
 /**
  * Beranda (prototype): saldo versi aplikasi, hasil terhadap modal aktif, grafik, dan progress target
  * harian/mingguan. Hanya tampilan; angka dari Rust (hitung_target, data_grafik).
+ *
+ * T6.1: kartu "Total aset (nilai pasar)" = IDR + koin x harga terakhir (Rust: total_aset, jaringan).
+ * Tampilan saja; belum dipakai untuk saldo di atas, target, atau grafik (T6.2 dan T6.3).
+ * Diperbarui saat layar dibuka dan tiap 10 detik selama Beranda terlihat dan aplikasi di depan.
  */
 class LayarBeranda(a: MainActivity) : Layar(a) {
     private val chip = ui.Chip()
@@ -25,6 +33,27 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
     private val kartuPesan = ui.kartu()
     private val teksPesan = ui.mute("")
     private val kartuSaldo = ui.kartu()
+
+    // T6.1: total aset nilai pasar
+    private val kartuAset = ui.kartu()
+    private var asetTerakhir: TotalAsetUi? = null
+    private var asetWaktuMs = 0L
+    private var asetGalat: String? = null
+    private var asetMemuat = false
+    private var asetMulaiMs = 0L
+    private val pengatur = Handler(Looper.getMainLooper())
+    private var pernahTerpasang = false
+    private val putaranAset = object : Runnable {
+        override fun run() {
+            if (root.isAttachedToWindow) {
+                pernahTerpasang = true
+            } else if (pernahTerpasang) {
+                return // layar sudah dilepas: hentikan putaran
+            }
+            if (root.isShown && root.windowVisibility == View.VISIBLE) muatAset()
+            pengatur.postDelayed(this, JEDA_PUTARAN_MS)
+        }
+    }
 
     init {
         header("Catatan trading", chip.root)
@@ -47,9 +76,13 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
         kartuSaldo.tambah(infoGrafik, atas = 4)
         isi.tambah(kartuSaldo)
 
+        kartuAset.visibility = View.GONE
+        isi.tambah(kartuAset, atas = 12)
+
         isi.tambah(ui.judulBagian("Target"), atas = 22, bawah = 10)
         isi.tambah(kartuTarget)
         segarkanChip()
+        pengatur.postDelayed(putaranAset, JEDA_PUTARAN_MS)
     }
 
     override fun pantauBerubah() = segarkanChip()
@@ -75,6 +108,7 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
 
     override fun segarkan() {
         segarkanChip()
+        muatAset()
         val db = a.pathDb
         Latar.baca({
             val r = hitungTarget(db)
@@ -142,5 +176,71 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
             kolom.tambah(ui.mute("Setoran bersih ${Format.untung(p.setoranBersih)} tidak dihitung sebagai hasil", 12f), atas = 2)
         }
         return kolom
+    }
+
+    /**
+     * T6.1: ambil total aset (dua panggilan jaringan di Rust: /account dan ticker_all). Satu permintaan
+     * pada satu waktu, jeda minimal 5 detik antar-permintaan (segarkan() bisa dipanggil sering).
+     */
+    private fun muatAset() {
+        val kunci = a.kunci.ambil()
+        if (kunci == null) {
+            kartuAset.visibility = View.GONE
+            return
+        }
+        val sekarang = System.currentTimeMillis()
+        if (asetMemuat || sekarang - asetMulaiMs < JEDA_MINIMAL_MS) return
+        asetMemuat = true
+        asetMulaiMs = sekarang
+        Latar.jaringan.execute {
+            val r = runCatching { totalAset(kunci.first, kunci.second) }
+            Latar.ui {
+                asetMemuat = false
+                r.onSuccess {
+                    asetTerakhir = it
+                    asetWaktuMs = System.currentTimeMillis()
+                    asetGalat = null
+                }
+                r.onFailure { asetGalat = Latar.pesan(it) }
+                tampilAset()
+            }
+        }
+    }
+
+    /** Bila gagal memperbarui, angka terakhir tetap tampil dengan keterangan (bukan dikosongkan). */
+    private fun tampilAset() {
+        kartuAset.visibility = View.VISIBLE
+        kartuAset.removeAllViews()
+        kartuAset.tambah(ui.mute("Total aset (nilai pasar)"))
+        val d = asetTerakhir
+        if (d == null) {
+            val g = asetGalat
+            kartuAset.tambah(ui.mute(if (g != null) "Gagal memuat total aset: $g" else "Memuat…"), atas = 4)
+            return
+        }
+        kartuAset.tambah(ui.teks(d.total, 26f, tebal = true), atas = 2)
+        kartuAset.tambah(ui.mute("IDR ${d.idr.removePrefix("Rp ")} · koin ${d.nilaiKoin.removePrefix("Rp ")}"), atas = 2)
+        for (k in d.koin) {
+            kartuAset.tambah(ui.baris(ui.teks(k.koin, 14f, tebal = true), ui.teks(k.nilai, 14f)), atas = 10)
+            kartuAset.tambah(ui.mute("${k.jumlah} koin × Rp ${k.harga}", 12f))
+        }
+        if (d.tanpaHarga.isNotEmpty()) {
+            kartuAset.tambah(
+                ui.mute("Tanpa harga IDR, tidak dihitung: ${d.tanpaHarga.joinToString(", ")}", 12f),
+                atas = 10,
+            )
+        }
+        val status = StringBuilder("Diperbarui ${Format.waktuSingkat(asetWaktuMs)}")
+        asetGalat?.let { status.append(" · gagal memperbarui: ").append(it) }
+        kartuAset.tambah(ui.mute(status.toString(), 12f), atas = 10)
+        kartuAset.tambah(
+            ui.mute("Harga = transaksi terakhir, bukan jaminan harga jual. Belum dipakai untuk target dan grafik.", 12f),
+            atas = 2,
+        )
+    }
+
+    private companion object {
+        const val JEDA_PUTARAN_MS = 10_000L
+        const val JEDA_MINIMAL_MS = 5_000L
     }
 }

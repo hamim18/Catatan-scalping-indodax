@@ -2,6 +2,7 @@
 //! Key dan secret tidak pernah dicatat ke log.
 use rust_decimal::Decimal;
 use scalping_core::calc::bulatkan_idr;
+use scalping_core::harga::hitung_total_aset;
 use scalping_core::posisi::{periksa_persen, periksa_target};
 use scalping_core::{
     gabung_per_order, hitung, sinkron, IndodaxClient, Opsi, Penyimpanan, RiwayatSetelan, Sisi,
@@ -1298,6 +1299,61 @@ pub fn periksa_cadangan(path_sumber: String) -> Result<RingkasanCadanganUi, Erro
 #[uniffi::export]
 pub fn pulihkan_cadangan(path_db: String, path_sumber: String) -> Result<RingkasanCadanganUi, ErrorApp> {
     Penyimpanan::pulihkan(&path_db, &path_sumber).map(ringkasan_cadangan).map_err(gagal)
+}
+
+// ---------------------------------------------------------------------------------------------
+// T6.1: total aset (IDR + koin dinilai harga terakhir). Hanya tampilan; TIDAK dipakai target,
+// grafik, atau statistik (itu T6.2 dan T6.3). Tanpa penyimpanan ke database.
+// ---------------------------------------------------------------------------------------------
+
+/// Satu koin yang dipegang. Semua angka sudah berformat Indonesia.
+#[derive(uniffi::Record)]
+pub struct AsetUi {
+    /// contoh "DOGE"
+    pub koin: String,
+    /// jumlah koin (tersedia + terkunci), sampai 8 desimal
+    pub jumlah: String,
+    /// harga terakhir per koin, contoh "3.512" (koin murah 2 desimal)
+    pub harga: String,
+    /// contoh "Rp 150.000"
+    pub nilai: String,
+}
+
+#[derive(uniffi::Record)]
+pub struct TotalAsetUi {
+    /// contoh "Rp 1.482.350"
+    pub total: String,
+    pub idr: String,
+    pub nilai_koin: String,
+    pub koin: Vec<AsetUi>,
+    /// koin bersaldo tetapi tanpa harga IDR: tidak dihitung dalam total
+    pub tanpa_harga: Vec<String>,
+}
+
+/// Total aset saat ini: saldo IDR dan semua koin dari GET /account, dinilai harga terakhir dari
+/// ticker_all (publik). Hanya membaca. Memblokir (dua panggilan jaringan); panggil dari thread latar.
+#[uniffi::export]
+pub fn total_aset(key: String, secret: String) -> Result<TotalAsetUi, ErrorApp> {
+    let klien = IndodaxClient::new(key, secret);
+    let akun = klien.ambil_akun().map_err(gagal)?;
+    let harga = klien.ambil_harga_idr().map_err(gagal)?;
+    let t = hitung_total_aset(&akun, &harga).map_err(gagal)?;
+    Ok(TotalAsetUi {
+        total: format!("Rp {}", fmt_rupiah(t.total)),
+        idr: format!("Rp {}", fmt_rupiah(t.idr)),
+        nilai_koin: format!("Rp {}", fmt_rupiah(t.nilai_koin())),
+        koin: t
+            .koin
+            .iter()
+            .map(|k| AsetUi {
+                koin: k.koin.clone(),
+                jumlah: ribuan(&k.jumlah.round_dp(8).normalize().to_string()),
+                harga: fmt_harga(k.harga),
+                nilai: format!("Rp {}", fmt_rupiah(k.nilai)),
+            })
+            .collect(),
+        tanpa_harga: t.tanpa_harga,
+    })
 }
 
 #[cfg(test)]

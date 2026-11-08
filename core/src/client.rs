@@ -1,9 +1,12 @@
 //! Klien REST Indodax TAPI v2. HANYA metode GET (baca saja).
 use crate::arus_kas::{parse_fiat_orders, HasilParseFiat, JenisArusKas};
+use crate::harga::{parse_ticker_all, HargaIdr};
 use crate::{account::{parse_akun, Akun}, model::parse_my_trades, sign::tanda_tangan, Error, Hasil, Trade};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const BASE_PRODUKSI: &str = "https://api.indodax.com";
+/// Host endpoint publik (ticker_all), terbukti lewat curl pengguna 8 Nov 2026.
+pub const BASE_PUBLIK: &str = "https://indodax.com";
 const RECV_WINDOW_MS: u64 = 10_000;
 /// Sama dengan skrip Fase 0 yang terbukti berhasil.
 const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -120,6 +123,27 @@ impl IndodaxClient {
             ("endTime", akhir_ms.to_string()),
         ];
         parse_fiat_orders(&self.get("/api/v2/fiat/orders", &p)?, jenis)
+    }
+
+    /// T6.1: harga terakhir (last) semua pasangan IDR dari endpoint publik GET /api/ticker_all.
+    /// Tanpa key dan tanpa tanda tangan; hanya baca. Satu panggilan untuk semua koin.
+    pub fn ambil_harga_idr(&self) -> Hasil<HargaIdr> {
+        let url = format!("{BASE_PUBLIK}/api/ticker_all");
+        let res = self
+            .agen
+            .get(&url)
+            .set("User-Agent", USER_AGENT)
+            .set("Accept", "application/json")
+            .call();
+        let isi = match res {
+            Ok(r) => r.into_string().map_err(|e| Error::Jaringan(e.to_string()))?,
+            Err(ureq::Error::Status(kode, r)) => {
+                let isi = r.into_string().unwrap_or_default();
+                return Err(Error::Http { kode, isi_awal: isi.chars().take(400).collect() });
+            }
+            Err(e) => return Err(Error::Jaringan(e.to_string())),
+        };
+        parse_ticker_all(&isi)
     }
 }
 
