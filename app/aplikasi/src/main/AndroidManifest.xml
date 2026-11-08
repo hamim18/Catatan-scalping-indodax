@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- untuk membuka dialog "abaikan optimasi baterai" -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- T5.1: menyalakan pantauan lagi setelah HP restart -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="false"
@@ -31,5 +33,14 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Memantau order Indodax lewat WebSocket (baca saja) untuk mencatat trade dan menghitung TP/SL" />
         </service>
+
+        <!-- T5.1: hanya menerima broadcast sistem BOOT_COMPLETED -->
+        <receiver
+            android:name=".PenerimaBoot"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

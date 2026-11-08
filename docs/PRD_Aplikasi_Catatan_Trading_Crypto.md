@@ -1,6 +1,6 @@
 # PRD: Aplikasi Catatan Trading Crypto
 
-Versi 1.2 · 7 November 2026 (keputusan teknologi: Rust + Kotlin/Java) · Pemilik produk: Raya Abdullah Ar Rasyid · Status: draf untuk ditinjau
+Versi 1.3 · 8 November 2026 (disinkronkan dengan aplikasi yang sudah berjalan: Fase 0 sampai Fase UI selesai) · Pemilik produk: Raya Abdullah Ar Rasyid · Status: diimplementasikan; dokumen mengikuti kondisi aplikasi
 
 ## 1. Ringkasan
 
@@ -50,10 +50,11 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 | --- | --- |
 | Modal efektif | Total IDR yang benar-benar keluar untuk beli (nilai trade + fee, sama dengan "Order Terisi" di struk), dibagi koin yang diterima. Dihitung per koin. |
 | Posisi | Koin yang sudah dibeli dan belum terjual. Satu posisi per koin, dirata-rata. |
-| Saldo (versi aplikasi) | Saldo IDR (tersedia + terkunci) + nilai open posisi pada modal efektif. |
+| Saldo (versi aplikasi) | Dihitung dari catatan, tanpa jaringan: saldo awal + arus kas bersih + profit trade tertutup. Setara dengan saldo IDR + nilai open posisi pada modal efektif. |
 | Setoran bersih | Total deposit IDR dikurangi withdraw IDR pada suatu periode. |
-| Modal aktif | Saldo awal + setoran bersih sejak aplikasi dipasang. |
+| Modal aktif | Saldo awal + setoran bersih (termasuk koreksi saldo) sejak aplikasi dipasang. |
 | Snapshot | Catatan saldo di awal hari atau awal minggu. |
+| Koreksi saldo | Penyesuaian yang dicatat pengguna bila saldo IDR menurut catatan berbeda dari saldo asli Indodax. Diperlakukan seperti setoran. |
 | TP / SL | Harga target jual untung (Take Profit) dan harga batas rugi (Stop Loss). |
 
 ## 6. Alur utama
@@ -69,35 +70,35 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 ### 7.1 Akun dan koneksi
 
 - **FR-01** Pengguna memasukkan API key dan secret TAPI v2 dengan izin baca saja. Kunci disimpan di penyimpanan aman perangkat dan tidak pernah ditampilkan ulang secara utuh.
-- **FR-02** Aplikasi memvalidasi kunci (membaca saldo akun) dan menampilkan status koneksi (tersambung, terputus, kunci tidak valid).
+- **FR-02** Aplikasi memvalidasi kunci (membaca saldo akun) dan menampilkan status koneksi (tersambung, terputus, kunci tidak valid). Kunci yang punya izin trade atau withdraw ditolak dan tidak disimpan.
 - **FR-03** Saat setup berhasil, aplikasi menyimpan snapshot saldo pertama sebagai saldo awal.
 
 ### 7.2 Setelan
 
 - **FR-04** Pengguna mengatur, semuanya dalam persen: TP per trade, SL per trade, target harian, target mingguan.
-- **FR-05** Perubahan setelan TP/SL berlaku untuk posisi baru. Posisi yang sudah terbuka tidak berubah (lihat pertanyaan terbuka).
+- **FR-05** Perubahan setelan TP/SL berlaku untuk posisi baru. Posisi yang sudah terbuka tidak berubah (diimplementasikan sebagai usulan; belum dikonfirmasi eksplisit, lihat bagian 16). Target harian dan mingguan hanya menyimpan nilai terbaru (lebih dari 0 dan paling banyak 100 persen); mengosongkan keduanya berarti tanpa target.
 
 ### 7.3 Deteksi dan pencatatan trade
 
-- **FR-06** Layanan latar (foreground service) menjaga koneksi WebSocket privat Indodax agar order terdeteksi secara realtime.
+- **FR-06** Layanan latar (foreground service, tipe specialUse) menjaga koneksi WebSocket privat Indodax agar order terdeteksi secara realtime. WebSocket hanya berfungsi sebagai PEMICU: angka resmi selalu diambil dari REST. Bila HP restart saat pantauan menyala, pantauan menyala lagi otomatis (T5.1); bila pengguna sudah menghentikannya, tetap mati.
 - **FR-07** Event pengisian order (FILL) dikumpulkan per order. Satu order bisa terisi beberapa kali. Order dianggap selesai saat status DONE.
 - **FR-08** Event NEW, CANCELLED tanpa eksekusi, dan REJECTED tidak dicatat sebagai trade. Order yang dibatalkan setelah terisi sebagian dicatat sesuai bagian yang terisi.
 - **FR-09** Anti-dobel: setiap pengisian dikenali dari ID trade yang unik. Mencatat ulang data yang sama tidak boleh membuat catatan ganda.
-- **FR-10** Rekonsiliasi: setiap koneksi tersambung kembali dan setiap aplikasi dibuka, aplikasi menarik riwayat trade terbaru lewat REST dan melengkapi yang terlewat. Tersedia juga tombol sinkron manual.
+- **FR-10** Rekonsiliasi: setiap koneksi tersambung kembali dan setiap aplikasi dibuka (jeda minimal 60 detik), aplikasi menarik riwayat trade terbaru lewat REST dan melengkapi yang terlewat. Tersedia juga tombol sinkron manual (dinonaktifkan saat pantauan berjalan).
 
 ### 7.4 Posisi dan TP/SL
 
 - **FR-11** Satu posisi per koin. Beli berikutnya pada koin yang sama merata-ratakan modal efektif dan menghitung ulang TP/SL.
 - **FR-12** Saat posisi dibuat atau diperbarui, aplikasi menghitung modal efektif, harga TP, dan harga SL dari persen di setelan.
 - **FR-13** Jual sebagian mengurangi jumlah koin posisi, posisi tetap terbuka. Jual penuh menutup posisi dan memindahkannya ke riwayat.
-- **FR-14** Layar Open Posisi menampilkan per posisi: koin, jumlah koin, modal efektif, TP, SL, waktu beli. Fungsi tombol Jual perlu diputuskan (lihat bagian 16).
+- **FR-14** Layar Open Posisi menampilkan per posisi: koin, jumlah koin, modal efektif, TP, SL, estimasi hasil bersih di TP dan SL (memakai fee jual perkiraan 0,31%), dan waktu beli. TIDAK ada tombol Jual: aplikasi tidak membuat order, dan posisi tertutup otomatis saat order jual terdeteksi (keputusan 7 November 2026).
 
 ### 7.5 Notifikasi
 
-- **FR-15** Setelah beli: notifikasi berprioritas tinggi berisi koin, modal efektif, TP, dan SL.
-- **FR-16** Setelah jual: notifikasi berisi hasil bersih (Rp dan %) dan progress target harian.
+- **FR-15** Setelah beli: notifikasi berprioritas tinggi berisi koin, modal efektif, TP, SL, dan estimasi hasil bersih. Pada beli tambahan koin yang sama, tampil TP/SL order itu dan TP/SL posisi keseluruhan. Trade yang terlewat saat koneksi putus dirangkum dalam satu notifikasi setelah rekonsiliasi.
+- **FR-16** Setelah jual: notifikasi berisi hasil bersih (Rp dan %) serta progress target harian dan mingguan.
 - **FR-17** Notifikasi TP/SL hanya informasi. Aplikasi tidak memasang order apa pun di Indodax.
-- **FR-18** (disarankan) Notifikasi saat target harian atau mingguan tercapai.
+- **FR-18** Penanda "TERCAPAI" saat target harian atau mingguan baru tercapai oleh suatu penjualan, ditampilkan di dalam notifikasi jual yang sama (bukan notifikasi terpisah).
 
 ### 7.6 Target harian dan mingguan
 
@@ -107,10 +108,15 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 
 ### 7.7 Saldo dan riwayat
 
-- **FR-22** Aplikasi menampilkan saldo versi aplikasi dan grafik pertumbuhannya, dengan dua garis: saldo dan modal aktif. Jarak antara keduanya adalah profit.
+- **FR-22** Aplikasi menampilkan saldo versi aplikasi dan grafik pertumbuhannya, dengan dua garis: saldo dan modal aktif. Jarak antara keduanya adalah profit. Beranda juga menampilkan hasil (Rp dan persen terhadap modal aktif).
 - **FR-23** Riwayat trade tertutup: koin, modal, total diterima, profit atau loss bersih (Rp dan %), waktu buka dan tutup.
 - **FR-24** Aplikasi mengambil riwayat deposit dan withdraw IDR untuk menghitung setoran bersih dan modal aktif.
-- **FR-25** (fase lanjut) Statistik: win rate, rata-rata profit dan loss, total fee, dan persen profit yang termakan fee.
+- **FR-25** Statistik (di layar Riwayat, rentang hari, minggu, dan semua): win rate, rata-rata untung dan rugi, hasil bersih, total fee, profit kotor, dan persen profit yang termakan fee.
+
+### 7.8 Cadangan dan koreksi
+
+- **FR-26** Cadangan data lokal: ekspor salinan database ke berkas pilihan pengguna dan impor kembali (pemilih berkas sistem). Impor memeriksa berkas, meminta konfirmasi, hanya berjalan saat pantauan mati, dan menyimpan database lama sebagai salinan otomatis. Kunci API tidak ikut dicadangkan.
+- **FR-27** Koreksi saldo: aplikasi membandingkan IDR menurut catatan dengan saldo IDR asli Indodax dan, atas persetujuan pengguna, mencatat selisih sebagai penyesuaian (diperlakukan seperti setoran: mengubah saldo dan modal aktif, bukan profit). Selisih di bawah Rp 1 diabaikan. Tidak ada catatan lain yang dihapus atau diubah.
 
 ## 8. Rumus dan aturan perhitungan
 
@@ -120,8 +126,8 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 | Harga TP | Modal efektif × (1 + TP%) |
 | Harga SL | Modal efektif × (1 − SL%) |
 | Profit atau loss jual | IDR diterima − (modal efektif × jumlah koin yang dijual) |
-| Saldo (versi aplikasi) | Saldo IDR (tersedia + terkunci) + Σ (jumlah koin posisi × modal efektif) |
-| Modal aktif | Saldo awal + deposit IDR − withdraw IDR |
+| Saldo (versi aplikasi) | Saldo awal + arus kas bersih + Σ profit trade tertutup (sama dengan saldo IDR + Σ (jumlah koin posisi × modal efektif), karena beli hanya memindahkan IDR ke posisi pada nilai tetap) |
+| Modal aktif | Saldo awal + deposit IDR − withdraw IDR + koreksi saldo |
 | Pencapaian periode (%) | (saldo sekarang − saldo awal periode − setoran bersih periode) ÷ saldo awal periode × 100 |
 | Progress target (%) | Pencapaian periode ÷ target periode × 100 |
 
@@ -129,6 +135,8 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 
 - Fee beli sudah terkandung di modal efektif. Fee jual tidak dihitung di harga TP/SL, tetapi sudah terkandung di IDR diterima saat jual.
 - Karena open posisi dinilai pada modal efektif, angka pencapaian hanya berubah setelah trade ditutup, bukan mengikuti naik-turun harga pasar.
+- Estimasi hasil bersih di notifikasi dan layar Posisi memakai fee jual perkiraan 0,31% (limit). Jual market bisa sekitar 0,61%, jadi estimasi bisa terlalu optimistis; hasil nyata selalu memakai `commission` dari API saat jual.
+- Statistik: win rate = trade untung / semua trade; persen profit termakan fee = total fee / profit kotor, dengan profit kotor = hasil bersih + total fee.
 - Seluruh perhitungan uang memakai tipe angka desimal presisi (bukan floating point). Jumlah koin sampai 8 desimal.
 
 **Contoh nyata (ICNT, 5 November 2026)**
@@ -151,9 +159,10 @@ Berdasarkan dokumentasi resmi Indodax (repo btcid/indodax-official-api-docs) per
 
 **Jalur realtime: WebSocket privat**
 
-- Minta token lewat REST (POST generate\_token). Token berlaku 24 jam, jadi harus diminta ulang secara berkala. Permintaan token ditandatangani HMAC-SHA512.
-- Terhubung ke WebSocket produksi, autentikasi dengan token, lalu subscribe ke channel pribadi.
-- Event order\_update: NEW, FILL, DONE, CANCELLED, REJECTED. Event FILL membawa harga, jumlah koin, dan rincian biaya (fee, pajak, clearing).
+- Minta token lewat REST (`POST https://indodax.com/api/private_ws/v1/generate_token`, badan `client=tapi&tapi_key=<KEY>`). Token berlaku 24 jam, jadi diminta ulang saat sambung ulang. Permintaan token ditandatangani HMAC-SHA512 (berbeda dari REST v2 yang SHA256). Key v2 baca saja diterima (terkonfirmasi di T0.6).
+- Terhubung ke `wss://pws.indodax.com/ws/?cf_ws_frame_ping_pong=true` TANPA header Origin, kirim `connect` dengan token, lalu `subscribe` ke channel pribadi. Server mengirim `{}` sebagai ping aplikasi; balas dengan `{}`.
+- Event order\_update: NEW, FILL (bukan FILLED), DONE, CANCELLED, REJECTED. Event FILL membawa harga (pembulatan), jumlah koin, dan rincian biaya (fee, pajak, clearing); `fee + tax + clearing` sama dengan `commission` REST pada sampel yang diuji. Market order mengirim NEW, FILL, DONE sekaligus dalam satu paket.
+- Karena harga di event dibulatkan, angka resmi tidak diambil dari event: saat order DONE (atau CANCELLED setelah sebagian terisi), aplikasi menarik trade koin itu lewat REST.
 - Hanya update order yang dikirim. Saldo tidak didorong lewat WebSocket.
 
 **Jalur sinkron: REST TAPI v2** (https://api.indodax.com)
@@ -171,7 +180,8 @@ Berdasarkan dokumentasi resmi Indodax (repo btcid/indodax-official-api-docs) per
 - Gunakan izin baca saja. Pembatasan IP untuk izin baca bersifat opsional. Karena IP jaringan seluler sering berubah, sebaiknya jangan diaktifkan agar koneksi tidak gagal.
 - Rekonsiliasi riwayat harus berputar per koin dan per rentang 7 hari.
 - Terjawab di Fase 0 (6 November 2026, trade ICNT 3 dan 5 November): (a) fee dalam IDR (`commissionAsset` = idr), koin yang diterima tidak dipotong; (b) `commission` dari API sama dengan "Biaya Transaksi" di struk; (c) `quoteQty` sama dengan "Total Diterima" (IDR) pada struk beli. Tanda tangan v2 memakai HMAC-SHA256.
-- Masih harus divalidasi: apakah key v2 dapat dipakai untuk token WebSocket privat.
+- Terjawab di T0.6 (7 November 2026): key v2 baca saja dapat dipakai untuk token WebSocket privat.
+- Belum terverifikasi: apakah `amount` pada deposit sudah bersih atau belum dikurangi `totalFee` (aplikasi menyediakan dua mode; konfirmasi dengan deposit nyata). Bentuk baris withdraw juga belum teramati.
 - Tarif fee tidak tetap (beli limit ±0,10%, beli market ±0,20%, jual limit ±0,31% pada data nyata), jadi selalu pakai nilai `commission` dari API.
 
 ## 10. Arsitektur dan teknologi (keputusan 7 November 2026)
@@ -179,20 +189,22 @@ Berdasarkan dokumentasi resmi Indodax (repo btcid/indodax-official-api-docs) per
 - **Rust** adalah bahasa utama untuk seluruh logika dan "backend" yang berjalan di dalam HP: klien Indodax (REST v2, nanti WebSocket), anti-dobel, perhitungan modal efektif, TP/SL, posisi, dan penyimpanan lokal. Semua perhitungan uang memakai Decimal.
 - **Kotlin/Java** hanya sebagai klien Android: tampilan, foreground service, notifikasi, dan penyimpanan kunci di penyimpanan aman perangkat. Tidak ada logika bisnis di sisi Kotlin.
 - Tidak ada server terpisah dan tidak ada akun cloud (sesuai non-tujuan).
-- Jembatan Rust ke Kotlin direncanakan memakai UniFFI (belum dipasang; dikerjakan di T1.1b).
-- Kode Rust ada di `core/` (crate `scalping-core`), kode Android di `app/`.
+- Jembatan Rust ke Kotlin memakai UniFFI 0.31 (crate `ffi/`, `scalping-ffi`). Penyimpanan: SQLite (rusqlite, bundled) dikelola dari Rust.
+- Kode Rust ada di `core/` (crate `scalping-core`), jembatan di `ffi/`, kode Android di `app/` (tanpa Compose, tampilan dari kode, minSdk 30).
+- Posisi dan saldo tidak disimpan sebagai tabel sendiri: dihitung ulang dari catatan trade, arus kas, dan koreksi setiap kali dibutuhkan.
 
 ## 11. Model data
 
 | Entitas | Isi utama |
 | --- | --- |
-| Setelan | TP%, SL%, target harian %, target mingguan %, zona waktu |
+| Setelan | TP% dan SL% (dengan riwayat berlaku-sejak), target harian %, target mingguan %, zona waktu (WIB) |
 | Trade (pengisian) | ID trade (unik), ID order, koin, sisi (beli atau jual), harga, jumlah koin, biaya, waktu |
 | Order | ID order, status akhir, total IDR, total koin |
 | Posisi | koin, jumlah koin terbuka, total IDR modal, modal efektif, TP%, SL%, harga TP, harga SL, waktu buka, status |
 | Trade tertutup | koin, modal, IDR diterima, profit atau loss, persen, waktu buka dan tutup |
 | Snapshot | jenis (harian, mingguan, awal), waktu mulai, saldo |
-| Arus kas | jenis (deposit atau withdraw IDR), jumlah, waktu, ID sumber (unik) |
+| Arus kas | jenis (deposit atau withdraw IDR), jumlah, biaya, waktu, ID sumber (unik) |
+| Koreksi saldo | waktu, jumlah (positif atau negatif), catatan |
 
 Penyimpanan lokal di perangkat. Data disimpan sebagai catatan, bukan angka saldo mentah, sehingga mengoreksi satu catatan dapat menghitung ulang semuanya.
 
@@ -203,8 +215,9 @@ Penyimpanan lokal di perangkat. Data disimpan sebagai catatan, bukan angka saldo
 - **Baterai dan sistem**: layanan latar dengan satu notifikasi tetap yang bisa disenyapkan. Pengguna perlu mematikan optimasi baterai untuk aplikasi ini dan memberi izin notifikasi (Android 13 ke atas).
 - **Keamanan**: kunci disimpan di penyimpanan aman perangkat, tidak masuk log, tidak masuk cadangan tanpa enkripsi, tidak dikirim ke pihak mana pun selain Indodax. Hanya izin baca.
 - **Offline**: data lokal tetap bisa dilihat tanpa internet. Sinkron berjalan ulang saat koneksi kembali.
+- **Cadangan**: ekspor dan impor database ke penyimpanan lokal (FR-26). Kunci API tidak ikut.
 - **Ketepatan**: aplikasi menyediakan tombol koreksi saldo. Selisih terhadap saldo Indodax dicatat sebagai penyesuaian, bukan dihapus diam-diam.
-- **Zona waktu dan periode**: WIB, minggu dimulai hari Senin (asumsi).
+- **Zona waktu dan periode**: WIB, minggu dimulai hari Senin (dikonfirmasi 7 November 2026).
 
 ## 13. Kasus khusus
 
@@ -216,10 +229,12 @@ Penyimpanan lokal di perangkat. Data disimpan sebagai catatan, bukan angka saldo
 | Koneksi putus atau layanan dimatikan sistem | Rekonsiliasi saat tersambung kembali atau aplikasi dibuka |
 | Pergantian hari tanpa layanan aktif | Snapshot diambil pada sinkron pertama setelahnya |
 | Deposit atau withdraw IDR di tengah periode | Dikeluarkan dari pencapaian lewat setoran bersih |
-| Menjual koin yang dibeli sebelum aplikasi dipasang | Tidak ada posisi. Dicatat sebagai penyesuaian dan dikeluarkan dari pencapaian (profit dianggap 0) kecuali pengguna mengisi modalnya |
+| Menjual koin yang dibeli sebelum aplikasi dipasang | Tidak ada posisi. Dicatat sebagai penyesuaian dan dikeluarkan dari pencapaian (profit dianggap 0). Modal tidak diisi manual (keputusan 7 November 2026; pengguna memastikan tidak ada koin menggantung saat peluncuran) |
 | Withdraw atau deposit koin | Diabaikan di versi ini. Pengguna dapat mengoreksi lewat tombol koreksi saldo |
 | Token WebSocket kedaluwarsa | Minta token baru dan hubungkan ulang secara otomatis |
 | Kunci API dicabut atau tidak valid | Tampilkan status terputus dan minta kunci baru |
+| HP restart saat pantauan menyala | Pantauan menyala lagi otomatis (T5.1); bila pantauan sudah dihentikan pengguna, tetap mati |
+| Order limit terisi sebagian dan dibiarkan terbuka | Baru tercatat saat DONE atau CANCELLED atau saat rekonsiliasi; selisih saldo sementara bukan kesalahan, jangan dikoreksi sebelum sinkron |
 
 ## 14. Metrik keberhasilan
 
@@ -232,25 +247,29 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 
 ## 15. Rencana rilis bertahap
 
-| Fase | Isi | Hasil |
-| --- | --- | --- |
-| 0. Validasi data | Ambil trade nyata (misalnya ICNT) lewat myTrades dengan key baca saja. Cek format fee dan koin diterima, dan kecocokan dengan struk. | Rumus modal efektif terkonfirmasi |
-| 1. MVP | Koneksi akun, WebSocket realtime, anti-dobel, posisi terbuka, TP/SL, notifikasi beli dan jual | Posisi dan notifikasi bekerja |
-| 2. Target dan saldo | Setelan target, snapshot harian dan mingguan, riwayat deposit dan withdraw IDR, pencapaian dan progress | Target terukur |
-| 3. Riwayat dan grafik | Daftar trade tertutup, grafik saldo dan modal aktif, tombol koreksi saldo | Pertumbuhan terlihat |
-| 4. Statistik | Win rate, total fee, persen profit termakan fee | Evaluasi gaya trading |
+| Fase | Isi | Hasil | Status |
+| --- | --- | --- | --- |
+| 0. Validasi data | Ambil trade nyata (misalnya ICNT) lewat myTrades dengan key baca saja. Cek format fee dan koin diterima, dan kecocokan dengan struk. | Rumus modal efektif terkonfirmasi | Selesai |
+| 1. MVP | Koneksi akun, WebSocket realtime, anti-dobel, posisi terbuka, TP/SL, notifikasi beli dan jual | Posisi dan notifikasi bekerja | Selesai |
+| 2. Target dan saldo | Setelan target, snapshot harian dan mingguan, riwayat deposit dan withdraw IDR, pencapaian dan progress | Target terukur | Selesai |
+| 3. Riwayat dan grafik | Daftar trade tertutup, grafik saldo dan modal aktif, tombol koreksi saldo | Pertumbuhan terlihat | Selesai |
+| 4. Statistik | Win rate, total fee, persen profit termakan fee | Evaluasi gaya trading | Selesai |
+| UI. Layar asli | Beranda, Posisi, Riwayat, Setelan sesuai prototype; cadangan data lokal (U1 sampai U5) | Aplikasi dipakai sehari-hari | Selesai |
+| 5. Penyempurnaan | Pantauan menyala otomatis setelah HP restart (T5.1) | Pantauan tidak perlu dinyalakan ulang | Kode selesai; uji HP menunggu |
 
 ## 16. Pertanyaan terbuka
 
 1. ~~Fee beli dipotong dari koin atau dari IDR di API?~~ **Terjawab: dari IDR.** Ini menentukan detail rumus modal efektif (diselesaikan di Fase 0).
 2. ~~Apakah total biaya di struk sama dengan commission dari API~~ **Terjawab: sama.** (lihat bagian 9) (diselesaikan di Fase 0)?
-3. Fungsi tombol Jual di Open Posisi: karena aplikasi tidak membuat order, apakah tombol hanya membuka aplikasi Indodax, atau dihapus dan penjualan murni terdeteksi otomatis?
-4. Apakah baris kecil “estimasi hasil bersih” (memperhitungkan fee jual) ditampilkan di bawah TP dan SL, atau dibiarkan polos?
-5. Setelan TP/SL baru: berlaku untuk posisi baru saja, atau boleh diubah per posisi yang sedang terbuka?
-6. Koin yang sudah dipegang sebelum aplikasi dipasang: diabaikan atau diisi modalnya secara manual?
+3. ~~Fungsi tombol Jual di Open Posisi~~ **Terjawab (7 Nov 2026): tombol dihapus**; penjualan terdeteksi otomatis (lihat FR-14).
+4. ~~Estimasi hasil bersih di bawah TP dan SL~~ **Terjawab (7 Nov 2026): ditampilkan**, memakai fee jual perkiraan 0,31%.
+5. Setelan TP/SL baru: berlaku untuk posisi baru saja, atau boleh diubah per posisi yang sedang terbuka? **Dipakai usulan "posisi baru saja"; belum dikonfirmasi eksplisit.**
+6. ~~Koin yang sudah dipegang sebelum aplikasi dipasang~~ **Terjawab (7 Nov 2026): diabaikan** (saldo aplikasi = IDR saja).
 7. ~~Teknologi pembuatan aplikasi~~ **Terjawab (7 Nov 2026): Rust untuk logika, Kotlin/Java untuk klien Android** (lihat bagian 10).
-8. Apakah perlu cadangan data (ekspor), dan bila ya, ke mana?
-9. Konfirmasi: hari mulai minggu (Senin) dan zona waktu (WIB).
+8. ~~Cadangan data~~ **Terjawab (7 Nov 2026): perlu, ke penyimpanan lokal saja** (FR-26, selesai di U5).
+9. ~~Hari mulai minggu dan zona waktu~~ **Terjawab (7 Nov 2026): Senin dan WIB.**
+10. Apakah `amount` deposit sudah bersih atau belum dikurangi `totalFee`? Menunggu deposit nyata pertama (aplikasi menyediakan dua mode).
+11. ~~Pantauan menyala otomatis setelah HP restart~~ **Dikerjakan (T5.1)**; menunggu uji HP.
 
 ## 17. Risiko dan asumsi
 
@@ -262,4 +281,6 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 | Batas laju (300 per menit) | Rekonsiliasi lambat | Rekonsiliasi per koin yang aktif, jeda antar permintaan |
 | Kebocoran kunci API | Data akun terbaca | Izin baca saja, simpan aman, tanpa izin trade atau withdraw |
 | Pembatasan IP pada key | Koneksi gagal di jaringan seluler | Jangan aktifkan pembatasan IP untuk key baca |
+| Fee jual market lebih besar dari perkiraan 0,31% (contoh ±0,61%) | Estimasi hasil bersih terlalu optimistis | Hasil nyata memakai `commission` dari API; estimasi hanya perkiraan |
+| Aturan tick harga per koin belum diperiksa | TP/SL (dibulatkan ke rupiah utuh) mungkin tidak persis sesuai kelipatan harga koin murah | Tampilan saja; dicatat di PROGRESS.md |
 | Asumsi: satu pengguna, satu akun Indodax, hanya pasangan IDR | Cakupan terbatas | Dicatat sebagai non-tujuan |

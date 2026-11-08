@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 8 November 2026 (Fase UI U1 sampai U5 selesai dan lolos uji)
-Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2 (T2.1 sampai T2.5), Fase 3 (T3.1 sampai T3.3), T4.1 (statistik), dan Fase UI (U1 sampai U5)** (build, tes Rust, dan uji HP dilaporkan pengguna 7 sampai 8 Nov 2026). Langkah berikutnya: PRD v1.3 (dokumentasi), lalu keputusan terbuka (pantauan otomatis setelah reboot, verifikasi mode fee deposit saat ada deposit nyata).
+Terakhir diperbarui: 8 November 2026 (PRD v1.3 selesai; T5.1 pantauan otomatis setelah reboot: kode selesai, uji HP menunggu)
+Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2 (T2.1 sampai T2.5), Fase 3 (T3.1 sampai T3.3), T4.1 (statistik), dan Fase UI (U1 sampai U5)** (build, tes Rust, dan uji HP dilaporkan pengguna 7 sampai 8 Nov 2026). PRD v1.3 selesai (8 Nov). **T5.1 (pantauan menyala otomatis setelah HP restart): kode selesai, build dan uji HP menunggu.** Langkah berikutnya: uji T5.1; verifikasi mode fee deposit saat ada deposit nyata.
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -43,6 +43,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 | U3 | Posisi: kartu per posisi dengan tangga SL/modal efektif/TP dan estimasi hasil bersih; TANPA tombol Jual | Selesai (build berhasil, uji HP lulus 8 Nov) |
 | U4 | Riwayat: ringkasan hari ini, daftar trade tertutup (tombol "Tampilkan lebih banyak"), statistik tiga rentang, koreksi saldo | Selesai (build berhasil, uji HP lulus 8 Nov) |
 | U5 | Ekspor/impor data lokal: `Penyimpanan::ekspor_ke/periksa_cadangan/pulihkan` di `store.rs` (VACUUM INTO, cek integritas dan tabel wajib, verifikasi angka desimal, salinan `catatan.db.sebelum-impor`, ganti lewat rename), FFI `ekspor_cadangan/periksa_cadangan/pulihkan_cadangan` (`RingkasanCadanganUi`), `Cadangan.kt` (SAF), kartu "Cadangan data" di Setelan, `MainActivity.onActivityResult`. Kunci API tidak ikut. 4 tes baru di core, 1 di ffi (16 tes ffi) | Selesai (build, tes, uji HP lulus 8 Nov) |
+| T5.1 | Pantauan menyala otomatis setelah HP restart: `PenerimaBoot.kt` (BOOT_COMPLETED), izin `RECEIVE_BOOT_COMPLETED` dan `<receiver>` di `AndroidManifest.xml`. Hanya bila preferensi `aktif` = true (pantauan terakhir menyala), kunci ada, dan pernah sinkron; bila tidak, penanda dimatikan dan alasan dicatat di log | Kode selesai; build dan uji HP menunggu |
 
 ### 1b. Kesimpulan Fase 0 (masih dipakai)
 - **Fee dalam IDR.** Koin yang diterima tidak dipotong fee. Fee selain IDR sengaja ditolak (error) karena belum pernah ditemui.
@@ -299,6 +300,26 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 - Berkas `.sebelum-impor` disimpan di folder privat aplikasi dan ditimpa pada impor berikutnya (hanya satu salinan terakhir).
 - Cadangan manual saja; belum ada cadangan terjadwal.
 
+### 1n. T5.1: pantauan menyala otomatis setelah HP restart (detail)
+
+**Status: Kode selesai (8 Nov 2026); build dan uji HP menunggu.**
+
+**Yang dibangun**
+- `PenerimaBoot.kt` (baru): menerima `BOOT_COMPLETED`. Bila `PREF_AKTIF` = true, kunci API ada, dan `PREF_PERNAH_SINKRON` = true, memanggil `LayananLatar.mulai`. Bila syarat tidak terpenuhi atau mulai gagal, `PREF_AKTIF` dimatikan (supaya layar tidak menampilkan "Berjalan" palsu) dan alasannya dicatat di Log pantauan. Dilewati bila pemantau sudah berjalan.
+- `AndroidManifest.xml`: izin `RECEIVE_BOOT_COMPLETED`, `<receiver android:name=".PenerimaBoot" android:exported="false">` dengan filter BOOT_COMPLETED.
+- Tidak berubah: Rust, FFI, `LayananLatar.kt`, `Sinkron.kt`, layar. Tidak ada tombol baru: mengikuti pilihan terakhir pengguna (menyala atau dihentikan).
+
+**Catatan**
+- Android 15 melarang beberapa tipe foreground service dimulai dari boot (dataSync, mediaPlayback, dan lain-lain); `specialUse` yang dipakai tidak termasuk.
+- Pasang ulang/update APK lewat adb mematikan pantauan dan harus dinyalakan manual (perilaku lama; `MY_PACKAGE_REPLACED` sengaja tidak ditangani untuk menghindari mulai ganda dengan START_STICKY).
+- Bila di HP tertentu tidak menyala: izinkan Autostart untuk aplikasi (sebagian merk membatasinya), pastikan optimasi baterai dimatikan; cadangan terakhir ubah `exported` ke `true`.
+
+**Yang perlu diuji di HP**
+1. Mulai pantauan, restart HP, buka kunci layar, tunggu sekitar 1 menit: notifikasi tetap pantauan muncul tanpa membuka aplikasi.
+2. Buka Setelan: pantauan "Berjalan"; log memuat "dinyalakan otomatis setelah HP restart" dan "Tersambung".
+3. Transaksi kecil di Indodax: notifikasi beli/jual muncul.
+4. Hentikan pantauan, restart HP: tetap mati.
+
 ---
 
 ## 2. Masalah
@@ -309,7 +330,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 | Impor cadangan saat sinkron manual atau otomatis berjalan tidak dicegah | Impor hanya mengecek pantauan mati | Dikenal (U5); jangan impor saat sinkron berjalan |
 | `tradeId` event WebSocket vs REST belum dibandingkan | Belum ada data pembanding | Tidak menghalangi (anti-dobel dari REST) |
 | Kemungkinan "database is locked" saat dua koneksi SQLite aktif bersamaan | `busy_timeout` 5 detik ada; layar kini membaca lewat antrean satu thread, tulis oleh pantau tetap bisa bersamaan | Pantau saat uji lanjutan |
-| Pantauan tidak menyala sendiri setelah HP reboot | Belum ada penerima BOOT_COMPLETED | Dicatat; belum diputuskan perlu atau tidak |
+| Pantauan tidak menyala sendiri setelah HP reboot | Belum ada penerima BOOT_COMPLETED | Dikerjakan di T5.1 (kode selesai); menunggu uji HP |
 | Clearing fee baru teramati bernilai 0 | Hanya 2 sampel kecil (UAI) | Pantau; bila `commission` REST berbeda dari fee+tax+clearing event, andalkan REST |
 | Koin yang sudah tidak dipegang (contoh ICNT) tidak terpindai | Daftar koin dari saldo + riwayat tersimpan | Dikenal; solusi sementara `koin_tambahan`, belum ada isiannya di UI |
 | `pxgidr` ditolak Indodax (kode 1109) | Dugaan: tidak ada pasangan IDR | Dilewati dengan benar; penyebab belum dipastikan |
@@ -339,8 +360,8 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 ### Task berikutnya (urut)
 | Task | Isi | Syarat |
 | --- | --- | --- |
-| Pekerjaan kecil | PRD v1.3 (lihat "Pekerjaan kecil tertunda") | Claude |
-| Opsional | Pantauan menyala otomatis setelah HP reboot (penerima BOOT_COMPLETED); verifikasi mode fee deposit saat ada deposit nyata | Keputusan pengguna |
+| T5.1 uji HP | Build lewat `bangun_android.sh`, jalankan 4 poin uji di 1n, laporkan hasil, lalu commit `T5.1: pantauan menyala otomatis setelah HP restart` | Pengguna |
+| Opsional | Verifikasi mode fee deposit saat ada deposit nyata pertama | Menunggu deposit nyata |
 
 ### Keputusan yang masih terbuka
 | Hal | Pilihan | Status |
@@ -348,7 +369,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 | Setelan TP/SL baru | Hanya posisi baru atau juga yang terbuka | Dipakai usulan "hanya posisi baru" (T1.3); catatan ini tampil di layar Setelan; belum dikonfirmasi eksplisit |
 | Koin yang dipegang sebelum app dipasang | Diabaikan atau diisi modalnya | Terjawab: diabaikan (7 Nov 2026) |
 | Mode fee deposit/withdraw (`amount` bersih atau tidak) | Lihat 1i | Belum (butuh deposit nyata) |
-| Pantauan menyala otomatis setelah HP reboot | Perlu atau tidak | Belum |
+| Pantauan menyala otomatis setelah HP reboot | Perlu atau tidak | Terjawab: dikerjakan di T5.1 (8 Nov 2026), menunggu uji HP |
 
 ### Keputusan yang sudah terjawab
 - Tombol "Jual di Indodax": dihapus (7 Nov 2026).
@@ -366,14 +387,15 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - Layar asli U1 sampai U4 lolos uji HP, semua sesuai kriteria (8 Nov 2026).
 - U5: salinan database lama otomatis disimpan sebagai `.sebelum-impor`; kunci API tidak dicadangkan; impor wajib dengan pantauan mati (usulan, lolos uji HP).
 
-### Pekerjaan kecil tertunda
-- PRD perlu v1.3: FR-22 (grafik), koreksi saldo, FR-23 (riwayat), FR-25 (statistik) sudah diimplementasikan dan kini ada di layar asli; FR-14 diubah (tombol Jual dihapus); saldo versi aplikasi dihitung dari catatan; koreksi diperlakukan seperti setoran; pertanyaan terbuka no. 3 (tombol Jual: dihapus), no. 4 (estimasi bersih tampil, fee jual perkiraan 0,31%), no. 6 (diabaikan), no. 8 (cadangan lokal), no. 9 (WIB, Senin) terjawab; FR-16 progress target selesai di T2.4; bagian 9 (token WebSocket dengan key v2 terjawab, tanda tangan SHA512 untuk token, nama status `FILL`, WebSocket sebagai pemicu) dan pertanyaan terbuka.
+### Pekerjaan kecil
+- PRD v1.3: SELESAI (8 Nov 2026). Berisi FR-14 tanpa tombol Jual, FR-16 dan FR-18 (progress dan penanda tercapai di notifikasi jual), FR-22/23/25 sudah diimplementasikan, FR-26 (cadangan), FR-27 (koreksi saldo), saldo versi aplikasi dihitung dari catatan, bagian 9 (token WebSocket dengan key v2, SHA512, status FILL, WebSocket sebagai pemicu), pertanyaan terbuka no. 3, 4, 6, 8, 9 terjawab. Simpan sebagai `docs/PRD_Aplikasi_Catatan_Trading_Crypto.md` (timpa v1.2).
 
 ### Fase berikutnya
 - **Fase 2**: selesai (T2.1 sampai T2.5)
 - **Fase 3**: selesai (T3.1 sampai T3.3)
 - **Fase 4**: selesai (T4.1)
 - **Fase UI**: selesai (U1 sampai U5, lulus uji HP 8 Nov 2026)
+- **Fase 5 (penyempurnaan)**: T5.1 kode selesai, uji HP menunggu
 
 ---
 
@@ -420,13 +442,13 @@ Alur git setiap task:
 git add .
 git commit -m "Tx.y: deskripsi singkat"
 ```
-Catatan: `git add .` wajib agar file Kotlin baru (Tema.kt, Format.kt, Komponen.kt, Latar.kt, Sinkron.kt, Layar.kt, Layar*.kt, Cadangan.kt) ikut tercatat.
+Catatan: `git add .` wajib agar file Kotlin baru (Tema.kt, Format.kt, Komponen.kt, Latar.kt, Sinkron.kt, Layar.kt, Layar*.kt, Cadangan.kt, PenerimaBoot.kt) ikut tercatat.
 
 ---
 
 ## 5. Struktur proyek
 
-### Saat ini (setelah U5)
+### Saat ini (setelah T5.1)
 ```
 catatan-scalping/
 ├── README.md
@@ -483,6 +505,7 @@ catatan-scalping/
 │           │   ├── LayarRiwayat.kt      (U4: ringkasan, daftar trade, statistik, koreksi saldo)
 │           │   ├── LayarSetelan.kt      (U1: TP/SL, target, kunci, pantauan, sinkron, arus kas, log; U5: kartu Cadangan data)
 │           │   ├── Cadangan.kt          (U5: ekspor/impor lewat pemilih berkas sistem)
+│           │   ├── PenerimaBoot.kt      (T5.1: menyalakan pantauan lagi setelah HP restart)
 │           │   ├── Tema.kt              (U1: warna terang/gelap sesuai prototype)
 │           │   ├── Format.kt            (U1: titik ribuan, koma desimal, tanda, waktu WIB)
 │           │   ├── Komponen.kt          (U1: kartu, tombol, kolom isian, chip, bar)
@@ -496,7 +519,7 @@ catatan-scalping/
 │           ├── java/uniffi/             (OTOMATIS dari bindgen, tidak di-commit)
 │           └── jniLibs/                 (OTOMATIS dari cargo ndk, tidak di-commit)
 ├── docs/
-│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.2)
+│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.3)
 │   └── prototype/
 │       └── Catatan_trading__prototype_UI.html
 └── tools/
@@ -509,12 +532,14 @@ catatan-scalping/
 ```
 
 ### Rencana
-Semua task pada rencana awal selesai. Pekerjaan tersisa: PRD v1.3 dan dua keputusan opsional (lihat bagian 3). Struktur di atas sudah mencakup U5; tidak ada file baru lain yang direncanakan.
+Semua task pada rencana awal selesai; PRD v1.3 selesai. Tersisa uji HP T5.1 dan verifikasi mode fee deposit (lihat bagian 3). Struktur di atas sudah mencakup U5; tidak ada file baru lain yang direncanakan.
 
 ---
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T5.1: `T5.1: pantauan menyala otomatis setelah HP restart` (hash: ...)
+- PRD v1.3: `Dokumen: PRD v1.3 sesuai aplikasi` (hash: ...)
 - U5: `U5: ekspor dan impor data lokal` (hash: ...)
 - U4: `U4: layar Riwayat, statistik, koreksi saldo` (hash: ...)
 - U3: `U3: layar Posisi (tanpa tombol Jual)` (hash: ...)
