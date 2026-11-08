@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 8 November 2026 (T5.2 perbaiki logika deposit: kode selesai, build, tes, dan uji HP menunggu)
-Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2, Fase 3, T4.1 (statistik), Fase UI (U1 sampai U5), dan T5.1 (pantauan menyala otomatis setelah HP restart)** (build, tes Rust, dan uji HP dilaporkan pengguna 7 sampai 8 Nov 2026). Uji deposit nyata (8 Nov): mode fee bawaan SALAH, `amount` deposit sudah bersih (lihat 1o). Withdraw belum bisa diuji (saldo di bawah batas minimum penarikan Indodax). **T5.2 (perbaiki logika deposit): kode selesai, build, tes, dan uji HP menunggu (lihat 1p).**
+Terakhir diperbarui: 8 November 2026 (T5.2 perbaiki logika deposit: LULUS uji HP; penyebab sempat gagal = build Rust memakai sumber lama, lihat 1q)
+Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2, Fase 3, T4.1 (statistik), Fase UI (U1 sampai U5), T5.1 (pantauan menyala otomatis setelah HP restart), dan T5.2 (logika deposit)** (build, tes Rust, dan uji HP dilaporkan pengguna 7 sampai 8 Nov 2026). Uji deposit nyata (8 Nov): `amount` deposit sudah bersih, fee hanya informasi (lihat 1o); setelah T5.2 baris deposit di HP menampilkan `saldo +Rp 7.670` (dilaporkan pengguna, 8 Nov; lihat 1p dan 1q). Withdraw belum bisa diuji (saldo di bawah batas minimum penarikan Indodax). Tersisa hanya pekerjaan opsional: uji withdraw nyata dan verifikasi lanjutan saat ada data.
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -9,6 +9,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 - Jangan pernah commit `.env` atau isi `data/` (sudah ada di `.gitignore`).
 - Aplikasi hanya membaca data. Key API wajib izin **baca saja**.
 - Build Android SELALU lewat `bash tools/bangun_android.sh` (skrip ini membuat ulang binding Kotlin dari Rust). Menjalankan Gradle langsung tidak memperbarui binding, sehingga fungsi FFI baru tampil sebagai "Unresolved reference".
+- Setiap kali mengganti file sumber dari unduhan atau salinan, jalankan `touch` pada file itu (atau `touch core/src/*.rs ffi/src/lib.rs`) sebelum build. Cargo menilai perubahan dari waktu modifikasi file; file bertanggal lebih tua dari build terakhir dianggap tidak berubah (dialami di T5.2, lihat 1q).
 
 ---
 
@@ -43,7 +44,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 | U3 | Posisi: kartu per posisi dengan tangga SL/modal efektif/TP dan estimasi hasil bersih; TANPA tombol Jual | Selesai (build berhasil, uji HP lulus 8 Nov) |
 | U4 | Riwayat: ringkasan hari ini, daftar trade tertutup (tombol "Tampilkan lebih banyak"), statistik tiga rentang, koreksi saldo | Selesai (build berhasil, uji HP lulus 8 Nov) |
 | U5 | Ekspor/impor data lokal: `Penyimpanan::ekspor_ke/periksa_cadangan/pulihkan` di `store.rs` (VACUUM INTO, cek integritas dan tabel wajib, verifikasi angka desimal, salinan `catatan.db.sebelum-impor`, ganti lewat rename), FFI `ekspor_cadangan/periksa_cadangan/pulihkan_cadangan` (`RingkasanCadanganUi`), `Cadangan.kt` (SAF), kartu "Cadangan data" di Setelan, `MainActivity.onActivityResult`. Kunci API tidak ikut. 4 tes baru di core, 1 di ffi (16 tes ffi) | Selesai (build, tes, uji HP lulus 8 Nov) |
-| T5.2 | Logika deposit: `ArusKas::efek_saldo` untuk deposit selalu `+amount` (fee hanya informasi); kotak centang "nominal sudah bersih" DIHAPUS dari layar (withdraw tetap `-(amount + fee)`); teks baris deposit di Setelan diperjelas; 2 tes baru dan 2 tes diubah. Lihat 1p | Kode selesai; build, tes, dan uji HP menunggu |
+| T5.2 | Logika deposit: `ArusKas::efek_saldo` untuk deposit selalu `+amount` (fee hanya informasi); kotak centang "nominal sudah bersih" DIHAPUS dari layar (withdraw tetap `-(amount + fee)`); teks baris deposit di Setelan diperjelas; 2 tes baru dan 2 tes diubah. Lihat 1p dan 1q | Selesai (build, tes, uji HP lulus 8 Nov: baris deposit `saldo +Rp 7.670`) |
 | T5.1 | Pantauan menyala otomatis setelah HP restart: `PenerimaBoot.kt` (BOOT_COMPLETED), izin `RECEIVE_BOOT_COMPLETED` dan `<receiver>` di `AndroidManifest.xml`. Hanya bila preferensi `aktif` = true (pantauan terakhir menyala), kunci ada, dan pernah sinkron; bila tidak, penanda dimatikan dan alasan dicatat di log | Selesai (build, tes, uji HP lulus 8 Nov) |
 
 ### 1b. Kesimpulan Fase 0 (masih dipakai)
@@ -343,7 +344,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 
 ### 1p. T5.2: perbaiki logika deposit (detail)
 
-**Status: Kode selesai (8 Nov 2026); build, tes, dan uji HP menunggu.**
+**Status: Selesai.** Kode ditulis 8 Nov 2026; setelah build ulang bersih, baris deposit di HP menampilkan `saldo +Rp 7.670` (dilaporkan pengguna, 8 Nov 2026). Sempat tertunda karena build memakai sumber lama (lihat 1q).
 
 **Yang diubah (hanya 4 file yang sudah ada, tanpa FFI baru)**
 - `core/src/arus_kas.rs`: `efek_saldo` untuk deposit selalu `jumlah` (amount), apa pun modenya; withdraw tetap dua mode (bawaan `-(amount + fee)`, mode bersih `-amount`). Tes `efek_saldo_dua_mode` diganti nama dan isinya; tes baru `deposit_nyata_8_nov_amount_7670_fee_3330_menambah_7670`.
@@ -355,7 +356,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 
 **Temuan uji awal (8 Nov 2026):** dengan build yang masih memakai logika lama, baris deposit menampilkan +7.670 bila kotak dicentang dan +4.340 bila tidak. Itu membuktikan kotak memang memengaruhi deposit di logika lama; setelah T5.2 baris harus +7.670 tanpa kotak. Pengguna mengusulkan kotak dihapus. Catatan: data aplikasi sempat dihapus pengguna (database baru), sehingga deposit 8 Nov (07:51) berada sebelum snapshot awal baru dan tidak dihitung ke saldo; ada satu posisi koin lama yang belum terjual (penjualannya akan tercatat sebagai penyesuaian).
 
-**Yang perlu diuji**
+**Yang diuji**
 1. `cargo test -p scalping-core` dan `cargo test -p scalping-ffi` lulus (periksa jumlah tes terbaru).
 2. Build lewat `bash tools/bangun_android.sh --pasang <serial>`.
 3. Di HP (kotak centang sudah tidak ada): Riwayat, "Cek selisih saldo": IDR menurut aplikasi = saldo asli, selisih Rp 0 (dengan deposit 8 Nov: 77.322).
@@ -363,9 +364,50 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 5. Beranda: saldo dan modal aktif ikut naik 7.670; hasil dan pencapaian tidak berubah. Sinkron ulang tidak menggandakan.
 
 
+### 1q. T5.2: penelusuran "saldo +Rp 4.340 masih muncul" (8 Nov 2026, detail)
+
+**Status: Selesai.** Setelah `touch` pada file sumber, `cargo clean`, dan build ulang lewat `tools/bangun_android.sh`, baris deposit di HP menjadi benar (`saldo +Rp 7.670`), dilaporkan pengguna 8 Nov 2026. Kode sumber memang sudah benar sejak T5.2; masalahnya ada di build.
+
+**Gejala (screenshot HP, 8 Nov 09:36)**
+- Teks baris deposit sudah format baru T5.2 ("amount Rp 7.670 (fee Rp 3.330 sudah dipotong) → saldo ..."), jadi Kotlin terbaru terpasang.
+- Angka sesudah panah masih `+Rp 4.340` (= 7.670 - 3.330), yaitu hasil logika lama. Seharusnya `+Rp 7.670`.
+
+**Yang sudah diperiksa dan BENAR (dari file yang diunggah)**
+- `core/src/arus_kas.rs`: `efek_saldo` untuk deposit = `self.jumlah` (baris 78); tes `deposit_nyata_8_nov_amount_7670_fee_3330_menambah_7670` ada.
+- `core/src/periode.rs`: `DataSaldo::setoran` memakai `setoran_bersih` dari `arus_kas.rs`; tes `fee_deposit_tidak_mengubah_saldo_fee_withdraw_sesuai_mode` dan `deposit_nyata_8_nov_saldo_cocok_dengan_saldo_asli` ada.
+- `ffi/src/lib.rs`: `daftar_arus_kas` memanggil `a.efek_saldo(bersih)` dari core (baris 939). Tidak ada hitungan fee lain di FFI; `muat_data_saldo` memakai `semua_arus_kas()`.
+- `LayarSetelan.kt`: hanya menampilkan `x.efekSaldo` dari Rust (baris 248 dan 250). Tidak ada hitungan sendiri di Kotlin.
+- `core/src/lib.rs`: modul dan ekspor wajar. `ffi/Cargo.toml`: `scalping-core = { path = "../core" }` (benar). Workspace `Cargo.toml`: profil release `strip = true`.
+- Kesimpulan: tidak ada kode lain yang mengurangi fee. Yang tersisa adalah masalah build atau berkas di repo berbeda dari yang diunggah.
+
+**Temuan dari pemeriksaan di komputer pengguna**
+- `grep "Deposit, _" core/src/arus_kas.rs` menemukan baris 78 baru, tetapi `cargo test -p scalping-core deposit_nyata` menemukan 0 tes dari 98 (selesai 0,16 detik tanpa kompilasi). Berarti binary tes dibangun dari sumber lama: Cargo tidak mengompilasi ulang setelah file diganti (dugaan: waktu modifikasi file lebih tua dari build terakhir). Ini juga menjelaskan mengapa tes sebelumnya "lulus" tetapi HP tetap salah. Setelah `touch`, `cargo clean`, dan build ulang dijalankan berurutan sampai selesai, layar HP menjadi benar (dilaporkan pengguna).
+
+**Perubahan alat**
+- `tools/bangun_android.sh` diperbarui: (a) memakai APK terbaru berdasarkan waktu, bukan sembarang APK; (b) memperingatkan bahwa `--hanya-pasang` tidak membangun ulang; (c) mencetak waktu dan hash `.so`; (d) setelah build membandingkan isi section `.text` kode Rust di dalam APK dengan `.so` hasil `cargo ndk` (`llvm-objcopy` dari NDK), dan menghentikan build bila beda. Hash seluruh `.so` TIDAK dipakai karena `strip` mengubah byte. Catatan: pemeriksaan ini hanya membuktikan APK = `.so` terbaru, BUKAN bahwa `.so` itu dibangun dari sumber terbaru.
+- adb nirkabel mendaftarkan HP dua kali (`... (2)._adb-tls-connect._tcp` dan `...._adb-tls-connect._tcp`). Pakai serial tanpa spasi: `adb-R9CX4015L1D-dnKRzU._adb-tls-connect._tcp` (atau `export ANDROID_SERIAL=...`).
+
+**Penyebab dan pelajaran (terkonfirmasi oleh hasil: layar benar setelah build bersih)**
+- Penyebab: build Rust yang terpasang di HP memakai sumber lama, sementara Kotlin sudah baru (teks baris deposit sudah format baru, angka masih hasil logika lama). Dugaan terkuat: Cargo tidak mengompilasi ulang file yang diganti dari unduhan karena waktu modifikasinya lebih tua dari build terakhir (tes `deposit_nyata` ditemukan 0 dari 98 sebelum build bersih). Pemicu persis tidak dibuktikan terpisah, tetapi `touch` + `cargo clean` + build ulang menyelesaikannya.
+- Tes Rust "lulus" tidak menjamin sumber baru ikut terkompilasi. Pastikan tes baru benar-benar jalan (jumlah tes bertambah, filter nama menemukan tesnya).
+- Setelah mengganti file dari unduhan: `touch` file itu, dan bila ragu `cargo clean` lalu bangun lewat `bash tools/bangun_android.sh --pasang <serial>`.
+- Pemeriksaan `.text` di `bangun_android.sh` hanya menjamin APK = `.so` terbaru, bukan bahwa `.so` dibangun dari sumber terbaru.
+- Poin uji lain T5.2 (Riwayat "Cek selisih saldo" = Rp 0, Beranda saldo dan modal aktif naik 7.670, sinkron ulang tidak menggandakan) belum dilaporkan terpisah oleh pengguna; periksa bila sempat.
+
+
+**Langkah yang dijalankan (riwayat, sudah selesai)**
+1. `grep -n "deposit_nyata" core/src/arus_kas.rs core/src/periode.rs`: harus ada dua fungsi di repo.
+2. `touch core/src/*.rs ffi/src/lib.rs`, `cargo clean`, lalu `cargo test -p scalping-core deposit_nyata`: harus mengompilasi ulang dan menampilkan `2 passed`.
+3. `bash tools/bangun_android.sh --pasang adb-R9CX4015L1D-dnKRzU._adb-tls-connect._tcp`: harus `OK: kode Rust di APK sama ...` dan `Success`.
+4. Buka Setelan: baris deposit harus `saldo +Rp 7.670`. Riwayat, "Cek selisih saldo": Rp 0 bila deposit berada setelah snapshot awal; Beranda: saldo dan modal aktif naik 7.670, hasil dan pencapaian tidak berubah; sinkron ulang tidak menggandakan.
+5. Bila tes `2 passed` dan layar tetap +4.340: uji pemisah, ubah `efek_saldo` di `daftar_arus_kas` (ffi) menjadi `if a.jenis.teks() == "deposit" { a.jumlah } else { a.efek_saldo(bersih) }`, bangun ulang. Layar jadi +7.670 = core yang terpakai masih lama; tetap +4.340 = FFI tidak ikut terbangun atau layar bukan dari fungsi ini (kirim `app/aplikasi/build.gradle.kts`).
+6. Setelah lulus: catat penyebab di sini, ubah status T5.2 menjadi lulus uji HP, lalu commit. (Dilakukan 8 Nov 2026.)
+
+
 ### Belum terselesaikan atau dikenal
 | Masalah | Penyebab / dugaan | Status |
 | --- | --- | --- |
+| Layar menampilkan deposit "saldo +Rp 4.340" padahal kode sumber benar (T5.2) | Build Rust memakai sumber lama (Cargo tidak mengompilasi ulang file yang diganti) | TERJAWAB (8 Nov 2026): selesai setelah `touch` + `cargo clean` + build ulang; lihat 1q |
 | Impor cadangan saat sinkron manual atau otomatis berjalan tidak dicegah | Impor hanya mengecek pantauan mati | Dikenal (U5); jangan impor saat sinkron berjalan |
 | `tradeId` event WebSocket vs REST belum dibandingkan | Belum ada data pembanding | Tidak menghalangi (anti-dobel dari REST) |
 | Kemungkinan "database is locked" saat dua koneksi SQLite aktif bersamaan | `busy_timeout` 5 detik ada; layar kini membaca lewat antrean satu thread, tulis oleh pantau tetap bisa bersamaan | Pantau saat uji lanjutan |
@@ -399,7 +441,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 ### Task berikutnya (urut)
 | Task | Isi | Syarat |
 | --- | --- | --- |
-| T5.2 | Perbaiki logika deposit: `amount` deposit dianggap sudah bersih (fee dari `totalFee` hanya ditampilkan, tidak dikurangkan). Perlu diputuskan perlakuan withdraw (lihat usulan di bawah) | Pengguna mengirim kode terkait (lihat catatan di bawah) |
+| T5.2 | Perbaiki logika deposit | SELESAI, lulus uji HP 8 Nov 2026 (lihat 1p dan 1q) |
 | Opsional | Uji withdraw nyata saat saldo cukup (bentuk baris dan mode fee) | Menunggu saldo di atas batas minimum penarikan |
 | Opsional | Verifikasi mode fee deposit saat ada deposit nyata pertama | Menunggu deposit nyata |
 
@@ -433,7 +475,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - Layar asli U1 sampai U4 lolos uji HP, semua sesuai kriteria (8 Nov 2026).
 - U5: salinan database lama otomatis disimpan sebagai `.sebelum-impor`; kunci API tidak dicadangkan; impor wajib dengan pantauan mati (usulan, lolos uji HP).
 
-### Usulan T5.2 (dikerjakan 8 Nov 2026 sesuai usulan ini; hasil di 1p)
+### Usulan T5.2 (dikerjakan 8 Nov 2026 sesuai usulan ini; hasil di 1p; lulus uji HP, lihat 1q)
 - Deposit: selalu `+amount`; `totalFee` hanya disimpan dan ditampilkan sebagai informasi di baris deposit. Kotak "Nominal sudah bersih" tidak lagi memengaruhi deposit.
 - Withdraw: selalu `-(amount + fee)` tanpa pilihan di layar (usulan pengguna menghapus kotak, 8 Nov 2026). Ini dugaan berdasarkan deposit (amount = nominal bersih, fee terpisah), BELUM terverifikasi; bila meleset, "Cek selisih saldo" akan menunjukkan selisih dan perlu ditinjau lagi saat ada withdraw nyata.
 - Catatan deposit lama di database dihitung ulang otomatis bila fee tidak disimpan sebagai angka jadi (saldo dihitung dari catatan); perlu dipastikan di kode.
@@ -450,7 +492,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - **Fase 3**: selesai (T3.1 sampai T3.3)
 - **Fase 4**: selesai (T4.1)
 - **Fase UI**: selesai (U1 sampai U5, lulus uji HP 8 Nov 2026)
-- **Fase 5 (penyempurnaan)**: T5.1 selesai (lulus uji HP 8 Nov 2026); T5.2 (perbaiki logika deposit): kode selesai, uji menunggu
+- **Fase 5 (penyempurnaan)**: selesai. T5.1 lulus uji HP (8 Nov 2026); T5.2 (logika deposit) lulus uji HP (8 Nov 2026)
 
 ---
 
@@ -583,16 +625,17 @@ catatan-scalping/
     ├── tes_websocket_token.py           (T0.6: tes token dan event WebSocket privat, baca saja)
     ├── fase2_fiat.py                    (T2.2: lihat bentuk respons fiat/orders, angka disamarkan, baca saja)
     ├── cek_lingkungan.py                (laporan versi Rust/Android/adb)
-    └── bangun_android.sh                (Rust -> binding -> APK -> adb)
+    └── bangun_android.sh                (Rust -> binding -> APK -> adb; memeriksa .text kode Rust di APK; APK terbaru)
 ```
 
 ### Rencana
-Semua task pada rencana awal selesai; PRD v1.5 selesai. Tersisa T5.2 (perbaiki logika deposit) dan uji withdraw nyata nanti (lihat bagian 3). T5.2 hanya mengubah file yang sudah ada. Struktur di atas sudah mencakup U5; tidak ada file baru lain yang direncanakan.
+Semua task pada rencana awal selesai, termasuk T5.2; PRD v1.5 selesai. Tersisa hanya yang opsional: uji withdraw nyata saat saldo di atas batas minimum penarikan (bentuk baris dan mode fee withdraw) dan verifikasi lain saat ada data (lihat bagian 3). Struktur di atas sudah mencakup semua file; tidak ada file baru yang direncanakan.
 
 ---
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- Alat: `Alat: bangun_android.sh memeriksa .text kode Rust di APK dan memakai APK terbaru` (hash: ...)
 - T5.2: `T5.2: deposit amount sudah bersih, fee hanya informasi` (hash: ...)
 - Dokumen: `Dokumen: PRD v1.5 dan PROGRESS (hasil uji deposit nyata, rencana T5.2)` (hash: ...)
 - Dokumen: `Dokumen: PRD v1.4 dan PROGRESS (T5.1 lulus, keputusan 8 Nov)` (hash: ...)
