@@ -10,6 +10,7 @@ use scalping_core::{
 use std::str::FromStr;
 use scalping_core::arus_kas::{sinkron_arus_kas as sinkron_arus_kas_inti, ArusKas};
 use scalping_core::periode::{DataSaldo, Pencapaian, RingkasanTarget, SelisihSaldo};
+use scalping_core::periode::{deret_profit, pencapaian_profit, PencapaianProfit};
 use scalping_core::{awal_hari_wib, awal_minggu_wib, hitung_statistik as hitung_statistik_inti, TradeTertutup};
 use scalping_core::{pantau, HasilHitung, KejadianPantau};
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -1323,6 +1324,8 @@ pub struct AsetUi {
 pub struct TotalAsetUi {
     /// contoh "Rp 1.482.350"
     pub total: String,
+    /// total dalam rupiah utuh tanpa format (contoh "1482350"); diteruskan ke `ringkasan_profit`
+    pub total_angka: String,
     pub idr: String,
     pub nilai_koin: String,
     pub koin: Vec<AsetUi>,
@@ -1340,6 +1343,7 @@ pub fn total_aset(key: String, secret: String) -> Result<TotalAsetUi, ErrorApp> 
     let t = hitung_total_aset(&akun, &harga).map_err(gagal)?;
     Ok(TotalAsetUi {
         total: format!("Rp {}", fmt_rupiah(t.total)),
+        total_angka: bulatkan_idr(t.total).to_string(),
         idr: format!("Rp {}", fmt_rupiah(t.idr)),
         nilai_koin: format!("Rp {}", fmt_rupiah(t.nilai_koin())),
         koin: t
@@ -1354,6 +1358,110 @@ pub fn total_aset(key: String, secret: String) -> Result<TotalAsetUi, ErrorApp> 
             .collect(),
         tanpa_harga: t.tanpa_harga,
     })
+}
+
+// ---------------------------------------------------------------------------------------------
+// T6.2: target dan grafik Beranda dari PROFIT TRADE TERTUTUP (bukan dari selisih saldo).
+// Total aset sekarang (dari `total_aset`, jaringan) hanya dipakai sebagai pembagi persen:
+//   persen = profit periode / (total aset - profit periode) x 100.
+// Fungsi di bawah tanpa jaringan: Kotlin meneruskan `TotalAsetUi.total_angka` (atau None).
+// ---------------------------------------------------------------------------------------------
+
+/// Profit satu periode (hari atau minggu, WIB) dari trade tertutup.
+#[derive(uniffi::Record)]
+pub struct TargetProfitUi {
+    pub mulai_ms: i64,
+    /// rupiah utuh, bertanda
+    pub profit: String,
+    /// 2 desimal; None bila total aset belum diketahui
+    pub persen: Option<String>,
+    pub target_persen: Option<String>,
+    /// persen terhadap target, dibulatkan; bisa negatif atau lebih dari 100
+    pub progress_persen: Option<String>,
+    pub tercapai: bool,
+}
+
+#[derive(uniffi::Record)]
+pub struct RingkasanProfitUi {
+    /// waktu aplikasi mulai mencatat (snapshot awal); trade sebelumnya tidak dihitung
+    pub snapshot_awal_ms: i64,
+    /// total profit semua trade tertutup sejak aplikasi dipasang
+    pub profit_total: String,
+    pub jumlah_trade: u32,
+    pub harian: TargetProfitUi,
+    pub mingguan: TargetProfitUi,
+}
+
+fn target_profit_ui(p: &PencapaianProfit) -> TargetProfitUi {
+    TargetProfitUi {
+        mulai_ms: p.mulai_ms,
+        profit: bulatkan_idr(p.profit).to_string(),
+        persen: p.persen.map(|x| x.round_dp(2).to_string()),
+        target_persen: p.target_persen.map(|x| x.normalize().to_string()),
+        progress_persen: p.progress_persen.map(|x| x.round_dp(0).normalize().to_string()),
+        tercapai: p.tercapai,
+    }
+}
+
+fn ringkasan_profit_dari(
+    profit: &[(i64, Decimal)],
+    awal_ms: i64,
+    sekarang: i64,
+    total_aset: Option<Decimal>,
+    target: (Option<Decimal>, Option<Decimal>),
+) -> RingkasanProfitUi {
+    let total: Decimal = profit.iter().map(|(_, p)| *p).sum();
+    RingkasanProfitUi {
+        snapshot_awal_ms: awal_ms,
+        profit_total: bulatkan_idr(total).to_string(),
+        jumlah_trade: profit.len() as u32,
+        harian: target_profit_ui(&pencapaian_profit(profit, awal_hari_wib(sekarang), sekarang, total_aset, target.0)),
+        mingguan: target_profit_ui(&pencapaian_profit(profit, awal_minggu_wib(sekarang), sekarang, total_aset, target.1)),
+    }
+}
+
+/// Snapshot awal dan (waktu tutup, profit) tiap trade tertutup sejak aplikasi dipasang.
+fn muat_profit_tertutup(simpan: &Penyimpanan) -> Result<(i64, Vec<(i64, Decimal)>), ErrorApp> {
+    let h = hitung_aplikasi(simpan)?;
+    let (awal_ms, _) = simpan
+        .snapshot_awal()
+        .map_err(gagal)?
+        .ok_or_else(|| gagal("Belum ada snapshot saldo awal; sinkron dulu"))?;
+    Ok((awal_ms, h.tertutup.iter().map(|t| (t.waktu_tutup_ms, t.profit)).collect()))
+}
+
+/// Profit total, harian, dan mingguan dari trade tertutup. `total_aset` = rupiah utuh dari
+/// `TotalAsetUi.total_angka`; None atau kosong bila belum diketahui (persen jadi None).
+/// Tanpa jaringan.
+#[uniffi::export]
+pub fn ringkasan_profit(path_db: String, total_aset: Option<String>) -> Result<RingkasanProfitUi, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let (awal_ms, profit) = muat_profit_tertutup(&simpan)?;
+    let total = match total_aset.as_deref().map(str::trim) {
+        Some(s) if !s.is_empty() => Some(desimal(s)?),
+        _ => None,
+    };
+    let target = simpan.target().map_err(gagal)?;
+    Ok(ringkasan_profit_dari(&profit, awal_ms, sekarang_ms(), total, target))
+}
+
+/// Satu titik kurva akumulasi profit (rupiah utuh, bertanda).
+#[derive(uniffi::Record)]
+pub struct TitikProfitUi {
+    pub waktu_ms: i64,
+    pub profit: String,
+}
+
+/// Kurva akumulasi profit trade tertutup sejak aplikasi dipasang, paling banyak `maks_titik`
+/// titik. Tanpa jaringan.
+#[uniffi::export]
+pub fn data_grafik_profit(path_db: String, maks_titik: u32) -> Result<Vec<TitikProfitUi>, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let (awal_ms, profit) = muat_profit_tertutup(&simpan)?;
+    Ok(deret_profit(awal_ms, sekarang_ms(), &profit, maks_titik as usize)
+        .into_iter()
+        .map(|t| TitikProfitUi { waktu_ms: t.waktu_ms, profit: bulatkan_idr(t.profit_kumulatif).to_string() })
+        .collect())
 }
 
 #[cfg(test)]
@@ -1763,5 +1871,51 @@ mod tes_cadangan {
         for p in [&asal, &salinan, &tujuan] {
             bersih(p);
         }
+    }
+}
+
+#[cfg(test)]
+mod tes_beranda_profit {
+    use super::*;
+
+    const SABTU: i64 = 1_793_984_400_000; // Sabtu 7 Nov 2026 00:00 WIB
+    const JAM: i64 = 3_600_000;
+
+    fn d(s: &str) -> Decimal {
+        Decimal::from_str(s).unwrap()
+    }
+
+    #[test]
+    fn ringkasan_profit_harian_dan_mingguan() {
+        // Jumat 05:00 WIB (+500) dan Sabtu 10:00 WIB (+380); keduanya minggu yang sama
+        let profit = vec![(SABTU - 19 * JAM, d("500")), (SABTU + 10 * JAM, d("380"))];
+        let r = ringkasan_profit_dari(&profit, SABTU - 20 * JAM, SABTU + 12 * JAM, Some(d("1000880")), (Some(d("1.5")), Some(d("5"))));
+        assert_eq!(d(&r.profit_total), d("880"));
+        assert_eq!(r.jumlah_trade, 2);
+        assert_eq!(d(&r.harian.profit), d("380"));
+        assert_eq!(d(&r.mingguan.profit), d("880"));
+        // harian: 380 / (1.000.880 - 380) x 100 = 0,03798...; mingguan: 880 / 1.000.000 x 100 = 0,088
+        assert_eq!(d(r.harian.persen.as_deref().unwrap()), d("0.04"));
+        assert_eq!(d(r.mingguan.persen.as_deref().unwrap()), d("0.09"));
+        assert_eq!(r.harian.target_persen.as_deref(), Some("1.5"));
+        assert!(!r.harian.tercapai);
+    }
+
+    #[test]
+    fn ringkasan_profit_tanpa_total_aset_hanya_rupiah() {
+        let profit = vec![(SABTU + JAM, d("380"))];
+        let r = ringkasan_profit_dari(&profit, SABTU - JAM, SABTU + 2 * JAM, None, (Some(d("1.5")), None));
+        assert_eq!(d(&r.harian.profit), d("380"));
+        assert_eq!(r.harian.persen, None);
+        assert_eq!(r.harian.progress_persen, None);
+        assert_eq!(r.mingguan.target_persen, None);
+    }
+
+    #[test]
+    fn ringkasan_profit_tanpa_trade_nol() {
+        let r = ringkasan_profit_dari(&[], SABTU, SABTU + JAM, Some(d("1000000")), (None, None));
+        assert_eq!(d(&r.profit_total), Decimal::ZERO);
+        assert_eq!(r.jumlah_trade, 0);
+        assert_eq!(d(r.harian.persen.as_deref().unwrap()), Decimal::ZERO);
     }
 }
