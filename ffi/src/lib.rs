@@ -919,15 +919,6 @@ fn progres_untuk_notif_pada(
 // dihapus; grafik sekarang = akumulasi profit, lihat data_grafik_profit.) Hitungan di scalping_core.
 // ---------------------------------------------------------------------------
 
-/// DIPERTAHANKAN SEMENTARA (T6.4) hanya agar `GrafikView.setData` lama tetap terkompilasi; tidak ada
-/// fungsi yang mengisinya lagi. Hapus bersama `setData` saat GrafikView dibersihkan.
-#[derive(uniffi::Record)]
-pub struct TitikGrafikUi {
-    pub waktu_ms: i64,
-    pub saldo: String,
-    pub modal_aktif: String,
-}
-
 fn baris_tertutup(t: &TradeTertutup) -> BarisTertutup {
     BarisTertutup {
         simbol: t.simbol.clone(),
