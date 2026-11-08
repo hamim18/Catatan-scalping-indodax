@@ -13,7 +13,8 @@ import uniffi.scalping_ffi.daftarPosisi
 import uniffi.scalping_ffi.floatingPosisi
 
 /**
- * Open posisi (prototype): per posisi tampil tangga SL, modal efektif, TP dan estimasi hasil bersih.
+ * Open posisi (prototype; disederhanakan di T7.1): per posisi tampil tangga SL/modal efektif/TP,
+ * satu baris harga + floating, dan satu baris estimasi bersih. Tanpa teks penjelas.
  * Tanpa tombol Jual (keputusan 7 Nov 2026: aplikasi tidak membuat order; posisi tertutup otomatis
  * saat order jual terdeteksi). Semua teks sudah berformat dari Rust (daftar_posisi).
  *
@@ -34,7 +35,6 @@ class LayarPosisi(a: MainActivity) : Layar(a) {
     // harga (jaringan)
     private var hargaMemuat = false
     private var hargaMulaiMs = 0L
-    private var hargaWaktuMs = 0L
     private var hargaGalat: String? = null
 
     private val pengatur = Handler(Looper.getMainLooper())
@@ -55,10 +55,6 @@ class LayarPosisi(a: MainActivity) : Layar(a) {
         chip.atur("0 posisi", null)
         header("Open posisi", chip.root)
         isi.tambah(daftar)
-        isi.tambah(
-            ui.mute("Posisi tertutup otomatis saat aplikasi mendeteksi order jual dari Indodax.", 12f),
-            atas = 14,
-        )
         pengatur.postDelayed(putaranHarga, JEDA_PUTARAN_MS)
     }
 
@@ -104,7 +100,6 @@ class LayarPosisi(a: MainActivity) : Layar(a) {
                         hargaMemuat = false
                         hasil.onSuccess { f ->
                             floatingPerSimbol = f.posisi.associateBy { p -> p.simbol }
-                            hargaWaktuMs = System.currentTimeMillis()
                             hargaGalat = null
                         }
                         hasil.onFailure { hargaGalat = Latar.pesan(it) }
@@ -152,11 +147,8 @@ class LayarPosisi(a: MainActivity) : Layar(a) {
         for ((i, p) in posisi.withIndex()) {
             daftar.tambah(kartuPosisi(p, floatingPerSimbol[p.simbol]), atas = if (i == 0) 0 else 12)
         }
-        // keterangan harga: waktu pembaruan, atau galat (angka terakhir tetap tampil)
-        val status = StringBuilder("Harga = transaksi terakhir. Floating dihitung sebelum fee jual dan tidak masuk target maupun grafik.")
-        if (hargaWaktuMs > 0L) status.append(" Harga diperbarui ${Format.waktuSingkat(hargaWaktuMs)}.")
-        hargaGalat?.let { status.append(" Gagal memperbarui harga: ").append(it) }
-        daftar.tambah(ui.mute(status.toString(), 12f), atas = 12)
+        // hanya galat yang ditandai (angka terakhir tetap tampil)
+        if (hargaGalat != null) daftar.tambah(ui.teks("Gagal memperbarui harga", 12f, t.warn), atas = 12)
     }
 
     private fun kartuPosisi(p: PosisiUi, f: FloatingPosisiUi?): LinearLayout {
@@ -170,15 +162,12 @@ class LayarPosisi(a: MainActivity) : Layar(a) {
         k.tambah(tangga(p, f), atas = 16, bawah = 6, kiri = 6, kanan = 6)
         tambahFloating(k, f)
         k.tambah(
-            ui.mute(
-                "Hasil bersih bila TP: ${p.estimasiTpPersen} (${p.estimasiTpRp}). " +
-                    "Bila SL: ${p.estimasiSlPersen} (${p.estimasiSlRp}). " +
-                    "Setelah fee jual perkiraan 0,31%.",
-                12f,
+            ui.baris(
+                ui.mute("Bersih  TP ${p.estimasiTpPersen} · SL ${p.estimasiSlPersen}", 12f),
+                ui.mute(Format.tanggalJam(p.waktuBukaMs), 12f),
             ),
             atas = 10,
         )
-        k.tambah(ui.mute("Dibuka ${Format.tanggalJam(p.waktuBukaMs)}", 12f), atas = 4)
         return k
     }
 
@@ -189,23 +178,15 @@ class LayarPosisi(a: MainActivity) : Layar(a) {
         val harga = f.hargaSekarang
         val rp = f.floatingAngka
         val persen = f.floatingPersen
-        if (harga == null || rp == null || persen == null) {
-            k.tambah(ui.mute("Tanpa harga IDR: floating tidak dihitung.", 12f), atas = 6)
-            return
-        }
+        if (harga == null || rp == null || persen == null) return // tanpa harga IDR: tidak ditampilkan
         val warna = t.warnaTanda(rp)
         k.tambah(
             ui.baris(
-                ui.teks("Harga sekarang $harga", 13f, tebal = true),
+                ui.teks("Harga $harga", 13f, tebal = true),
                 ui.teks("${Format.untung(rp)} (${Format.persenBertanda(persen)})", 13f, warna, tebal = true),
             ),
             atas = 8,
         )
-        k.tambah(ui.mute("Floating, sebelum fee jual", 11f))
-        when {
-            f.diBawahSl -> k.tambah(ui.teks("Harga sudah di bawah SL", 12f, t.loss, tebal = true), atas = 4)
-            f.diAtasTp -> k.tambah(ui.teks("Harga sudah mencapai TP", 12f, t.gain, tebal = true), atas = 4)
-        }
     }
 
     /**

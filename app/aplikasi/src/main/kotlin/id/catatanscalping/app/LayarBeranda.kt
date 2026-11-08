@@ -2,9 +2,7 @@ package id.catatanscalping.app
 
 import android.os.Handler
 import android.os.Looper
-import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
 import android.widget.TextView
 import uniffi.scalping_ffi.FloatingUi
@@ -19,8 +17,9 @@ import uniffi.scalping_ffi.ringkasanProfit
 import uniffi.scalping_ffi.totalAset
 
 /**
- * Beranda (T6.2): satu kartu "Total aset" (nilai pasar; IDR berlabel "Buying power", koin per aset),
- * baris "Profit trading", grafik akumulasi profit trade tertutup, dan target harian/mingguan.
+ * Beranda (T6.2, disederhanakan di T7.1): satu kartu "Total aset" (IDR berlabel "Buying power", satu baris
+ * per koin), satu baris "Profit trading" (floating digabung di baris bawahnya), grafik akumulasi
+ * profit, dan target harian/mingguan. Tanpa teks penjelas.
  * Hanya tampilan; semua angka dari Rust (total_aset, ringkasan_profit, data_grafik_profit).
  *
  * Total aset: jaringan, saat layar dibuka dan tiap 10 detik selama Beranda terlihat dan aplikasi
@@ -34,7 +33,6 @@ import uniffi.scalping_ffi.totalAset
 class LayarBeranda(a: MainActivity) : Layar(a) {
     private val chip = ui.Chip()
     private val grafik = GrafikView(a, t)
-    private val infoGrafik = ui.mute("", 12f)
     private val kartuAset = ui.kartu()
     private val kartuTarget = ui.kartu()
     private val kartuPesan = ui.kartu()
@@ -94,15 +92,15 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
             return
         }
         if (!Sinkron.pantauAktif(a)) {
-            chip.atur("Hanya baca · pantauan mati", t.mute)
+            chip.atur("Pantauan mati", t.mute)
             return
         }
         val s = PantauBersama.status
         when {
-            s.startsWith("Tersambung") -> chip.atur("Terhubung · hanya baca", t.gain)
+            s.startsWith("Tersambung") -> chip.atur("Terhubung", t.gain)
             s.startsWith("Terputus") || s.startsWith("Menghubungkan") -> chip.atur("Menyambung ulang", t.warn)
             s.startsWith("Gagal") || s.startsWith("Berhenti") -> chip.atur("Pantauan berhenti", t.loss)
-            else -> chip.atur("Hanya baca · pantauan mati", t.mute)
+            else -> chip.atur("Pantauan mati", t.mute)
         }
     }
 
@@ -219,18 +217,10 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
             kartuAset.tambah(ui.teks(d.total, 32f, tebal = true), atas = 2)
             kartuAset.tambah(ui.baris(ui.mute("Buying power"), ui.teks(d.idr, 14f, tebal = true)), atas = 6)
             for (k in d.koin) {
-                kartuAset.tambah(ui.baris(ui.teks(k.koin, 14f, tebal = true), ui.teks(k.nilai, 14f)), atas = 10)
-                kartuAset.tambah(ui.mute("${k.jumlah} koin × Rp ${k.harga}", 12f))
+                kartuAset.tambah(ui.baris(ui.teks(k.koin, 14f, tebal = true), ui.teks(k.nilai, 14f)), atas = 8)
             }
-            if (d.tanpaHarga.isNotEmpty()) {
-                kartuAset.tambah(
-                    ui.mute("Tanpa harga IDR, tidak dihitung: ${d.tanpaHarga.joinToString(", ")}", 12f),
-                    atas = 10,
-                )
-            }
-            val status = StringBuilder("Diperbarui ${Format.waktuSingkat(asetWaktuMs)}")
-            asetGalat?.let { status.append(" · gagal memperbarui: ").append(it) }
-            kartuAset.tambah(ui.mute(status.toString(), 12f), atas = 10)
+            // koin tanpa pasangan IDR disembunyikan; hanya galat pembaruan yang ditandai
+            if (asetGalat != null) kartuAset.tambah(ui.teks("Gagal memperbarui", 12f, t.warn), atas = 8)
         }
 
         val p = profit ?: return
@@ -239,44 +229,23 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
             ui.baris(ui.teks("Profit trading", 14f, tebal = true), ui.teks(Format.untung(p.profitTotal), 15f, warna, tebal = true)),
             atas = 16,
         )
-        kartuAset.tambah(ui.mute("${p.jumlahTrade} trade tertutup sejak aplikasi dipasang", 12f))
-        tampilFloating()
+        tampilJumlahDanFloating(p.jumlahTrade.toString())
         kartuAset.tambah(grafik, atas = 12)
         grafik.setProfit(grafikProfit)
-        val legenda = LinearLayout(a).apply {
-            orientation = LinearLayout.HORIZONTAL
-            tambah(ui.teks("Akumulasi profit", 13f, t.accent, tebal = true), lebar = WRAP_CONTENT)
-            tambah(ui.mute("Rp 0 (putus-putus)").apply { gravity = Gravity.END }, bobot = 1f, lebar = 0)
-        }
-        kartuAset.tambah(legenda, atas = 6)
-        infoGrafik.text = if (grafikProfit.size >= 2) {
-            "${grafikProfit.size} titik · ${Format.tanggalJam(grafikProfit.first().waktuMs)} sampai ${Format.tanggalJam(grafikProfit.last().waktuMs)}"
-        } else {
-            ""
-        }
-        kartuAset.tambah(infoGrafik, atas = 4)
-        kartuAset.tambah(
-            ui.mute("Harga koin = transaksi terakhir. Profit dan target hanya dari trade yang sudah tertutup.", 12f),
-            atas = 6,
-        )
     }
 
-    /** Satu baris Floating di bawah Profit trading; hilang bila tidak ada posisi terbuka. */
-    private fun tampilFloating() {
-        val fl = floating ?: return
-        if (fl.posisi.isEmpty()) return
-        val total = fl.totalAngka
-        if (total != null) {
-            val persen = fl.totalPersen
-            val teks = Format.untung(total) + (if (persen != null) " (${Format.persenBertanda(persen)})" else "")
-            kartuAset.tambah(
-                ui.baris(ui.teks("Floating", 14f, tebal = true), ui.teks(teks, 15f, t.warnaTanda(total), tebal = true)),
-                atas = 10,
-            )
+    /** Satu baris di bawah Profit trading: "N trade" di kiri, floating di kanan (hilang bila tidak ada posisi berharga). */
+    private fun tampilJumlahDanFloating(jumlahTrade: String) {
+        val kiri = ui.mute("$jumlahTrade trade", 12f)
+        val fl = floating
+        val total = if (fl != null && fl.posisi.isNotEmpty()) fl.totalAngka else null
+        if (fl == null || total == null) {
+            kartuAset.tambah(kiri)
+            return
         }
-        val ket = StringBuilder("${fl.posisi.size} posisi terbuka · sebelum fee jual · tidak masuk target dan grafik")
-        if (fl.tanpaHarga.isNotEmpty()) ket.append(" · tanpa harga: ").append(fl.tanpaHarga.joinToString(", "))
-        kartuAset.tambah(ui.mute(ket.toString(), 12f))
+        val persen = fl.totalPersen
+        val teks = "floating " + Format.untung(total) + (if (persen != null) " (${Format.persenBertanda(persen)})" else "")
+        kartuAset.tambah(ui.baris(kiri, ui.teks(teks, 12f, t.warnaTanda(total), tebal = true)), atas = 2)
     }
 
     private fun tampilTarget() {
@@ -284,10 +253,6 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
         val p = profit ?: return
         kartuTarget.tambah(blokTarget("Hari ini", p.harian))
         kartuTarget.tambah(blokTarget("Minggu ini", p.mingguan), atas = 16)
-        kartuTarget.tambah(
-            ui.mute("Persen = profit periode ÷ (total aset − profit periode). Deposit dan withdraw tidak dihitung.", 12f),
-            atas = 12,
-        )
     }
 
     private fun blokTarget(nama: String, p: TargetProfitUi): LinearLayout {
@@ -307,7 +272,7 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
 
         when {
             target == null ->
-                kolom.tambah(ui.mute("Target belum diatur (Setelan) · ${Format.untung(p.profit)}"), atas = 6)
+                kolom.tambah(ui.mute("Belum diatur · ${Format.untung(p.profit)}"), atas = 6)
             progres == null || pers == null ->
                 kolom.tambah(ui.mute("Menunggu total aset · ${Format.untung(p.profit)}"), atas = 6)
             else -> {
@@ -315,7 +280,7 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
                 kolom.tambah(ui.bar(angka, if (p.tercapai) t.gain else t.accent), atas = 8, bawah = 4, tinggi = a.dp(10))
                 val ket = when {
                     p.tercapai -> "TERCAPAI · ${Format.untung(p.profit)}"
-                    Format.negatif(pers) -> "Belum ada hasil bersih · ${Format.untung(p.profit)}"
+                    Format.negatif(pers) -> Format.untung(p.profit)
                     else -> "${Format.ribuan(progres)}% tercapai · ${Format.untung(p.profit)}"
                 }
                 kolom.tambah(ui.mute(ket))
