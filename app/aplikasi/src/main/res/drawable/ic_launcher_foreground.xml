@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- T8.2: tiga candlestick naik (merah, hijau, hijau); semua di zona aman 66dp tengah -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- candle 1 (merah) -->
+    <path android:fillColor="#FF7A6E" android:pathData="M34.5,44h3v30h-3z" />
+    <path android:fillColor="#FF7A6E" android:pathData="M31,52h10v14h-10z" />
+    <!-- candle 2 (hijau) -->
+    <path android:fillColor="#3DC79C" android:pathData="M52.5,36h3v34h-3z" />
+    <path android:fillColor="#3DC79C" android:pathData="M49,44h10v18h-10z" />
+    <!-- candle 3 (hijau) -->
+    <path android:fillColor="#3DC79C" android:pathData="M70.5,30h3v30h-3z" />
+    <path android:fillColor="#3DC79C" android:pathData="M67,36h10v18h-10z" />
+</vector>

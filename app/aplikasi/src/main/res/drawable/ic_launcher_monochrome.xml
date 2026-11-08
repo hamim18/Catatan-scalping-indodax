@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- T8.2: versi satu warna untuk ikon bertema (Android 13+) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#000000" android:pathData="M34.5,44h3v30h-3z M31,52h10v14h-10z M52.5,36h3v34h-3z M49,44h10v18h-10z M70.5,30h3v30h-3z M67,36h10v18h-10z" />
+</vector>

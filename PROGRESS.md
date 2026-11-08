@@ -1,9 +1,9 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 8 November 2026 (Fase 7 selesai: T7.1 dan T7.2 lulus uji HP, tampilan disederhanakan; PRD v1.7; lihat 1v; T8.1 kode ditulis, MENUNGGU uji HP, lihat 1w)
+Terakhir diperbarui: 8 November 2026 (Fase 7 selesai: T7.1 dan T7.2 lulus uji HP, tampilan disederhanakan; PRD v1.7; lihat 1v; T8.1 lulus uji HP; rilis uji 0.8.0-uji siap dipakai, lihat 1w dan 1x)
 Status: **Fase 6 SELESAI (8 Nov 2026, lihat 1r, 1s, 1t): hanya ada satu angka saldo, yaitu TOTAL ASET nilai pasar (IDR sebagai "Buying power" + koin × harga terakhir). Target dan grafik dihitung dari profit trade yang sudah ditutup; kerugian koin yang sedang dipegang tampil terpisah sebagai floating P/L. T6.1 sampai T6.5 SUDAH lulus tes dan uji HP (tes terakhir: core 99, ffi 24); T6.6 (celah impor cadangan, hanya Kotlin) lulus uji HP. Saldo versi aplikasi, snapshot periode, modal aktif, setoran bersih, koreksi saldo, dan sisa kode grafik dua garis sudah dihapus.** **Fase 7 SELESAI (8 Nov 2026, lihat 1v): tampilan Beranda, Posisi, Riwayat, dan Setelan disederhanakan (hanya Kotlin, perhitungan tidak berubah); T7.1 dan T7.2 lulus uji HP.** Semua fase rencana selesai dan lolos uji (Fase 0 sampai 7, Fase UI U1 sampai U5, T4.1, T5.1, T5.2). Tersisa pekerjaan opsional saja: uji withdraw nyata dan ID order di notifikasi beli (lihat bagian 3).
 
-**Fase 8 (uji lapangan) BERJALAN (8 Nov 2026, lihat 1w): T8.1 (log diagnostik permanen `diag.log`, tombol Bagikan log, penjaga pantauan) kodenya sudah ditulis (hanya Kotlin, Rust tidak berubah, jumlah tes tetap core 99, ffi 24). STATUS: BELUM lulus uji HP. Setelah 6 poin uji HP lulus: isi tanggal di tabel 1a, lalu commit.**
+**Fase 8 (uji lapangan) BERJALAN (8 Nov 2026, lihat 1w dan 1x): T8.1 (log diagnostik permanen `diag.log`, tombol Bagikan log, penjaga pantauan) LULUS uji HP sesuai kriteria (dilaporkan pengguna 8 Nov 2026); hanya Kotlin, jumlah tes tetap core 99, ffi 24. Rilis uji pribadi 0.8.0-uji (versionCode 2) siap dipakai harian untuk mencari bug dan peningkatan; panduan di `docs/PANDUAN_RELEASE.md`, README diperbarui. Belum ada commit/tag rilis sampai pengguna menjalankannya.**
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -56,7 +56,7 @@ Status: **Fase 6 SELESAI (8 Nov 2026, lihat 1r, 1s, 1t): hanya ada satu angka sa
 | T5.1 | Pantauan menyala otomatis setelah HP restart: `PenerimaBoot.kt` (BOOT_COMPLETED), izin `RECEIVE_BOOT_COMPLETED` dan `<receiver>` di `AndroidManifest.xml`. Hanya bila preferensi `aktif` = true (pantauan terakhir menyala), kunci ada, dan pernah sinkron; bila tidak, penanda dimatikan dan alasan dicatat di log | Selesai (build, tes, uji HP lulus 8 Nov) |
 | T7.1 | Sederhanakan Beranda dan Posisi: dihapus teks penjelas, jumlah × harga per koin, "Diperbarui", koin tanpa harga IDR (PXG), legenda dan keterangan titik grafik, rumus di kartu Target; floating DIGABUNG ke baris di bawah Profit trading ("N trade" kiri, "floating ..." kanan); chip menjadi "Terhubung"/"Pantauan mati"; Posisi: satu baris harga + floating, satu baris estimasi bersih (persen) + waktu buka. Hanya Kotlin (2 berkas). Lihat 1v | Selesai (build berhasil, uji HP sesuai kriteria, dilaporkan pengguna 8 Nov 2026) |
 | T7.2 | Sederhanakan Riwayat dan Setelan: Riwayat tanpa chip dan baris "Semua: ...", statistik dipadatkan (Win rate + untung/rugi/impas, Fee + persen, profit kotor tidak ditampilkan), deposit/withdraw satu baris tanpa fee; Setelan tanpa catatan penjelas, kartu Deposit/withdraw IDR dihapus, tombol baterai disembunyikan bila aman, log pantauan tersembunyi, "Inti Rust versi" dihapus. Hanya Kotlin (2 berkas). Lihat 1v | Selesai (build berhasil, uji HP sesuai kriteria, dilaporkan pengguna 8 Nov 2026) |
-| T8.1 | Diagnostik untuk uji lapangan: `LogDiag.kt` (log permanen `diag.log`), `Aplikasi.kt` (catat awal proses, alasan proses sebelumnya berakhir, crash), `PenjagaPantauan.kt` (alarm 5 menit, peringatan bila pantauan mati/terputus lebih dari 5 menit), tombol "Bagikan log" di Setelan, versi 0.8.0-uji. Hanya Kotlin. Lihat 1w | Kode ditulis 8 Nov 2026; MENUNGGU uji HP (isi tanggal lulus: ...) |
+| T8.1 | Diagnostik untuk uji lapangan: `LogDiag.kt` (log permanen `diag.log`), `Aplikasi.kt` (catat awal proses, alasan proses sebelumnya berakhir, crash), `PenjagaPantauan.kt` (alarm 5 menit, peringatan bila pantauan mati/terputus lebih dari 5 menit), tombol "Bagikan log" di Setelan, versi 0.8.0-uji. Hanya Kotlin. Lihat 1w | Lulus uji HP (dilaporkan pengguna, 8 Nov 2026) |
 
 ### 1b. Kesimpulan Fase 0 (masih dipakai)
 - **Fee dalam IDR.** Koin yang diterima tidak dipotong fee. Fee selain IDR sengaja ditolak (error) karena belum pernah ditemui.
@@ -573,7 +573,7 @@ Hasil harus kosong (selain `TitikGrafikUi`/`TitikGrafik` di `GrafikView.kt` yang
 - Bila suatu saat daftar deposit/withdraw di Riwayat tidak terisi otomatis, kembalikan tombol sinkron manual di Setelan.
 - `asetWaktuMs` di Beranda dan `Format.waktuSingkat` kini hanya diisi atau tidak dipakai (aman; hanya peringatan).
 
-### 1w. T8.1: diagnostik dan penjaga pantauan (detail; kode ditulis 8 Nov 2026; MENUNGGU uji HP)
+### 1w. T8.1: diagnostik dan penjaga pantauan (detail; LULUS uji HP, dilaporkan pengguna 8 Nov 2026)
 
 **Tujuan:** bukti yang cukup untuk melacak bug selama uji beberapa hari, dan peringatan bila pantauan mati diam-diam. Hanya Kotlin; Rust, FFI, dan skema database tidak berubah.
 
@@ -596,7 +596,7 @@ bash tools/bangun_android.sh --pasang <serial-adb>
 3. Setelan, Log pantauan, tombol "Bagikan log": mengirim 400 baris terakhir lewat menu bagikan (Telegram, Drive, email). Tidak memuat kunci API atau saldo.
 4. Penjaga pantauan: alarm tiap sekitar 5 menit selama pantauan ingin menyala. Bila pantauan mati, atau terputus lebih dari 5 menit, dan keadaan itu bertahan sekitar 4 menit lagi, muncul notifikasi "Peringatan pantauan" (paling sering sekali per 30 menit). Hilang sendiri saat pulih. Berhenti saat pantauan dihentikan manual. Penjaga TIDAK menyalakan layanan sendiri (Android melarang); buka aplikasi lalu nyalakan.
 
-**Yang harus diuji di HP (belum dijalankan)**
+**Yang diuji di HP (lulus sesuai kriteria, dilaporkan pengguna 8 Nov 2026)**
 1. Setelan, ketuk "Log pantauan": ada baris "Proses dimulai · versi 0.8.0-uji". Tombol "Bagikan log" muncul dan membuka menu bagikan berisi teks log.
 2. Mulai pantauan, geser aplikasi dari recent apps, buka lagi: log masih ada dan memuat "Proses sebelumnya berakhir: ..." bila prosesnya sempat mati.
 3. Matikan pantauan lewat tombol Hentikan: tidak ada peringatan muncul walau ditunggu 10 menit.
@@ -607,7 +607,26 @@ bash tools/bangun_android.sh --pasang <serial-adb>
 **Catatan**
 - `PenerimaBoot.kt` belum diperiksa untuk T8.1. Bila boot gagal menyalakan layanan, `PREF_AKTIF` dimatikan dan penjaga berhenti (tidak ada peringatan). Kirim `PenerimaBoot.kt` bila ingin ditutup.
 - PRD tidak diubah untuk T8.1 (tidak ada perubahan perilaku perhitungan atau fungsional utama); tambahkan ke PRD hanya bila diminta.
-- Setelah lulus uji HP: isi tanggal lulus di tabel 1a dan baris T8.1 di bagian 3, ubah status di bagian atas file ini, lalu commit.
+- Uji HP lulus; tinggal commit T8.1 (lihat bagian 6).
+
+### 1x. Rilis uji 0.8.0-uji (8 Nov 2026)
+
+**Tujuan:** aplikasi dipakai nyata sehari-hari (bukan rilis publik) untuk mencari bug, kekurangan, dan peningkatan. Hanya satu pengguna dan satu HP.
+
+**Yang dibuat (dokumen saja, tanpa perubahan kode)**
+- `docs/PANDUAN_RELEASE.md` (baru): persiapan rilis, penandaan versi git, build dan pasang, aturan selama masa uji, skenario uji lapangan, cara mencatat dan melaporkan bug, tingkat keparahan, alur perbaikan dan penomoran versi, rollback, kriteria selesai uji.
+- `README.md` diperbarui (sebelumnya masih berisi petunjuk Fase 0): ringkasan, status, fitur, cara pasang, tes, cadangan, keterbatasan, pelaporan bug.
+
+**Yang masih perlu dikonfirmasi pengguna (tidak diasumsikan)**
+- Jenis build dan tanda tangan APK dari `bangun_android.sh` (debug atau release) belum terlihat. Ini menentukan apakah pembaruan menimpa versi lama tanpa uninstall. Pemeriksaan: `grep -n "buildTypes\|signingConfig\|isMinify" app/aplikasi/build.gradle.kts` lalu kirim hasilnya.
+- Lama masa uji dan kriteria selesai: panduan memakai USULAN 7 hari tanpa bug kritis; BELUM dikonfirmasi.
+
+**Urutan yang disarankan**
+1. Commit T8.1 lalu commit dokumen (README, PROGRESS, panduan), lalu `git tag -a v0.8.0-uji`.
+2. Pakai harian sesuai panduan; ekspor cadangan tiap malam.
+3. Bug dilaporkan dengan log dari tombol "Bagikan log"; tiap perbaikan menjadi task baru (T8.2 dan seterusnya) dengan versi naik.
+
+**Yang diketahui belum tuntas saat rilis uji:** uji withdraw nyata, ID order di notifikasi beli, `PenerimaBoot.kt` terhadap penjaga pantauan, thread arus kas di `LayananLatar.kt` yang tidak tercatat di penanda impor (T6.6), koin lama yang dijual tercatat sebagai penyesuaian.
 
 ### Belum terselesaikan atau dikenal
 | Masalah | Penyebab / dugaan | Status |
@@ -656,7 +675,8 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 | T6.6 | Cegah impor cadangan saat sinkron manual/otomatis sedang berjalan | SELESAI, lulus uji HP 8 Nov 2026 (lihat 1u) |
 | T7.1 | Sederhanakan Beranda dan Posisi (floating digabung, teks penjelas dihapus) | SELESAI, lulus uji HP 8 Nov 2026 (lihat 1v) |
 | T7.2 | Sederhanakan Riwayat dan Setelan (statistik dipadatkan, kartu deposit/withdraw di Setelan dihapus, log tersembunyi) | SELESAI, lulus uji HP 8 Nov 2026 (lihat 1v) |
-| T8.1 | Log diagnostik permanen dan penjaga pantauan (hanya Kotlin) | KODE DITULIS 8 Nov 2026; menunggu uji HP 6 poin (lihat 1w) |
+| T8.1 | Log diagnostik permanen dan penjaga pantauan (hanya Kotlin) | SELESAI, lulus uji HP 8 Nov 2026 (lihat 1w) |
+| Rilis uji | Rilis uji pribadi 0.8.0-uji: dipakai harian beberapa hari, catat bug dan peningkatan (panduan `docs/PANDUAN_RELEASE.md`) | BERJALAN sejak 8 Nov 2026 (lihat 1x) |
 | Opsional | ID order di notifikasi beli (dua beli koin sama yang selesai nyaris bersamaan) | Butuh pengecekan ID order event WebSocket vs REST lebih dulu |
 | Opsional | Verifikasi mode fee deposit saat ada deposit nyata pertama | Menunggu deposit nyata |
 
@@ -725,7 +745,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - **Fase UI**: selesai (U1 sampai U5, lulus uji HP 8 Nov 2026)
 - **Fase 5 (penyempurnaan)**: selesai. T5.1 lulus uji HP (8 Nov 2026); T5.2 (logika deposit) lulus uji HP (8 Nov 2026)
 - **Fase 7 (Penyederhanaan tampilan)**: selesai. T7.1 dan T7.2 lulus uji HP (8 Nov 2026)
-- **Fase 8 (Uji lapangan)**: berjalan. T8.1 (log diagnostik dan penjaga pantauan) kode ditulis 8 Nov 2026, menunggu uji HP
+- **Fase 8 (Uji lapangan)**: berjalan. T8.1 (log diagnostik dan penjaga pantauan) lulus uji HP 8 Nov 2026; rilis uji 0.8.0-uji dipakai harian (lihat 1x)
 - **Fase 6 (Total aset tunggal)**: selesai. T6.1 sampai T6.5 lulus tes dan uji HP (8 Nov 2026); T6.6 (celah impor) lulus uji HP (8 Nov 2026)
 
 ---
@@ -782,7 +802,7 @@ Catatan: `git add .` wajib agar file Kotlin baru (Tema.kt, Format.kt, Komponen.k
 ### Saat ini (setelah T5.1)
 ```
 catatan-scalping/
-├── README.md
+├── README.md                            (diperbarui 8 Nov 2026: status, cara pasang, rilis uji)
 ├── PROGRESS.md                          <- file ini
 ├── .gitignore                           (.env, data/*, target/, __pycache__)
 ├── .env.example                         (salin menjadi .env)
@@ -855,6 +875,7 @@ catatan-scalping/
 │           └── jniLibs/                 (OTOMATIS dari cargo ndk, tidak di-commit)
 ├── docs/
 │   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.7)
+│   ├── PANDUAN_RELEASE.md                         (rilis uji 0.8.0-uji: pasang, uji lapangan, lapor bug, rollback)
 │   └── prototype/
 │       └── Catatan_trading__prototype_UI.html
 └── tools/
@@ -873,7 +894,9 @@ Semua task pada rencana selesai, termasuk Fase 6 (T6.1 sampai T6.6) dan Fase 7 (
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
-- T8.1: `T8.1: log diagnostik permanen dan penjaga pantauan` (hash: ...) (commit setelah uji HP lulus)
+- T8.1: `T8.1: log diagnostik permanen dan penjaga pantauan` (hash: ...)
+- Dokumen: `Dokumen: README, panduan rilis uji, PROGRESS (T8.1 lulus)` (hash: ...)
+- Tag: `git tag -a v0.8.0-uji -m "Rilis uji 0.8.0-uji"` (setelah semua commit)
 - Dokumen: `Dokumen: PRD v1.7 dan PROGRESS (Fase 7, T7.1 dan T7.2)` (hash: ...)
 - T7.2: `T7.2: sederhanakan Riwayat dan Setelan` (hash: ...)
 - T7.1: `T7.1: sederhanakan Beranda dan Posisi` (hash: ...)
