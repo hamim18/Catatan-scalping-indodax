@@ -627,7 +627,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - Kriteria uji: dengan data deposit nyata di atas, tanpa mencentang apa pun, saldo aplikasi = Rp 77.322, "Cek selisih saldo" = Rp 0, modal aktif naik 7.670, hasil dan pencapaian tidak berubah, sinkron ulang tidak menggandakan.
 
 ### Pekerjaan kecil
-- PRD bagian 15: ubah status Fase 6 menjadi "Selesai (lulus uji HP 8 Nov 2026)" dan bagian 3 PRD tetap v1.6 (tidak ada perubahan isi lain). Belum dikerjakan; kecil dan bisa digabung dengan commit dokumen berikutnya.
+- PRD bagian 15: status Fase 6 diperbarui menjadi "Selesai (T6.1 sampai T6.5 lulus uji HP 8 Nov 2026)" (8 Nov 2026). Isi PRD v1.6 lainnya tidak berubah.
 - PRD v1.6: SELESAI (8 Nov 2026). Perubahan: Fase 6 (Total aset, Buying power, profit tertutup, floating; FR-19 sampai FR-22, FR-24, FR-28 baru; FR-27 dihapus), rumus bagian 8, definisi, model data, kasus khusus, risiko. Simpan sebagai `docs/PRD_Aplikasi_Catatan_Trading_Crypto.md` (timpa v1.5).
 - PRD v1.5: SELESAI (8 Nov 2026). Perubahan: hasil uji deposit nyata (bagian 9), pertanyaan terbuka no. 10 terjawab untuk deposit, status withdraw. Simpan sebagai `docs/PRD_Aplikasi_Catatan_Trading_Crypto.md` (timpa v1.4).
 - PRD v1.4: SELESAI (8 Nov 2026). Perubahan: FR-05 dikonfirmasi, pertanyaan terbuka no. 5 dan 11 terjawab, Fase 5 selesai, dua baris risiko (fee jual, tick) diberi keputusan. Simpan sebagai `docs/PRD_Aplikasi_Catatan_Trading_Crypto.md` (timpa v1.3).
@@ -783,10 +783,11 @@ Semua task pada rencana selesai, termasuk Fase 6 (T6.1 sampai T6.5); PRD v1.6 se
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
-- T6.5: `T6.5: hapus GrafikView.setData dan TitikGrafikUi` (hash: ...)
-- T6.4: `T6.4: pembersihan saldo lama, deposit/withdraw jadi riwayat, notifikasi jual dari profit tertutup` (hash: ...) (sudah di-commit setelah lulus uji HP; isi hash dari `git log --oneline`)
+- T6.5: `T6.5: hapus GrafikView.setData dan TitikGrafikUi` (hash: 3db3e8e)
+- T6.4: `T6.4: pembersihan saldo lama` (hash: 483cfc8)
 - Dokumen: `Dokumen: PRD v1.6 dan PROGRESS (Fase 6, T6.4)` (hash: ...)
-- T6.3: `T6.3: floating P/L di Beranda dan layar Posisi` (hash: ...)
+- Dokumen: `Dokumen: PRD status Fase 6 selesai dan PROGRESS (hash commit T6.3 sampai T6.5)` (hash: ...)
+- T6.3: `T6.3: floating P/L di Beranda dan layar Posisi` (hash: bb0bfa7)
 - T6.2: `T6.2: Beranda tunggal, target dan grafik dari profit trade tertutup` (hash: ...)
 - T6.1: `T6.1: total aset nilai pasar di Beranda (harga ticker_all, total aset)` (hash: ...)
 - Alat: `Alat: bangun_android.sh memeriksa .text kode Rust di APK dan memakai APK terbaru` (hash: ...)

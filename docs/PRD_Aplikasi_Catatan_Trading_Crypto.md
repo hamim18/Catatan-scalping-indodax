@@ -262,7 +262,7 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 | 4. Statistik | Win rate, total fee, persen profit termakan fee | Evaluasi gaya trading | Selesai |
 | UI. Layar asli | Beranda, Posisi, Riwayat, Setelan sesuai prototype; cadangan data lokal (U1 sampai U5) | Aplikasi dipakai sehari-hari | Selesai |
 | 5. Penyempurnaan | Pantauan menyala otomatis setelah HP restart (T5.1); logika deposit (T5.2) | Pantauan tidak perlu dinyalakan ulang | Selesai (lulus uji HP 8 Nov 2026) |
-| 6. Total aset tunggal | T6.1 total aset nilai pasar; T6.2 Beranda tunggal, target dan grafik dari profit tertutup; T6.3 floating P/L; T6.4 pembersihan (snapshot periode, modal aktif, setoran bersih, koreksi saldo dihapus; deposit/withdraw jadi riwayat) | Satu angka saldo, target stabil | T6.1 sampai T6.3 lulus uji HP (8 Nov 2026); T6.4 kode selesai, menunggu build dan uji HP |
+| 6. Total aset tunggal | T6.1 total aset nilai pasar; T6.2 Beranda tunggal, target dan grafik dari profit tertutup; T6.3 floating P/L; T6.4 pembersihan (snapshot periode, modal aktif, setoran bersih, koreksi saldo dihapus; deposit/withdraw jadi riwayat) | Satu angka saldo, target stabil | Selesai (T6.1 sampai T6.5 lulus uji HP 8 Nov 2026) |
 
 ## 16. Pertanyaan terbuka
 
