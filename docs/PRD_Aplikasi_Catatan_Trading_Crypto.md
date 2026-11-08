@@ -1,6 +1,6 @@
 # PRD: Aplikasi Catatan Trading Crypto
 
-Versi 1.6 · 8 November 2026 (Fase 6: satu angka Total aset, target dan grafik dari profit trade tertutup, floating P/L; saldo versi aplikasi, snapshot periode, modal aktif, setoran bersih, dan koreksi saldo dihapus) · Pemilik produk: Raya Abdullah Ar Rasyid · Status: diimplementasikan; dokumen mengikuti kondisi aplikasi
+Versi 1.7 · 8 November 2026 (Fase 7: tampilan disederhanakan, hanya informasi yang dipakai trader; floating digabung ke baris Profit trading, koin tanpa harga IDR disembunyikan; sinkron deposit/withdraw otomatis tanpa tombol manual. Perhitungan tidak berubah dari v1.6) · Pemilik produk: Raya Abdullah Ar Rasyid · Status: diimplementasikan; dokumen mengikuti kondisi aplikasi
 
 ## 1. Ringkasan
 
@@ -30,6 +30,7 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 - Target dan grafik dihitung dari profit trade yang sudah ditutup, tidak terpengaruh deposit/withdraw maupun naik-turun harga koin yang sedang dipegang.
 - Notifikasi TP/SL muncul cepat setelah order beli terisi.
 - Logika perhitungan sesederhana mungkin.
+- Tampilan minimalis: pengguna paham trading, jadi layar hanya memuat angka yang dipakai mengambil keputusan, tanpa kalimat penjelas, rumus, atau keterangan teknis (Fase 7).
 
 **Non-tujuan (di luar cakupan versi ini)**
 
@@ -51,7 +52,7 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 | --- | --- |
 | Modal efektif | Total IDR yang benar-benar keluar untuk beli (nilai trade + fee, sama dengan "Order Terisi" di struk), dibagi koin yang diterima. Dihitung per koin. |
 | Posisi | Koin yang sudah dibeli dan belum terjual. Satu posisi per koin, dirata-rata. |
-| Total aset | Saldo IDR (tersedia + terkunci) + Σ (jumlah koin × harga terakhir `last`) dari GET /account dan ticker_all. Satu-satunya angka saldo di aplikasi. Koin tanpa pasangan IDR tidak dihitung dan ditandai. |
+| Total aset | Saldo IDR (tersedia + terkunci) + Σ (jumlah koin × harga terakhir `last`) dari GET /account dan ticker_all. Satu-satunya angka saldo di aplikasi. Koin tanpa pasangan IDR tidak dihitung dan tidak ditampilkan (sejak v1.7). |
 | Buying power | Bagian IDR dari Total aset. |
 | Profit trade tertutup | Per trade yang sudah ditutup: IDR diterima dari jual dikurangi modal efektif koin yang dijual (fee sudah termasuk). Sumber target dan grafik. |
 | Floating P/L | Posisi terbuka: jumlah koin × harga terakhir − modal posisi, SEBELUM fee jual. Ditampilkan terpisah; tidak masuk target, grafik, atau statistik. |
@@ -91,7 +92,7 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 - **FR-11** Satu posisi per koin. Beli berikutnya pada koin yang sama merata-ratakan modal efektif dan menghitung ulang TP/SL.
 - **FR-12** Saat posisi dibuat atau diperbarui, aplikasi menghitung modal efektif, harga TP, dan harga SL dari persen di setelan.
 - **FR-13** Jual sebagian mengurangi jumlah koin posisi, posisi tetap terbuka. Jual penuh menutup posisi dan memindahkannya ke riwayat.
-- **FR-14** Layar Open Posisi menampilkan per posisi: koin, jumlah koin, modal efektif, TP, SL, estimasi hasil bersih di TP dan SL (memakai fee jual perkiraan 0,31%), dan waktu beli. TIDAK ada tombol Jual: aplikasi tidak membuat order, dan posisi tertutup otomatis saat order jual terdeteksi (keputusan 7 November 2026).
+- **FR-14** Layar Open Posisi menampilkan per posisi: koin, jumlah koin, modal, tangga SL/modal efektif/TP dengan penanda harga sekarang, satu baris harga sekarang beserta floating, satu baris estimasi hasil bersih di TP dan SL dalam persen (memakai fee jual perkiraan 0,31%), dan waktu beli. Tanpa teks penjelas; hanya galat pembaruan harga yang ditandai. TIDAK ada tombol Jual: aplikasi tidak membuat order, dan posisi tertutup otomatis saat order jual terdeteksi (keputusan 7 November 2026).
 
 ### 7.5 Notifikasi
 
@@ -108,10 +109,10 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 
 ### 7.7 Total aset, grafik, dan riwayat
 
-- **FR-22** Beranda menampilkan SATU kartu Total aset: total, Buying power (IDR), koin per aset (jumlah × harga), baris Profit trading (total sejak aplikasi dipasang), dan baris Floating. Grafik = kurva akumulasi profit trade tertutup (satu garis, dengan garis putus-putus di Rp 0). Total aset diperbarui saat layar dibuka dan tiap 10 detik selama terlihat.
+- **FR-22** Beranda menampilkan SATU kartu Total aset: total, Buying power (IDR), satu baris per koin (nilai Rupiah; koin tanpa pasangan IDR tidak ditampilkan), baris Profit trading (total sejak aplikasi dipasang), dan di bawahnya satu baris berisi jumlah trade di kiri dan floating di kanan (hilang bila tidak ada posisi berharga). Grafik = kurva akumulasi profit trade tertutup (satu garis, dengan garis putus-putus di Rp 0), tanpa legenda atau keterangan titik. Status koneksi di pojok atas: "Terhubung" atau "Pantauan mati". Total aset diperbarui saat layar dibuka dan tiap 10 detik selama terlihat.
 - **FR-23** Riwayat trade tertutup: koin, modal, total diterima, profit atau loss bersih (Rp dan %), waktu buka dan tutup.
-- **FR-24** Aplikasi mengambil riwayat deposit dan withdraw IDR dan menampilkannya di layar Riwayat seperti trade. Hanya riwayat: tidak memengaruhi total aset, target, atau grafik.
-- **FR-25** Statistik (di layar Riwayat, rentang hari, minggu, dan semua): win rate, rata-rata untung dan rugi, hasil bersih, total fee, profit kotor, dan persen profit yang termakan fee.
+- **FR-24** Aplikasi mengambil riwayat deposit dan withdraw IDR dan menampilkannya di bagian bawah layar Riwayat, satu baris per item (jenis, tanggal, nominal; fee tidak ditampilkan). Hanya riwayat: tidak memengaruhi total aset, target, atau grafik. Sinkron berjalan otomatis (setelah sinkron trade dan saat pantauan tersambung); tidak ada tombol manual.
+- **FR-25** Statistik (di layar Riwayat, rentang hari, minggu, dan semua): win rate (disertai jumlah untung, rugi, dan impas), rata-rata untung, rata-rata rugi, hasil bersih, serta fee beserta persennya dari profit kotor. Profit kotor tetap dihitung tetapi tidak ditampilkan sebagai baris sendiri.
 - **FR-28** Floating P/L: layar Posisi menampilkan harga sekarang sebagai penanda pada tangga SL/modal efektif/TP (merah bila di bawah SL) dan floating per posisi; Beranda menampilkan jumlahnya. Dihitung SEBELUM fee jual karena fee nyata baru ada setelah koin dijual dan tarifnya berbeda per order (limit ±0,31%, market ±0,61%).
 
 ### 7.8 Cadangan
@@ -223,6 +224,7 @@ Penyimpanan lokal di perangkat. Data disimpan sebagai catatan, bukan angka saldo
 - **Cadangan**: ekspor dan impor database ke penyimpanan lokal (FR-26). Kunci API tidak ikut.
 - **Ketepatan**: acuan uji tetap struk Indodax per trade (profit tertutup). Total aset diambil langsung dari akun sehingga tidak perlu dikoreksi.
 - **Zona waktu dan periode**: WIB, minggu dimulai hari Senin (dikonfirmasi 7 November 2026).
+- **Tampilan**: tanpa teks penjelas; log pantauan tersembunyi dan dibuka dengan mengetuk judulnya; tombol optimasi baterai disembunyikan bila sudah dimatikan (Fase 7).
 
 ## 13. Kasus khusus
 
@@ -263,6 +265,7 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 | UI. Layar asli | Beranda, Posisi, Riwayat, Setelan sesuai prototype; cadangan data lokal (U1 sampai U5) | Aplikasi dipakai sehari-hari | Selesai |
 | 5. Penyempurnaan | Pantauan menyala otomatis setelah HP restart (T5.1); logika deposit (T5.2) | Pantauan tidak perlu dinyalakan ulang | Selesai (lulus uji HP 8 Nov 2026) |
 | 6. Total aset tunggal | T6.1 total aset nilai pasar; T6.2 Beranda tunggal, target dan grafik dari profit tertutup; T6.3 floating P/L; T6.4 pembersihan (snapshot periode, modal aktif, setoran bersih, koreksi saldo dihapus; deposit/withdraw jadi riwayat) | Satu angka saldo, target stabil | Selesai (T6.1 sampai T6.5 lulus uji HP 8 Nov 2026) |
+| 7. Penyederhanaan tampilan | T7.1 Beranda dan Posisi; T7.2 Riwayat dan Setelan (hanya Kotlin, perhitungan tidak berubah) | Informasi minimal dan efektif | Selesai (T7.1 dan T7.2 lulus uji HP 8 Nov 2026) |
 
 ## 16. Pertanyaan terbuka
 
@@ -279,6 +282,7 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 11. ~~Pantauan menyala otomatis setelah HP restart~~ **Selesai (T5.1), lulus uji HP 8 Nov 2026.**
 12. ~~Dasar target dan grafik~~ **Terjawab (8 Nov 2026): profit trade tertutup**, persen = profit ÷ (total aset − profit) × 100; floating tampil terpisah (pilihan 1); deposit/withdraw hanya riwayat; riwayat hanya sejak aplikasi dipasang.
 13. ~~Rumus persen di notifikasi jual~~ **Terjawab (8 Nov 2026): Opsi A**, memakai total aset terakhir yang disimpan Beranda (tanpa jaringan di layanan latar).
+14. ~~Penyederhanaan tampilan~~ **Terjawab (8 Nov 2026):** informasi diminimalkan karena pengguna paham trading; floating digabung ke baris di bawah Profit trading; koin tanpa harga IDR (contoh PXG) disembunyikan karena tidak akan ada trade lagi untuk koin itu; tombol sinkron deposit/withdraw manual dihapus (sinkron otomatis).
 
 ## 17. Risiko dan asumsi
 
