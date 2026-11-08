@@ -1,7 +1,9 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 8 November 2026 (Fase 7 selesai: T7.1 dan T7.2 lulus uji HP, tampilan disederhanakan; PRD v1.7; lihat 1v)
+Terakhir diperbarui: 8 November 2026 (Fase 7 selesai: T7.1 dan T7.2 lulus uji HP, tampilan disederhanakan; PRD v1.7; lihat 1v; T8.1 kode ditulis, MENUNGGU uji HP, lihat 1w)
 Status: **Fase 6 SELESAI (8 Nov 2026, lihat 1r, 1s, 1t): hanya ada satu angka saldo, yaitu TOTAL ASET nilai pasar (IDR sebagai "Buying power" + koin × harga terakhir). Target dan grafik dihitung dari profit trade yang sudah ditutup; kerugian koin yang sedang dipegang tampil terpisah sebagai floating P/L. T6.1 sampai T6.5 SUDAH lulus tes dan uji HP (tes terakhir: core 99, ffi 24); T6.6 (celah impor cadangan, hanya Kotlin) lulus uji HP. Saldo versi aplikasi, snapshot periode, modal aktif, setoran bersih, koreksi saldo, dan sisa kode grafik dua garis sudah dihapus.** **Fase 7 SELESAI (8 Nov 2026, lihat 1v): tampilan Beranda, Posisi, Riwayat, dan Setelan disederhanakan (hanya Kotlin, perhitungan tidak berubah); T7.1 dan T7.2 lulus uji HP.** Semua fase rencana selesai dan lolos uji (Fase 0 sampai 7, Fase UI U1 sampai U5, T4.1, T5.1, T5.2). Tersisa pekerjaan opsional saja: uji withdraw nyata dan ID order di notifikasi beli (lihat bagian 3).
+
+**Fase 8 (uji lapangan) BERJALAN (8 Nov 2026, lihat 1w): T8.1 (log diagnostik permanen `diag.log`, tombol Bagikan log, penjaga pantauan) kodenya sudah ditulis (hanya Kotlin, Rust tidak berubah, jumlah tes tetap core 99, ffi 24). STATUS: BELUM lulus uji HP. Setelah 6 poin uji HP lulus: isi tanggal di tabel 1a, lalu commit.**
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -54,6 +56,7 @@ Status: **Fase 6 SELESAI (8 Nov 2026, lihat 1r, 1s, 1t): hanya ada satu angka sa
 | T5.1 | Pantauan menyala otomatis setelah HP restart: `PenerimaBoot.kt` (BOOT_COMPLETED), izin `RECEIVE_BOOT_COMPLETED` dan `<receiver>` di `AndroidManifest.xml`. Hanya bila preferensi `aktif` = true (pantauan terakhir menyala), kunci ada, dan pernah sinkron; bila tidak, penanda dimatikan dan alasan dicatat di log | Selesai (build, tes, uji HP lulus 8 Nov) |
 | T7.1 | Sederhanakan Beranda dan Posisi: dihapus teks penjelas, jumlah × harga per koin, "Diperbarui", koin tanpa harga IDR (PXG), legenda dan keterangan titik grafik, rumus di kartu Target; floating DIGABUNG ke baris di bawah Profit trading ("N trade" kiri, "floating ..." kanan); chip menjadi "Terhubung"/"Pantauan mati"; Posisi: satu baris harga + floating, satu baris estimasi bersih (persen) + waktu buka. Hanya Kotlin (2 berkas). Lihat 1v | Selesai (build berhasil, uji HP sesuai kriteria, dilaporkan pengguna 8 Nov 2026) |
 | T7.2 | Sederhanakan Riwayat dan Setelan: Riwayat tanpa chip dan baris "Semua: ...", statistik dipadatkan (Win rate + untung/rugi/impas, Fee + persen, profit kotor tidak ditampilkan), deposit/withdraw satu baris tanpa fee; Setelan tanpa catatan penjelas, kartu Deposit/withdraw IDR dihapus, tombol baterai disembunyikan bila aman, log pantauan tersembunyi, "Inti Rust versi" dihapus. Hanya Kotlin (2 berkas). Lihat 1v | Selesai (build berhasil, uji HP sesuai kriteria, dilaporkan pengguna 8 Nov 2026) |
+| T8.1 | Diagnostik untuk uji lapangan: `LogDiag.kt` (log permanen `diag.log`), `Aplikasi.kt` (catat awal proses, alasan proses sebelumnya berakhir, crash), `PenjagaPantauan.kt` (alarm 5 menit, peringatan bila pantauan mati/terputus lebih dari 5 menit), tombol "Bagikan log" di Setelan, versi 0.8.0-uji. Hanya Kotlin. Lihat 1w | Kode ditulis 8 Nov 2026; MENUNGGU uji HP (isi tanggal lulus: ...) |
 
 ### 1b. Kesimpulan Fase 0 (masih dipakai)
 - **Fee dalam IDR.** Koin yang diterima tidak dipotong fee. Fee selain IDR sengaja ditolak (error) karena belum pernah ditemui.
@@ -570,10 +573,47 @@ Hasil harus kosong (selain `TitikGrafikUi`/`TitikGrafik` di `GrafikView.kt` yang
 - Bila suatu saat daftar deposit/withdraw di Riwayat tidak terisi otomatis, kembalikan tombol sinkron manual di Setelan.
 - `asetWaktuMs` di Beranda dan `Format.waktuSingkat` kini hanya diisi atau tidak dipakai (aman; hanya peringatan).
 
+### 1w. T8.1: diagnostik dan penjaga pantauan (detail; kode ditulis 8 Nov 2026; MENUNGGU uji HP)
+
+**Tujuan:** bukti yang cukup untuk melacak bug selama uji beberapa hari, dan peringatan bila pantauan mati diam-diam. Hanya Kotlin; Rust, FFI, dan skema database tidak berubah.
+
+**Berkas**
+- Baru (3), di `app/aplikasi/src/main/kotlin/id/catatanscalping/app/`: `LogDiag.kt`, `Aplikasi.kt`, `PenjagaPantauan.kt`.
+- Diubah, timpa (4): `LayananLatar.kt`, `LayarSetelan.kt`, `app/aplikasi/src/main/AndroidManifest.xml` (tambah `android:name=".Aplikasi"` dan receiver `PenjagaPantauan`), `app/aplikasi/build.gradle.kts` (versionCode 2, versionName `0.8.0-uji`).
+
+**Cara pasang**
+- Sebelum apa pun: ekspor cadangan dari Setelan. JANGAN uninstall. Pemasangan ulang lewat adb mematikan pantauan; nyalakan lagi manual.
+```
+cd catatan-scalping
+unzip -o ~/Downloads/T8.1.zip
+touch app/aplikasi/src/main/kotlin/id/catatanscalping/app/*.kt
+bash tools/bangun_android.sh --pasang <serial-adb>
+```
+
+**Yang berubah**
+1. Log permanen: semua baris Log pantauan juga ditulis ke berkas `diag.log` (maks sekitar 256 KB; separuh terlama dibuang bila penuh). Tampilan log di Setelan memuat 40 baris dengan tanggal dan jam (dd/MM HH:mm:ss) dan tetap ada setelah proses dimatikan.
+2. Catatan baru di log: "Proses dimulai · versi · Android", alasan proses sebelumnya berakhir (memori habis, dibunuh sistem/baterai, force stop, crash, dan lain-lain), "Layanan dihidupkan ulang oleh sistem", "Layanan dihentikan", dan CRASH beserta jejaknya.
+3. Setelan, Log pantauan, tombol "Bagikan log": mengirim 400 baris terakhir lewat menu bagikan (Telegram, Drive, email). Tidak memuat kunci API atau saldo.
+4. Penjaga pantauan: alarm tiap sekitar 5 menit selama pantauan ingin menyala. Bila pantauan mati, atau terputus lebih dari 5 menit, dan keadaan itu bertahan sekitar 4 menit lagi, muncul notifikasi "Peringatan pantauan" (paling sering sekali per 30 menit). Hilang sendiri saat pulih. Berhenti saat pantauan dihentikan manual. Penjaga TIDAK menyalakan layanan sendiri (Android melarang); buka aplikasi lalu nyalakan.
+
+**Yang harus diuji di HP (belum dijalankan)**
+1. Setelan, ketuk "Log pantauan": ada baris "Proses dimulai · versi 0.8.0-uji". Tombol "Bagikan log" muncul dan membuka menu bagikan berisi teks log.
+2. Mulai pantauan, geser aplikasi dari recent apps, buka lagi: log masih ada dan memuat "Proses sebelumnya berakhir: ..." bila prosesnya sempat mati.
+3. Matikan pantauan lewat tombol Hentikan: tidak ada peringatan muncul walau ditunggu 10 menit.
+4. Uji peringatan terputus: pantauan menyala, aktifkan mode pesawat sekitar 10 menit. Notifikasi "Peringatan pantauan" muncul dengan teks "terputus sejak jam ...". Matikan mode pesawat: setelah tersambung peringatan hilang.
+5. (Opsional, memaksa) pantauan menyala, jalankan `adb shell am force-stop id.catatanscalping.app`. Alarm ikut terhapus oleh force stop, jadi tidak ada peringatan; ini normal (peringatan hanya untuk mati yang dilakukan sistem). Kondisi itu tampak di log berikutnya: "Proses sebelumnya berakhir: force stop".
+6. Pantauan dan notifikasi beli/jual berjalan seperti biasa; chip dan layar tidak berubah.
+
+**Catatan**
+- `PenerimaBoot.kt` belum diperiksa untuk T8.1. Bila boot gagal menyalakan layanan, `PREF_AKTIF` dimatikan dan penjaga berhenti (tidak ada peringatan). Kirim `PenerimaBoot.kt` bila ingin ditutup.
+- PRD tidak diubah untuk T8.1 (tidak ada perubahan perilaku perhitungan atau fungsional utama); tambahkan ke PRD hanya bila diminta.
+- Setelah lulus uji HP: isi tanggal lulus di tabel 1a dan baris T8.1 di bagian 3, ubah status di bagian atas file ini, lalu commit.
+
 ### Belum terselesaikan atau dikenal
 | Masalah | Penyebab / dugaan | Status |
 | --- | --- | --- |
 | Layar menampilkan deposit "saldo +Rp 4.340" padahal kode sumber benar (T5.2) | Build Rust memakai sumber lama (Cargo tidak mengompilasi ulang file yang diganti) | TERJAWAB (8 Nov 2026): selesai setelah `touch` + `cargo clean` + build ulang; lihat 1q |
+| `PenerimaBoot.kt` belum diperiksa terhadap penjaga pantauan (T8.1) | Bila boot gagal menyalakan layanan, `PREF_AKTIF` dimatikan dan penjaga berhenti tanpa peringatan | Terbuka; kirim `PenerimaBoot.kt` untuk ditutup (lihat 1w) |
 | `tradeId` event WebSocket vs REST belum dibandingkan | Belum ada data pembanding | Tidak menghalangi (anti-dobel dari REST) |
 | Kemungkinan "database is locked" saat dua koneksi SQLite aktif bersamaan | `busy_timeout` 5 detik ada; layar kini membaca lewat antrean satu thread, tulis oleh pantau tetap bisa bersamaan | Pantau saat uji lanjutan |
 | Pantauan tidak menyala sendiri setelah HP reboot | Belum ada penerima BOOT_COMPLETED | Selesai (T5.1, lulus uji HP 8 Nov 2026) |
@@ -616,6 +656,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 | T6.6 | Cegah impor cadangan saat sinkron manual/otomatis sedang berjalan | SELESAI, lulus uji HP 8 Nov 2026 (lihat 1u) |
 | T7.1 | Sederhanakan Beranda dan Posisi (floating digabung, teks penjelas dihapus) | SELESAI, lulus uji HP 8 Nov 2026 (lihat 1v) |
 | T7.2 | Sederhanakan Riwayat dan Setelan (statistik dipadatkan, kartu deposit/withdraw di Setelan dihapus, log tersembunyi) | SELESAI, lulus uji HP 8 Nov 2026 (lihat 1v) |
+| T8.1 | Log diagnostik permanen dan penjaga pantauan (hanya Kotlin) | KODE DITULIS 8 Nov 2026; menunggu uji HP 6 poin (lihat 1w) |
 | Opsional | ID order di notifikasi beli (dua beli koin sama yang selesai nyaris bersamaan) | Butuh pengecekan ID order event WebSocket vs REST lebih dulu |
 | Opsional | Verifikasi mode fee deposit saat ada deposit nyata pertama | Menunggu deposit nyata |
 
@@ -684,6 +725,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - **Fase UI**: selesai (U1 sampai U5, lulus uji HP 8 Nov 2026)
 - **Fase 5 (penyempurnaan)**: selesai. T5.1 lulus uji HP (8 Nov 2026); T5.2 (logika deposit) lulus uji HP (8 Nov 2026)
 - **Fase 7 (Penyederhanaan tampilan)**: selesai. T7.1 dan T7.2 lulus uji HP (8 Nov 2026)
+- **Fase 8 (Uji lapangan)**: berjalan. T8.1 (log diagnostik dan penjaga pantauan) kode ditulis 8 Nov 2026, menunggu uji HP
 - **Fase 6 (Total aset tunggal)**: selesai. T6.1 sampai T6.5 lulus tes dan uji HP (8 Nov 2026); T6.6 (celah impor) lulus uji HP (8 Nov 2026)
 
 ---
@@ -803,6 +845,9 @@ catatan-scalping/
 │           │   ├── Sinkron.kt           (U1: sinkron trade dan arus kas, manual dan otomatis; T6.6: penanda imporBerjalan, mulaiImpor/selesaiImpor)
 │           │   ├── GrafikView.kt        (T3.2; U2: bertema; T6.2: mode profit via setProfit; T6.5: hanya grafik profit, setData dihapus)
 │           │   ├── LayananLatar.kt      (T1.4c: foreground service + PantauBersama; T1.5: saluran "Order terisi" dan pekerja notifikasi)
+│           │   ├── LogDiag.kt           (T8.1: log permanen diag.log, maks sekitar 256 KB)
+│           │   ├── Aplikasi.kt          (T8.1: kelas Application; catat awal proses, alasan proses sebelumnya berakhir, crash)
+│           │   ├── PenjagaPantauan.kt   (T8.1: alarm 5 menit, peringatan bila pantauan mati/terputus)
 │           │   └── KunciAman.kt         (simpan key terenkripsi, Android Keystore)
 │           ├── res/values/themes.xml
 │           ├── res/values-night/themes.xml
@@ -828,6 +873,7 @@ Semua task pada rencana selesai, termasuk Fase 6 (T6.1 sampai T6.6) dan Fase 7 (
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T8.1: `T8.1: log diagnostik permanen dan penjaga pantauan` (hash: ...) (commit setelah uji HP lulus)
 - Dokumen: `Dokumen: PRD v1.7 dan PROGRESS (Fase 7, T7.1 dan T7.2)` (hash: ...)
 - T7.2: `T7.2: sederhanakan Riwayat dan Setelan` (hash: ...)
 - T7.1: `T7.1: sederhanakan Beranda dan Posisi` (hash: ...)

@@ -12,6 +12,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
+        android:name=".Aplikasi"
         android:allowBackup="false"
         android:label="Catatan Scalping"
         android:theme="@style/Tema">
@@ -42,5 +43,10 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- T8.1: penjaga pantauan (alarm berkala; peringatan bila pantauan mati atau terputus lama) -->
+        <receiver
+            android:name=".PenjagaPantauan"
+            android:exported="false" />
     </application>
 </manifest>

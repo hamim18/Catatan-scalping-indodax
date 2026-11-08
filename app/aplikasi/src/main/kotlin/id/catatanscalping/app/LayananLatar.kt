@@ -45,14 +45,22 @@ object PantauBersama {
     @Volatile var pendengarUi: (() -> Unit)? = null
 
     private val log = ArrayDeque<String>()
-    private const val MAKS_LOG = 12
+    private const val MAKS_LOG = 40
 
+    /** T8.1: catat ke layar (terbaru di atas) sekaligus ke berkas log permanen (LogDiag). */
     @Synchronized
     fun catat(baris: String) {
-        val f = SimpleDateFormat("HH:mm:ss", Locale.US).apply { timeZone = TimeZone.getTimeZone("Asia/Jakarta") }
-        log.addFirst("${f.format(Date())}  $baris")
+        log.addFirst(LogDiag.catat(baris))
         while (log.size > MAKS_LOG) log.removeLast()
         pendengarUi?.invoke()
+    }
+
+    /** T8.1: isi log layar dari berkas saat proses baru dimulai (`baris` terlama ke terbaru). */
+    @Synchronized
+    fun muatAwal(baris: List<String>) {
+        if (log.isNotEmpty()) return
+        for (b in baris) log.addFirst(b)
+        while (log.size > MAKS_LOG) log.removeLast()
     }
 
     @Synchronized
@@ -124,6 +132,7 @@ class LayananLatar : Service() {
             return START_NOT_STICKY
         }
 
+        if (intent == null) PantauBersama.catat("Layanan dihidupkan ulang oleh sistem")
         // Wajib segera setelah startForegroundService (batas 5 detik).
         statusKoneksi = "Menghubungkan..."
         PantauBersama.status = statusKoneksi
@@ -169,6 +178,7 @@ class LayananLatar : Service() {
 
     private fun tandaiAktif(ya: Boolean) {
         getSharedPreferences(PantauBersama.PREF, MODE_PRIVATE).edit().putBoolean(PantauBersama.PREF_AKTIF, ya).apply()
+        if (ya) PenjagaPantauan.jadwalkan(this) else PenjagaPantauan.batal(this) // T8.1
         PantauBersama.pendengarUi?.invoke()
     }
 
@@ -178,11 +188,13 @@ class LayananLatar : Service() {
             is KejadianUi.Tersambung -> {
                 statusKoneksi = "Tersambung, memantau order"
                 PantauBersama.catat("Tersambung")
+                PenjagaPantauan.tandaiTersambung(this) // T8.1
                 sinkronArusKasLatar()
             }
             is KejadianUi.Terputus -> {
                 statusKoneksi = "Terputus (${k.alasan}), coba lagi ${k.cobaLagiDetik} dtk"
                 PantauBersama.catat(statusKoneksi)
+                PenjagaPantauan.tandaiTerputus(this) // T8.1
             }
             is KejadianUi.OrderSelesai -> {
                 orderTerakhir = "${k.sisi.uppercase()} ${k.simbol} (trade baru ${k.tradeBaru})"
@@ -350,6 +362,7 @@ class LayananLatar : Service() {
     }
 
     override fun onDestroy() {
+        PantauBersama.catat("Layanan dihentikan")
         hidup = false
         pekerja.shutdown() // tugas yang sudah antre tetap selesai
         pekerjaArusKas.shutdown()

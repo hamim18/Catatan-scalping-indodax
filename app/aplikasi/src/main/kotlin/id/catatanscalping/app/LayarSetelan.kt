@@ -122,14 +122,18 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         // --- Log pantauan (tersembunyi; ketuk judul untuk membuka) ---
         val kLog = ui.kartu()
         val judulLog = ui.teks("Log pantauan  ▸", 14f, tebal = true)
+        val tombolBagikanLog = ui.tombol("Bagikan log") { bagikanLog() }
+        tombolBagikanLog.visibility = View.GONE
         judulLog.setOnClickListener {
             val buka = teksLog.visibility != View.VISIBLE
             teksLog.visibility = if (buka) View.VISIBLE else View.GONE
+            tombolBagikanLog.visibility = if (buka) View.VISIBLE else View.GONE
             judulLog.text = if (buka) "Log pantauan  ▾" else "Log pantauan  ▸"
         }
         teksLog.visibility = View.GONE
         kLog.tambah(judulLog)
         kLog.tambah(teksLog, atas = 8)
+        kLog.tambah(tombolBagikanLog, atas = 10)
         isi.tambah(kLog, atas = 12)
 
         muatNilaiTersimpan()
@@ -232,6 +236,17 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
             }
             r.onFailure { infoSimpan.text = "Tidak disimpan: ${Latar.pesan(it)}" }
         }
+    }
+
+    /** T8.1: kirim 400 baris log terakhir lewat menu bagikan sistem (tanpa kunci API atau saldo). */
+    private fun bagikanLog() {
+        val teks = LogDiag.baca(400).joinToString("\n").ifEmpty { "(log kosong)" }
+        val i = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Log Catatan Scalping")
+            putExtra(Intent.EXTRA_TEXT, teks)
+        }
+        a.startActivity(Intent.createChooser(i, "Bagikan log"))
     }
 
     // ---------- cadangan data (U5) ----------
