@@ -5,6 +5,10 @@
 //! orderNo, amount (teks), totalFee (teks), method, fiatCurrency, status,
 //! createTime dan updateTime (angka, milidetik). Respons withdraw baru teramati
 //! KOSONG, jadi bentuknya diasumsikan sama dan BELUM tervalidasi.
+//!
+//! Sejak T6.4 arus kas hanya RIWAYAT (ditampilkan di layar Riwayat). Tidak ada lagi
+//! perhitungan saldo, setoran bersih, atau modal aktif dari deposit/withdraw. Catatan:
+//! `amount` deposit sudah bersih (fee dipotong sebelum dana masuk; uji nyata 8 Nov 2026).
 use crate::{Error, Hasil, IndodaxClient, Penyimpanan};
 use rust_decimal::Decimal;
 use serde_json::Value;
@@ -56,30 +60,12 @@ pub struct ArusKas {
     /// Unik: "<jenis>:<orderNo>" (anti-dobel, FR-09).
     pub id_sumber: String,
     pub jenis: JenisArusKas,
-    /// `amount` dari API.
+    /// `amount` dari API (deposit: sudah bersih, fee hanya informasi).
     pub jumlah: Decimal,
     /// `totalFee` dari API (0 bila tidak ada).
     pub biaya: Decimal,
     /// Waktu order selesai (updateTime; bila kosong createTime), milidetik.
     pub waktu_ms: i64,
-}
-
-impl ArusKas {
-    /// Perubahan saldo IDR (positif = masuk, negatif = keluar).
-    /// DEPOSIT: `amount` dari API SUDAH bersih (terbukti dengan deposit nyata 8 Nov 2026:
-    /// transfer 11.000, amount 7.670, totalFee 3.330, saldo asli naik 7.670). Fee sudah
-    /// dipotong Indodax sebelum dana masuk, jadi `biaya` hanya informasi dan TIDAK
-    /// dikurangkan lagi; parameter `amount_sudah_bersih` tidak berlaku untuk deposit.
-    /// WITHDRAW: belum terverifikasi, jadi masih ada dua mode:
-    /// - `amount_sudah_bersih` = true: saldo berubah sebesar -amount saja.
-    /// - false (bawaan): -(amount + fee).
-    pub fn efek_saldo(&self, amount_sudah_bersih: bool) -> Decimal {
-        match (self.jenis, amount_sudah_bersih) {
-            (JenisArusKas::Deposit, _) => self.jumlah,
-            (JenisArusKas::Withdraw, true) => -self.jumlah,
-            (JenisArusKas::Withdraw, false) => -(self.jumlah + self.biaya),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -158,15 +144,6 @@ pub fn parse_fiat_orders(json: &str, jenis: JenisArusKas) -> Hasil<HasilParseFia
         });
     }
     Ok(HasilParseFiat { arus, dilewati })
-}
-
-/// Jumlah perubahan saldo IDR dari arus kas pada rentang (setelah_ms, sampai_ms]:
-/// batas awal TIDAK ikut, batas akhir ikut.
-pub fn setoran_bersih(arus: &[ArusKas], setelah_ms: i64, sampai_ms: i64, amount_sudah_bersih: bool) -> Decimal {
-    arus.iter()
-        .filter(|a| a.waktu_ms > setelah_ms && a.waktu_ms <= sampai_ms)
-        .map(|a| a.efek_saldo(amount_sudah_bersih))
-        .sum::<Decimal>()
 }
 
 /// Bagi rentang waktu menjadi jendela maksimal 29 hari.
@@ -288,35 +265,6 @@ mod tests {
         assert!(parse_fiat_orders(tanpa_no, JenisArusKas::Deposit).is_err());
         let amount_rusak = r#"{"data":[{"orderNo":"1","amount":"abc","status":"success","createTime":1}]}"#;
         assert!(parse_fiat_orders(amount_rusak, JenisArusKas::Deposit).is_err());
-    }
-
-    #[test]
-    fn efek_saldo_deposit_selalu_amount_withdraw_dua_mode() {
-        let dep = ArusKas { id_sumber: "deposit:1".into(), jenis: JenisArusKas::Deposit, jumlah: d("50000"), biaya: d("2500"), waktu_ms: 1 };
-        let wd = ArusKas { id_sumber: "withdraw:1".into(), jenis: JenisArusKas::Withdraw, jumlah: d("20000"), biaya: d("6500"), waktu_ms: 1 };
-        assert_eq!(dep.efek_saldo(true), d("50000"));
-        // deposit: fee tidak pernah dikurangkan lagi, apa pun modenya
-        assert_eq!(dep.efek_saldo(false), d("50000"));
-        assert_eq!(wd.efek_saldo(true), d("-20000"));
-        assert_eq!(wd.efek_saldo(false), d("-26500"));
-    }
-
-    #[test]
-    fn deposit_nyata_8_nov_amount_7670_fee_3330_menambah_7670() {
-        // transfer 11.000 = amount 7.670 + totalFee 3.330; saldo asli Indodax naik 7.670
-        let dep = ArusKas { id_sumber: "deposit:nyata".into(), jenis: JenisArusKas::Deposit, jumlah: d("7670"), biaya: d("3330"), waktu_ms: 1 };
-        assert_eq!(dep.efek_saldo(false), d("7670"));
-        assert_eq!(dep.efek_saldo(true), d("7670"));
-    }
-
-    #[test]
-    fn setoran_bersih_batas_awal_tidak_ikut_batas_akhir_ikut() {
-        let dep = |id: &str, w: i64| ArusKas { id_sumber: id.into(), jenis: JenisArusKas::Deposit, jumlah: d("1000"), biaya: Decimal::ZERO, waktu_ms: w };
-        let wd = ArusKas { id_sumber: "w".into(), jenis: JenisArusKas::Withdraw, jumlah: d("300"), biaya: Decimal::ZERO, waktu_ms: 25 };
-        let arus = vec![dep("a", 10), dep("b", 20), wd, dep("c", 30)];
-        assert_eq!(setoran_bersih(&arus, 10, 30, true), d("1700")); // b + (-300) + c
-        assert_eq!(setoran_bersih(&arus, 30, 40, true), Decimal::ZERO);
-        assert_eq!(setoran_bersih(&arus, 0, 9, true), Decimal::ZERO);
     }
 
     #[test]

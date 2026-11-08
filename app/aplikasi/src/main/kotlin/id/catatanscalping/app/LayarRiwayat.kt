@@ -1,38 +1,34 @@
 package id.catatanscalping.app
 
-import android.app.AlertDialog
 import android.view.Gravity
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.Button
 import android.widget.LinearLayout
+import uniffi.scalping_ffi.BarisArusKas
 import uniffi.scalping_ffi.BarisTertutup
 import uniffi.scalping_ffi.RiwayatUi
-import uniffi.scalping_ffi.SelisihSaldoUi
 import uniffi.scalping_ffi.StatistikUi
-import uniffi.scalping_ffi.cekSelisihSaldo
-import uniffi.scalping_ffi.daftarKoreksiSaldo
+import uniffi.scalping_ffi.daftarArusKas
 import uniffi.scalping_ffi.riwayatTertutup
 import uniffi.scalping_ffi.statistikTrading
-import uniffi.scalping_ffi.terapkanKoreksiSaldo
 
 /**
  * Riwayat (prototype): ringkasan hari ini dan daftar trade tertutup. Ditambah statistik (T4.1)
- * dan koreksi saldo (T3.3). Hanya tampilan; semua angka dari Rust.
+ * dan riwayat deposit/withdraw IDR (T6.4: hanya riwayat, tidak memengaruhi saldo, target, atau
+ * grafik). Hanya tampilan; semua angka dari Rust.
  */
 class LayarRiwayat(a: MainActivity) : Layar(a) {
     private var jumlahTampil = 30
     private var rentang = "semua"
-    private var selisihTerakhir: SelisihSaldoUi? = null
-    private var awalanKoreksi = "" // hasil cek/koreksi terakhir, dipertahankan saat layar disegarkan
+    private var jumlahArus = 10
 
     private val daftar = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
     private val kartuRingkasan = ui.kartu()
     private val kartuStatistik = ui.kartu()
     private val tombolRentang = LinkedHashMap<String, Button>()
     private lateinit var tombolLagi: Button
-    private lateinit var tombolCek: Button
-    private lateinit var tombolKoreksi: Button
-    private val teksKoreksi = ui.mono("", 12f)
+    private val daftarArus = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
+    private lateinit var tombolLagiArus: Button
 
     init {
         header("Riwayat", ui.Chip().apply { atur("Hari ini", null) }.root)
@@ -54,33 +50,21 @@ class LayarRiwayat(a: MainActivity) : Layar(a) {
         isi.tambah(kartuStatistik)
         gayaRentang()
 
-        // --- Koreksi saldo ---
-        isi.tambah(ui.judulBagian("Koreksi saldo"), atas = 22, bawah = 10)
-        val kKoreksi = ui.kartu()
-        kKoreksi.tambah(
-            ui.mute(
-                "Bandingkan saldo aplikasi dengan saldo IDR asli di Indodax. Sinkron dulu dan jangan cek saat ada " +
-                    "order terisi sebagian. Selisih dicatat sebagai penyesuaian (bukan profit); catatan lain tidak dihapus.",
-                12f,
-            )
+        // --- Deposit dan withdraw (T6.4: hanya riwayat) ---
+        isi.tambah(ui.judulBagian("Deposit dan withdraw"), atas = 22, bawah = 10)
+        isi.tambah(
+            ui.mute("Hanya riwayat. Tidak memengaruhi total aset, target, atau grafik. Disinkronkan dari Setelan.", 12f),
+            bawah = 10,
         )
-        tombolCek = ui.tombol("Cek selisih saldo") { cekSelisih() }
-        tombolKoreksi = ui.tombol("Catat koreksi", primer = true) { konfirmasiKoreksi() }
-        tombolKoreksi.aktif(false)
-        val br = LinearLayout(a).apply {
-            orientation = LinearLayout.HORIZONTAL
-            tambah(tombolCek, bobot = 1f, lebar = 0, kanan = 4)
-            tambah(tombolKoreksi, bobot = 1f, lebar = 0, kiri = 4)
-        }
-        kKoreksi.tambah(br, atas = 10)
-        kKoreksi.tambah(teksKoreksi, atas = 10)
-        isi.tambah(kKoreksi)
+        isi.tambah(daftarArus)
+        tombolLagiArus = ui.tombol("Tampilkan lebih banyak") { jumlahArus += 10; muatArus() }
+        isi.tambah(tombolLagiArus, atas = 12)
     }
 
     override fun segarkan() {
         muatRiwayat()
         muatStatistik()
-        muatKoreksi(awalanKoreksi)
+        muatArus()
     }
 
     private fun gayaRentang() {
@@ -195,88 +179,57 @@ class LayarRiwayat(a: MainActivity) : Layar(a) {
         for (b in baris) kartuStatistik.tambah(b, atas = 8)
     }
 
-    // ---------- koreksi saldo ----------
+    // ---------- deposit dan withdraw (riwayat) ----------
 
-    private fun muatKoreksi(awalan: String) {
-        awalanKoreksi = awalan
+    private fun muatArus() {
         val db = a.pathDb
-        Latar.baca({ daftarKoreksiSaldo(db, 5u) }) { r ->
-            val daftarTeks = r.fold(
-                onSuccess = { d ->
-                    if (d.isEmpty()) "Belum ada koreksi dicatat."
-                    else "Koreksi tercatat:\n" + d.joinToString("\n") {
-                        "${Format.tanggalJam(it.waktuMs)}  ${Format.untung(it.jumlah)}  ${it.catatan}"
-                    }
-                },
-                onFailure = { "Gagal membaca koreksi: ${Latar.pesan(it)}" },
+        val n = jumlahArus
+        Latar.baca({ daftarArusKas(db, n.toUInt()) }) { r ->
+            r.onSuccess { tampilArus(it, n) }
+            r.onFailure {
+                daftarArus.removeAllViews()
+                daftarArus.tambah(ui.kartu().apply { tambah(ui.mute("Riwayat deposit/withdraw belum bisa dibaca: ${Latar.pesan(it)}")) })
+                tombolLagiArus.visibility = android.view.View.GONE
+            }
+        }
+    }
+
+    private fun tampilArus(d: List<BarisArusKas>, diminta: Int) {
+        daftarArus.removeAllViews()
+        if (d.isEmpty()) {
+            daftarArus.tambah(ui.kartu().apply { tambah(ui.mute("Belum ada deposit atau withdraw tercatat.")) })
+        }
+        for ((i, x) in d.withIndex()) daftarArus.tambah(itemArus(x), atas = if (i == 0) 0 else 12)
+        tombolLagiArus.visibility = if (d.size >= diminta) android.view.View.VISIBLE else android.view.View.GONE
+    }
+
+    private fun itemArus(x: BarisArusKas): LinearLayout {
+        val deposit = x.jenis.equals("deposit", ignoreCase = true)
+        val kiri = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            tambah(ui.teks(if (deposit) "Deposit" else "Withdraw", 15f, tebal = true))
+            tambah(ui.mute(Format.tanggalJam(x.waktuMs)))
+        }
+        val kanan = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.END
+            tambah(
+                ui.teks((if (deposit) "Masuk " else "Keluar ") + Format.rupiah(x.jumlah), 15f, t.ink, tebal = true),
+                lebar = WRAP_CONTENT,
             )
-            teksKoreksi.text = if (awalan.isEmpty()) daftarTeks else "$awalan\n\n$daftarTeks"
-        }
-    }
-
-    private fun cekSelisih() {
-        val p = a.kunci.ambil()
-        if (p == null) {
-            teksKoreksi.text = "Kunci tersimpan tidak bisa dibuka. Masukkan ulang di Setelan."
-            return
-        }
-        tombolCek.aktif(false)
-        tombolKoreksi.aktif(false)
-        teksKoreksi.text = "Mengambil saldo asli dari Indodax..."
-        val db = a.pathDb
-        Latar.jaringan.execute {
-            val hasil = runCatching { cekSelisihSaldo(p.first, p.second, db) }
-            Latar.ui {
-                tombolCek.aktif(true)
-                hasil.onSuccess { s ->
-                    selisihTerakhir = s
-                    tombolKoreksi.aktif(s.perluKoreksi)
-                    val t = StringBuilder()
-                    t.append("Saldo IDR asli Indodax  : ${Format.rupiah(s.idrAsli)}\n")
-                    t.append("IDR menurut aplikasi    : ${Format.rupiah(s.idrMenurutAplikasi)}\n")
-                    t.append("Modal posisi terbuka    : ${Format.rupiah(s.nilaiPosisi)}\n")
-                    t.append("Saldo versi aplikasi    : ${Format.rupiah(s.saldoAplikasi)}\n")
-                    t.append("SELISIH (asli - aplikasi): ${Format.untung(s.selisih)}\n")
-                    t.append(
-                        if (s.perluKoreksi) "Ada selisih. Bila yakin semua trade sudah tersinkron, tekan \"Catat koreksi\"."
-                        else "Cocok (selisih di bawah Rp 1)."
-                    )
-                    muatKoreksi(t.toString())
-                }
-                hasil.onFailure { teksKoreksi.text = "Cek selisih gagal: ${Latar.pesan(it)}" }
-            }
-        }
-    }
-
-    private fun konfirmasiKoreksi() {
-        val s = selisihTerakhir ?: return
-        AlertDialog.Builder(a)
-            .setTitle("Catat koreksi saldo?")
-            .setMessage(
-                "Selisih ${Format.untung(s.selisih)} akan dicatat sebagai penyesuaian. Saldo dan modal aktif ikut " +
-                    "berubah sebesar itu, hasil trading (profit) tidak berubah. Saldo asli diambil ulang saat dicatat."
+            tambah(
+                ui.mute("fee ${Format.rupiah(x.biaya)}" + if (deposit) " (sudah dipotong)" else ""),
+                atas = 4,
+                lebar = WRAP_CONTENT,
             )
-            .setPositiveButton("Catat") { _, _ -> terapkanKoreksi() }
-            .setNegativeButton("Batal", null)
-            .show()
-    }
-
-    private fun terapkanKoreksi() {
-        val p = a.kunci.ambil() ?: return
-        tombolKoreksi.aktif(false)
-        val db = a.pathDb
-        Latar.jaringan.execute {
-            val pesan = try {
-                val j = terapkanKoreksiSaldo(p.first, p.second, db, "Koreksi manual")
-                if (j == null) "Tidak ada selisih yang perlu dikoreksi." else "Koreksi dicatat: ${Format.untung(j)}."
-            } catch (e: Exception) {
-                "Koreksi gagal: ${Latar.pesan(e)}"
-            }
-            selisihTerakhir = null
-            Latar.ui {
-                muatKoreksi(pesan)
-                a.dataBerubah()
-            }
+        }
+        return LinearLayout(a).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = ui.bulat(t.card, t.line, 12)
+            setPadding(a.dp(14), a.dp(12), a.dp(14), a.dp(12))
+            tambah(kiri, bobot = 1f, lebar = 0)
+            tambah(kanan, lebar = WRAP_CONTENT)
         }
     }
 }

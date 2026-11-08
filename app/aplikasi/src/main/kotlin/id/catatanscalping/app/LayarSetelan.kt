@@ -15,12 +15,10 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import uniffi.scalping_ffi.StatusKoneksi
-import uniffi.scalping_ffi.aturAmountSudahBersih
 import uniffi.scalping_ffi.bacaSetelan
 import uniffi.scalping_ffi.bacaTarget
 import uniffi.scalping_ffi.cekKoneksi
 import uniffi.scalping_ffi.daftarArusKas
-import uniffi.scalping_ffi.hitungTarget
 import uniffi.scalping_ffi.simpanSetelan
 import uniffi.scalping_ffi.simpanTarget
 import uniffi.scalping_ffi.versiCore
@@ -125,7 +123,7 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         val kArus = ui.kartu()
         kArus.tambah(ui.teks("Deposit dan withdraw IDR", 14f, tebal = true))
         kArus.tambah(
-            ui.mute("Dikeluarkan dari pencapaian target dan tidak dihitung sebagai profit. Dilengkapi otomatis; tombol ini untuk memaksa. Deposit: nominal sudah bersih (fee hanya informasi). Withdraw: saldo berkurang sebesar amount + fee.", 12f),
+            ui.mute("Hanya riwayat (daftarnya ada di layar Riwayat); tidak memengaruhi total aset, target, atau grafik. Dilengkapi otomatis; tombol ini untuk memaksa.", 12f),
             atas = 6,
         )
         tombolArusKas = ui.tombol("Sinkron deposit/withdraw") { sinkronArusKasManual() }
@@ -232,25 +230,10 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
 
     private fun muatArusKas() {
         val db = a.pathDb
-        Latar.baca({
-            // Pilihan "nominal sudah bersih" sudah dihapus dari layar (T5.2). Bila database lama
-            // masih menyimpan mode "bersih", kembalikan ke bawaan agar withdraw dihitung amount + fee.
-            runCatching { if (hitungTarget(db).amountSudahBersih) aturAmountSudahBersih(db, false) }
-            daftarArusKas(db, 5u)
-        }) { r ->
-            r.onSuccess { daftar ->
-                infoArusKas.text = if (daftar.isEmpty()) {
-                    "(belum ada deposit/withdraw tercatat)"
-                } else {
-                    daftar.joinToString("\n") { x ->
-                        "${Format.tanggalJam(x.waktuMs)}  ${x.jenis.uppercase()}\n" +
-                            (if (x.jenis.equals("deposit", ignoreCase = true)) {
-                                "  amount ${Format.rupiah(x.jumlah)} (fee ${Format.rupiah(x.biaya)} sudah dipotong) → saldo ${Format.untung(x.efekSaldo)}"
-                            } else {
-                                "  amount ${Format.rupiah(x.jumlah)} · fee ${Format.rupiah(x.biaya)} → saldo ${Format.untung(x.efekSaldo)}"
-                            })
-                    }
-                }
+        Latar.baca({ daftarArusKas(db, 1000u).size }) { r ->
+            r.onSuccess { n ->
+                infoArusKas.text =
+                    if (n == 0) "(belum ada deposit/withdraw tercatat)" else "$n tercatat. Lihat daftarnya di layar Riwayat."
             }
             r.onFailure { infoArusKas.text = "Gagal membaca arus kas: ${Latar.pesan(it)}" }
         }

@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 8 November 2026 (T6.3 lulus tes dan uji HP: floating P/L di Beranda dan layar Posisi; T6.4 berikutnya; satu keputusan terbuka tentang rumus persen di notifikasi, lihat 1r)
-Status: **Arah baru (8 Nov 2026, lihat 1r): hanya ada satu angka saldo, yaitu TOTAL ASET nilai pasar (IDR sebagai "buying power" + koin × harga terakhir). Target dan grafik TIDAK dihitung dari saldo, melainkan dari profit trade yang sudah ditutup (bebas dari instal ulang); kerugian koin yang sedang dipegang tampil terpisah sebagai floating P/L. Dikerjakan bertahap T6.1 sampai T6.4; T6.1, T6.2, dan T6.3 SUDAH selesai dan lulus uji HP (8 Nov 2026), tersisa T6.4. Bagian di bawah ini (Fase 0 sampai T5.2) tetap berlaku untuk hal yang belum diganti (notifikasi, layar Riwayat dan Setelan, koreksi saldo) sampai T6.4 selesai.** Semua fase rencana lama selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2, Fase 3, T4.1 (statistik), Fase UI (U1 sampai U5), T5.1 (pantauan menyala otomatis setelah HP restart), dan T5.2 (logika deposit)** (build, tes Rust, dan uji HP dilaporkan pengguna 7 sampai 8 Nov 2026). Uji deposit nyata (8 Nov): `amount` deposit sudah bersih, fee hanya informasi (lihat 1o); setelah T5.2 baris deposit di HP menampilkan `saldo +Rp 7.670` (dilaporkan pengguna, 8 Nov; lihat 1p dan 1q). Withdraw belum bisa diuji (saldo di bawah batas minimum penarikan Indodax). Tersisa hanya pekerjaan opsional: uji withdraw nyata dan verifikasi lanjutan saat ada data.
+Terakhir diperbarui: 8 November 2026 (T6.4 kode selesai: pembersihan snapshot/modal aktif/setoran/koreksi saldo; MENUNGGU build, tes Rust, dan uji HP; lihat 1s)
+Status: **Arah Fase 6 (8 Nov 2026, lihat 1r): hanya ada satu angka saldo, yaitu TOTAL ASET nilai pasar (IDR sebagai "Buying power" + koin × harga terakhir). Target dan grafik dihitung dari profit trade yang sudah ditutup; kerugian koin yang sedang dipegang tampil terpisah sebagai floating P/L. T6.1, T6.2, T6.3 SUDAH lulus uji HP. T6.4 (pembersihan) kodenya sudah ditulis dan belum dibangun atau diuji: setelah lulus tes dan uji HP, Fase 6 selesai.** Semua fase rencana lama selesai dan lolos uji (Fase 0 sampai 5, Fase UI U1 sampai U5, T4.1, T5.1, T5.2). Tersisa pekerjaan opsional: uji withdraw nyata dan pembersihan `GrafikView.setData` (lihat 1s).
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -407,7 +407,7 @@ Status: **Arah baru (8 Nov 2026, lihat 1r): hanya ada satu angka saldo, yaitu TO
 6. Setelah lulus: catat penyebab di sini, ubah status T5.2 menjadi lulus uji HP, lalu commit. (Dilakukan 8 Nov 2026.)
 
 
-### 1r. T6.1 sampai T6.4: Total aset tunggal, target dari profit tertutup (rancangan 8 Nov 2026; T6.1 dan T6.2 selesai; T6.3 selesai; T6.4 berikutnya)
+### 1r. T6.1 sampai T6.4: Total aset tunggal, target dari profit tertutup (rancangan 8 Nov 2026; T6.1 sampai T6.3 lulus uji HP; T6.4 kode selesai, menunggu build dan uji HP, lihat 1s)
 
 **Riwayat keputusan (8 Nov 2026)**
 1. Usulan awal pengguna: saldo, snapshot, target, dan grafik semua dari total aset nilai pasar (IDR + koin × harga). Dipakai sementara untuk T6.1 (kartu Total aset terpisah). DIGANTI oleh rancangan di bawah.
@@ -431,7 +431,7 @@ Status: **Arah baru (8 Nov 2026, lihat 1r): hanya ada satu angka saldo, yaitu TO
 | T6.1 | Sumber harga `ticker_all` + total aset + kartu "Total aset" di Beranda (kartu terpisah SEMENTARA, tampilan saja) | LULUS uji HP 8 Nov 2026 (dilaporkan pengguna). Commit: `git commit -m "T6.1: total aset nilai pasar di Beranda (harga ticker_all, total aset)"` |
 | T6.2 | Beranda tunggal: kartu Saldo lama (saldo, hasil terhadap modal aktif, modal aktif) DIHAPUS; kartu Total aset dengan "Buying power" (IDR) dan koin per aset; baris "Profit trading"; target harian/mingguan dari profit trade tertutup per periode WIB; grafik = akumulasi profit tertutup | LULUS tes dan uji HP 8 Nov 2026 (dilaporkan pengguna). Commit: `git commit -m "T6.2: Beranda tunggal, target dan grafik dari profit trade tertutup"`. Detail di bawah tabel |
 | T6.3 | Floating P/L: harga sekarang di layar Posisi (penanda di tangga, merah di bawah SL, floating per posisi); satu baris "Floating" di Beranda | LULUS tes (ffi 25) dan uji HP 8 Nov 2026 (dilaporkan pengguna). Commit: `git commit -m "T6.3: floating P/L di Beranda dan layar Posisi"`. Detail di bawah tabel. Hanya posisi yang dicatat aplikasi; koin lama/deposit tidak punya modal efektif |
-| T6.4 | Pembersihan: hapus snapshot, modal aktif, setoran bersih, dan koreksi saldo; deposit/withdraw tetap disinkronkan tetapi hanya tampil sebagai riwayat seperti trade; PRD v1.6 (non-tujuan "harga pasar realtime" dicabut, rumus bagian 8 diganti: total aset, profit tertutup, floating, persen target) | Butuh `LayarRiwayat.kt`, `LayarSetelan.kt`, `store.rs`, `arus_kas.rs`, `periode.rs`. Cadangan lama (v1.x) harus tetap bisa diimpor (tabel lama dibiarkan, tidak dihapus dari database) |
+| T6.4 | Pembersihan: hapus snapshot, modal aktif, setoran bersih, dan koreksi saldo; deposit/withdraw tetap disinkronkan tetapi hanya tampil sebagai riwayat seperti trade; PRD v1.6 (non-tujuan "harga pasar realtime" dicabut, rumus bagian 8 diganti: total aset, profit tertutup, floating, persen target) | KODE SELESAI 8 Nov 2026, menunggu build dan uji HP (detail di 1s). Cadangan lama (v1.x) tetap bisa diimpor (tabel lama dibiarkan, tidak dihapus dari database). Commit setelah lulus: `git commit -m "T6.4: pembersihan saldo lama, deposit/withdraw jadi riwayat, notifikasi jual dari profit tertutup"` |
 
 **T6.2 (detail; lulus tes dan uji HP, dilaporkan pengguna 8 Nov 2026)**
 - `core/src/periode.rs`: `pencapaian_profit(profit_tertutup, mulai_ms, sekarang_ms, total_aset, target)` (persen = profit ÷ (total aset − profit) × 100; `None` bila total aset belum diketahui atau dasar hitung tidak positif; target 0 dianggap belum diatur; trade dihitung bila `>= mulai` dan `<= sekarang`, jadi trade yang tutup tepat pada 00:00 WIB milik periode baru), `deret_profit` (kurva akumulasi, titik di awal, tiap trade tertutup, dan sekarang; dijarangkan bila lebih dari `maks_titik`), tipe `PencapaianProfit` dan `TitikProfit`. 9 tes baru di `mod tes_profit` (core 105 menjadi 114).
@@ -449,7 +449,7 @@ Status: **Arah baru (8 Nov 2026, lihat 1r): hanya ada satu angka saldo, yaitu TO
 - Catatan: floating hanya untuk posisi yang dicatat aplikasi. Posisi yang koinnya tidak ada di saldo akun tampil "tanpa harga".
 - Yang diuji di HP (lulus): titik harga di tangga; floating per posisi cocok hitungan manual; titik merah dan tulisan "di bawah SL"; harga diperbarui tiap sekitar 10 detik dan tetap tampil saat internet mati; baris Floating di Beranda sama dengan jumlah di tab Posisi; target dan grafik tidak berubah dibanding T6.2.
 
-**Keputusan terbuka dari T6.2: rumus persen di notifikasi jual.** Notifikasi jual (baris "Harian: +x% dari target y%") masih memakai rumus lama (persen dari saldo versi aplikasi), sehingga angkanya bisa sedikit berbeda dari persen target di Beranda. Rumus baru butuh total aset dari jaringan, sedangkan notifikasi dihitung dari database lokal. Opsi A: biarkan sampai T6.4, lalu notifikasi memakai total aset terakhir yang disimpan. Opsi B: layanan latar mengambil total aset saat order jual terisi dan notifikasi memakai rumus baru. Belum dijawab pengguna; sementara berlaku Opsi A (rumus lama dibiarkan). Putuskan sebelum atau saat T6.4.
+**Keputusan dari T6.2: rumus persen di notifikasi jual. TERJAWAB 8 Nov 2026: Opsi A (lihat 1s).** Notifikasi jual (baris "Harian: +x% dari target y%") masih memakai rumus lama (persen dari saldo versi aplikasi), sehingga angkanya bisa sedikit berbeda dari persen target di Beranda. Rumus baru butuh total aset dari jaringan, sedangkan notifikasi dihitung dari database lokal. Opsi A: biarkan sampai T6.4, lalu notifikasi memakai total aset terakhir yang disimpan. Opsi B: layanan latar mengambil total aset saat order jual terisi dan notifikasi memakai rumus baru. Belum dijawab pengguna; sementara berlaku Opsi A (rumus lama dibiarkan). Putuskan sebelum atau saat T6.4.
 
 **T6.1 bagian A (tes Rust lulus: core 105 tes, ffi 16 tes, dilaporkan pengguna 8 Nov 2026; tes `harga::` belum dipastikan terpisah lewat filter nama)**
 - `core/src/harga.rs` (baru): `parse_ticker_all` (ambil `last` pasangan `*_idr`; last nol atau hilang dilewati; error bila bentuk tidak dikenal), `hitung_total_aset` (Decimal; saldo koin nol dilewati; koin tanpa harga masuk `tanpa_harga`, tidak dihitung; daftar diurutkan nilai terbesar; error bila aset IDR tidak ada), 5 tes (data dari curl nyata 8 Nov: `btc_idr` last 1368000000, `ab_idr` last 8.953, `ach_idr` last 79).
@@ -478,6 +478,43 @@ Status: **Arah baru (8 Nov 2026, lihat 1r): hanya ada satu angka saldo, yaitu TO
 2. Salin `LayarBeranda.kt`, `touch` file itu, build lewat `bash tools/bangun_android.sh --pasang <serial>`, uji 6 poin di atas. Commit hanya setelah uji HP lulus; lalu ubah status T6.1 di file ini menjadi lulus.
 3. Perhatian: `ambil_harga_idr` memakai host `indodax.com`, bukan `api.indodax.com`. Bila HP mendapat HTTP 403 dari Cloudflare, laporkan isi galatnya.
 
+### 1s. T6.4: pembersihan saldo lama (detail; kode ditulis 8 Nov 2026, BELUM dibangun dan BELUM diuji)
+
+**Keputusan:** Opsi A untuk notifikasi jual (disetujui pengguna 8 Nov 2026): persen target di notifikasi memakai TOTAL ASET TERAKHIR yang disimpan Beranda (tabel `meta`), tanpa jaringan di layanan latar. Bisa sedikit tertinggal dari harga sekarang; bila belum pernah tersimpan (Beranda belum pernah dibuka), notifikasi menampilkan rupiah profit saja ("Harian: +Rp 380").
+
+**Yang diubah (8 file; `LayananLatar.kt`, `sync.rs`, dan semua file lain TIDAK berubah)**
+- `core/src/periode.rs`: dihapus `DataSaldo`, `Pencapaian`, `RingkasanTarget`, `TitikGrafik`, `SelisihSaldo` dan 13 tesnya. Tersisa `awal_hari_wib`, `awal_minggu_wib`, `pencapaian_profit`, `deret_profit` (+ 3 tes WIB dan `tes_profit`). Tidak lagi mengimpor `arus_kas`.
+- `core/src/arus_kas.rs`: dihapus `ArusKas::efek_saldo` dan `setoran_bersih` (+ 3 tes). Parser `fiat/orders` dan `sinkron_arus_kas` tetap; arus kas hanya riwayat.
+- `core/src/lib.rs`: ekspor `setoran_bersih`, `DataSaldo`, `Pencapaian`, `RingkasanTarget`, `SelisihSaldo`, `TitikGrafik` dihapus; ditambah ekspor `deret_profit`, `pencapaian_profit`, `PencapaianProfit`, `TitikProfit`.
+- `core/src/store.rs`: tambah `total_aset_terakhir()` dan `atur_total_aset_terakhir()` (kunci meta `total_aset_terakhir` dan `total_aset_terakhir_ms`) + 1 tes. Tabel `snapshot`, `koreksi_saldo`, `arus_kas` dan fungsi `tambah_koreksi/semua_koreksi/amount_sudah_bersih` DIBIARKAN agar cadangan v1.x tetap terbaca dan `periksa_cadangan` tetap jalan.
+- `ffi/src/lib.rs`: DIHAPUS `hitung_target`, `data_grafik`, `cek_selisih_saldo`, `terapkan_koreksi_saldo`, `daftar_koreksi_saldo`, `atur_amount_sudah_bersih`, record `PencapaianUi`, `RingkasanTargetUi`, `SelisihSaldoUi`, `BarisKoreksi`, dan `BarisArusKas.efek_saldo`. DIPERTAHANKAN SEMENTARA: record `TitikGrafikUi` (hanya agar `GrafikView.setData` lama tetap terkompilasi). BARU: `progres_untuk_notif` ditulis ulang dari profit tertutup + total aset tersimpan (`progres_untuk_notif_pada` menerima waktu agar bisa dites), `ringkasan_profit` menyimpan total aset terakhir bila diberikan (> 0). Tes: 3 tes koreksi dan `tes_target_progres` dihapus, `tes_progres_notif` (4 tes) ditambah, `riwayat_dan_grafik_dari_database` menjadi `riwayat_dan_statistik_dari_database`.
+- `LayarRiwayat.kt`: bagian Koreksi saldo diganti bagian "Deposit dan withdraw" (daftar seperti trade: Masuk/Keluar, tanggal, fee; deposit "(sudah dipotong)"; tombol "Tampilkan lebih banyak").
+- `LayarSetelan.kt`: dihapus pemanggilan `hitungTarget`/`aturAmountSudahBersih`; kartu deposit/withdraw kini hanya penjelasan dan jumlah tercatat (daftar ada di Riwayat).
+- Dokumen: PRD v1.6 dan PROGRESS ini.
+
+**Perkiraan jumlah tes (periksa dan laporkan angka sebenarnya):** core 114 menjadi 99 (−13 periode, −3 arus_kas, +1 store); ffi 25 menjadi 24 (−3 koreksi, −2 progres lama, +4 progres notifikasi). Pastikan tes baru benar-benar jalan lewat filter nama (pelajaran 1q): `cargo test -p scalping-ffi progres`, `cargo test -p scalping-ffi notif_jual`, `cargo test -p scalping-core total_aset_terakhir`.
+
+**Pemeriksaan sebelum build (file yang tidak saya lihat bisa saja memakai simbol yang dihapus):**
+```
+grep -rn "DataSaldo\|setoran_bersih\|efek_saldo\|TitikGrafik\b\|SelisihSaldo\|RingkasanTarget" core/ ffi/ --include=*.rs
+grep -rn "hitungTarget\|dataGrafik\|cekSelisihSaldo\|terapkanKoreksiSaldo\|daftarKoreksiSaldo\|aturAmountSudahBersih\|efekSaldo\|RingkasanTargetUi\|PencapaianUi\|SelisihSaldoUi\|BarisKoreksi" app/aplikasi/src/main/kotlin
+```
+Hasil harus kosong (selain `TitikGrafikUi`/`TitikGrafik` di `GrafikView.kt` yang memang dipertahankan). Bila ada baris lain, jangan build: kirim file itu.
+
+**Yang diuji di HP (T6.4)**
+1. `cargo test -p scalping-core` dan `-p scalping-ffi` lulus dengan jumlah tes seperti di atas.
+2. Build lewat `bash tools/bangun_android.sh --pasang <serial>` (setelah `touch core/src/*.rs ffi/src/lib.rs`).
+3. Beranda: total aset, profit trading, floating, target, dan grafik SAMA seperti sebelum T6.4.
+4. Riwayat: tidak ada lagi kartu Koreksi saldo; bagian "Deposit dan withdraw" menampilkan deposit nyata 8 Nov ("Masuk Rp 7.670", "fee Rp 3.330 (sudah dipotong)").
+5. Setelan: kartu deposit/withdraw menampilkan jumlah tercatat; "Sinkron deposit/withdraw" berjalan; sinkron deposit tidak mengubah angka Beranda.
+6. Buka Beranda sekitar 10 detik, lalu jual koin kecil: notifikasi jual memuat "Harian: +x% dari target y%" yang sama dengan persen Beranda (selisih kecil bila harga bergerak). Target harian baru tercapai menampilkan "TERCAPAI" sekali.
+7. Impor cadangan lama (dibuat sebelum T6.4): berhasil dan Beranda, Riwayat, Posisi tampil normal.
+
+**Catatan**
+- Snapshot awal tetap dibuat `sync.rs` dan dipakai sebagai batas "sejak aplikasi dipasang"; hanya snapshot harian/mingguan yang tidak ditulis lagi (`hitung_target` yang menulisnya sudah dihapus). Baris lama di database tidak mengganggu.
+- Layar tidak lagi memanggil `atur_amount_sudah_bersih`; nilai lama di database diabaikan karena `efek_saldo` sudah tidak ada.
+- Belum dikerjakan (butuh `GrafikView.kt`): hapus `setData` (dua garis) dan record `TitikGrafikUi` di FFI.
+
 ### Belum terselesaikan atau dikenal
 | Masalah | Penyebab / dugaan | Status |
 | --- | --- | --- |
@@ -496,6 +533,7 @@ Status: **Arah baru (8 Nov 2026, lihat 1r): hanya ada satu angka saldo, yaitu TO
 | Bentuk baris withdraw dan mode fee withdraw belum teramati | Withdraw nyata belum bisa diuji (saldo di bawah batas minimum penarikan) | Parser toleran; validasi saat ada withdraw nyata |
 | Ukuran halaman `fiat/orders` tidak diketahui | Tidak ada dokumen/uji | Rentang >= 100 baris dibelah; pantau |
 | Selisih saldo sementara saat order limit terisi sebagian | Order dicatat saat DONE/CANCELLED (FR-08), tetapi saldo asli sudah berubah | Dikenal (T3.3); jangan koreksi saat ada order menggantung, sinkron dulu |
+| `GrafikView.setData` (dua garis) dan `TitikGrafikUi` di FFI sudah tidak dipakai | Dipertahankan agar `GrafikView.kt` yang belum diperiksa tetap terkompilasi (T6.4) | Bersihkan setelah `GrafikView.kt` dikirim |
 | Selisih 1 rupiah antara hasil jual dan modal beli berikutnya (data 3 Nov) | Diduga pembulatan | Belum dikonfirmasi, tidak berdampak |
 | Apakah sisa 3 IDR (anggaran order tak terpakai) kembali ke saldo | Belum dicek di saldo | Belum dikonfirmasi; tidak memengaruhi rumus karena saldo diambil dari API |
 
@@ -518,7 +556,8 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 | T6.1 | Total aset nilai pasar di Beranda (A: Rust, B: Kotlin) | SELESAI, lulus tes dan uji HP 8 Nov 2026 (lihat 1r) |
 | T6.2 | Beranda tunggal (Total aset + Buying power), target dan grafik dari profit trade tertutup | SELESAI, lulus tes (core 114, ffi 19) dan uji HP 8 Nov 2026 (lihat 1r) |
 | T6.3 | Floating P/L di Beranda dan layar Posisi | SELESAI, lulus tes (ffi 25) dan uji HP 8 Nov 2026 (lihat 1r) |
-| T6.4 | Pembersihan snapshot/modal aktif/setoran/koreksi saldo; deposit-withdraw jadi riwayat saja; PRD v1.6 | BERIKUTNYA (lihat 1r). Butuh `LayarRiwayat.kt`, `LayarSetelan.kt`, `store.rs`, `arus_kas.rs`, `periode.rs`; cadangan lama harus tetap bisa diimpor |
+| T6.4 | Pembersihan snapshot/modal aktif/setoran/koreksi saldo; deposit-withdraw jadi riwayat saja; PRD v1.6 | KODE SELESAI, menunggu build dan uji HP (lihat 1s). PRD v1.6 selesai |
+| Opsional | Bersihkan `GrafikView.setData` dan `TitikGrafikUi` | Butuh `GrafikView.kt` |
 | T5.2 | Perbaiki logika deposit | SELESAI, lulus uji HP 8 Nov 2026 (lihat 1p dan 1q) |
 | Opsional | Uji withdraw nyata saat saldo cukup (bentuk baris dan mode fee) | Menunggu saldo di atas batas minimum penarikan |
 | Opsional | Verifikasi mode fee deposit saat ada deposit nyata pertama | Menunggu deposit nyata |
@@ -526,7 +565,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 ### Keputusan yang masih terbuka
 | Hal | Pilihan | Status |
 | --- | --- | --- |
-| Rumus persen di notifikasi jual (setelah T6.2) | A: biarkan rumus lama sampai T6.4, atau B: ambil total aset saat jual | Terbuka; sementara Opsi A berlaku (lihat 1r) |
+| Rumus persen di notifikasi jual (setelah T6.2) | A: total aset terakhir yang disimpan, atau B: ambil total aset saat jual | Terjawab: Opsi A (8 Nov 2026, dikerjakan di T6.4, lihat 1s) |
 | Fee jual pada floating P/L (T6.3) | Sebelum fee jual (berlabel) atau dikurangi perkiraan tarif | Terjawab: sebelum fee jual, dipakai di T6.3, lulus uji HP (8 Nov 2026) |
 | Setelan TP/SL baru | Hanya posisi baru atau juga yang terbuka | Terjawab: hanya posisi baru (dikonfirmasi 8 Nov 2026) |
 | Koin yang dipegang sebelum app dipasang | Diabaikan atau diisi modalnya | Terjawab: diabaikan (7 Nov 2026) |
@@ -534,6 +573,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 | Pantauan menyala otomatis setelah HP reboot | Perlu atau tidak | Terjawab: dikerjakan di T5.1, lulus uji HP (8 Nov 2026) |
 
 ### Keputusan yang sudah terjawab
+- Notifikasi jual memakai total aset terakhir yang disimpan Beranda (Opsi A, 8 Nov 2026); bila belum ada, hanya rupiah profit. Saldo versi aplikasi, snapshot periode, modal aktif, setoran bersih, dan koreksi saldo dihapus di T6.4 (tabel lama dibiarkan).
 - Hanya satu angka saldo: Total aset nilai pasar, IDR berlabel "Buying power" (8 Nov 2026, lihat 1r). Menggantikan keputusan awal "saldo/snapshot/target/grafik dari total aset".
 - T6.1 lulus tes Rust dan uji HP (8 Nov 2026).
 - T6.2 lulus tes Rust (core 114, ffi 19) dan uji HP sesuai kriteria (8 Nov 2026).
@@ -570,6 +610,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - Kriteria uji: dengan data deposit nyata di atas, tanpa mencentang apa pun, saldo aplikasi = Rp 77.322, "Cek selisih saldo" = Rp 0, modal aktif naik 7.670, hasil dan pencapaian tidak berubah, sinkron ulang tidak menggandakan.
 
 ### Pekerjaan kecil
+- PRD v1.6: SELESAI (8 Nov 2026). Perubahan: Fase 6 (Total aset, Buying power, profit tertutup, floating; FR-19 sampai FR-22, FR-24, FR-28 baru; FR-27 dihapus), rumus bagian 8, definisi, model data, kasus khusus, risiko. Simpan sebagai `docs/PRD_Aplikasi_Catatan_Trading_Crypto.md` (timpa v1.5).
 - PRD v1.5: SELESAI (8 Nov 2026). Perubahan: hasil uji deposit nyata (bagian 9), pertanyaan terbuka no. 10 terjawab untuk deposit, status withdraw. Simpan sebagai `docs/PRD_Aplikasi_Catatan_Trading_Crypto.md` (timpa v1.4).
 - PRD v1.4: SELESAI (8 Nov 2026). Perubahan: FR-05 dikonfirmasi, pertanyaan terbuka no. 5 dan 11 terjawab, Fase 5 selesai, dua baris risiko (fee jual, tick) diberi keputusan. Simpan sebagai `docs/PRD_Aplikasi_Catatan_Trading_Crypto.md` (timpa v1.3).
 - PRD v1.3: SELESAI (8 Nov 2026). Berisi FR-14 tanpa tombol Jual, FR-16 dan FR-18 (progress dan penanda tercapai di notifikasi jual), FR-22/23/25 sudah diimplementasikan, FR-26 (cadangan), FR-27 (koreksi saldo), saldo versi aplikasi dihitung dari catatan, bagian 9 (token WebSocket dengan key v2, SHA512, status FILL, WebSocket sebagai pemicu), pertanyaan terbuka no. 3, 4, 6, 8, 9 terjawab. Simpan sebagai `docs/PRD_Aplikasi_Catatan_Trading_Crypto.md` (timpa v1.2).
@@ -593,8 +634,8 @@ Kebutuhan: Python 3.8+, git, Rust (rustup), dan toolchain Android (lihat bagian 
 
 Tes inti Rust:
 ```
-cargo test -p scalping-core        # 51 tes per T1.4a; T4.1 menambah 6 di statistik.rs; per T6.2 total 114 (periksa jumlah terbaru)
-cargo test -p scalping-ffi         # T1.5: 6 tes; T2.1: +2 (8); T2.3/T2.4: +2 (10); T3: +4 (14); U1: +1 (15); U5: +1 (16); U5 juga menambah 4 tes di store.rs; T6.2: +3 (19); T6.3: +6 (25) (periksa jumlah terbaru)
+cargo test -p scalping-core        # 51 tes per T1.4a; T4.1 menambah 6 di statistik.rs; per T6.2 total 114; T6.4 perkiraan 99 (periksa jumlah terbaru)
+cargo test -p scalping-ffi         # T1.5: 6 tes; T2.1: +2 (8); T2.3/T2.4: +2 (10); T3: +4 (14); U1: +1 (15); U5: +1 (16); U5 juga menambah 4 tes di store.rs; T6.2: +3 (19); T6.3: +6 (25); T6.4 perkiraan 24 (periksa jumlah terbaru)
 python tools/fase2_fiat.py             # T2.2: bentuk respons deposit (--jenis 1 untuk withdraw)
 cargo run -p scalping-core --example pantau   # T1.4b: pantau realtime di komputer, Enter untuk berhenti
 cargo run -p scalping-core --example cek_data -- data/raw_icntidr_<waktu>.json
@@ -658,7 +699,7 @@ catatan-scalping/
 │   │   ├── store.rs                     (SQLite: trade, snapshot, meta, setelan_tp_sl, arus_kas, koreksi_saldo; U5: ekspor_ke, periksa_cadangan, pulihkan)
 │   │   ├── sync.rs                      (rekonsiliasi REST per koin, snapshot saldo awal)
 │   │   ├── arus_kas.rs                  (T2.2: parser fiat/orders, arus kas, sinkron_arus_kas)
-│   │   ├── periode.rs                   (T2.3: periode WIB, saldo versi aplikasi, pencapaian dan progress; T6.2: pencapaian_profit, deret_profit)
+│   │   ├── periode.rs                   (periode WIB; T6.2: pencapaian_profit, deret_profit; T6.4: saldo versi aplikasi/DataSaldo dihapus)
 │   │   ├── posisi.rs                    (hitung ulang posisi, trade tertutup dengan fee, penyesuaian)
 │   │   ├── statistik.rs                 (T4.1: win rate, rata-rata, total fee, persen profit termakan fee)
 │   │   ├── ws.rs                        (protokol WebSocket privat: token, parser event, pemicu sinkron; tanpa jaringan)
@@ -687,7 +728,7 @@ catatan-scalping/
 │           │   ├── Layar.kt             (U1: dasar tiap layar)
 │           │   ├── LayarBeranda.kt      (T6.2: kartu Total aset tunggal + Buying power, Profit trading, grafik akumulasi profit, target dari profit tertutup, baris Floating (T6.3), status koneksi)
 │           │   ├── LayarPosisi.kt       (U3: posisi terbuka, tangga SL/modal/TP, tanpa tombol Jual; T6.3: harga sekarang, penanda di tangga, floating per posisi)
-│           │   ├── LayarRiwayat.kt      (U4: ringkasan, daftar trade, statistik, koreksi saldo)
+│           │   ├── LayarRiwayat.kt      (U4: ringkasan, daftar trade, statistik; T6.4: riwayat deposit/withdraw, koreksi saldo dihapus)
 │           │   ├── LayarSetelan.kt      (U1: TP/SL, target, kunci, pantauan, sinkron, arus kas, log; U5: kartu Cadangan data)
 │           │   ├── Cadangan.kt          (U5: ekspor/impor lewat pemilih berkas sistem)
 │           │   ├── PenerimaBoot.kt      (T5.1: menyalakan pantauan lagi setelah HP restart)
@@ -704,7 +745,7 @@ catatan-scalping/
 │           ├── java/uniffi/             (OTOMATIS dari bindgen, tidak di-commit)
 │           └── jniLibs/                 (OTOMATIS dari cargo ndk, tidak di-commit)
 ├── docs/
-│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.5)
+│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.6)
 │   └── prototype/
 │       └── Catatan_trading__prototype_UI.html
 └── tools/
@@ -723,6 +764,8 @@ Semua task pada rencana awal selesai, termasuk T5.2; PRD v1.5 selesai. Tersisa h
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T6.4: `T6.4: pembersihan saldo lama, deposit/withdraw jadi riwayat, notifikasi jual dari profit tertutup` (hash: ...) (commit setelah build dan uji HP lulus)
+- Dokumen: `Dokumen: PRD v1.6 dan PROGRESS (Fase 6, T6.4)` (hash: ...)
 - T6.3: `T6.3: floating P/L di Beranda dan layar Posisi` (hash: ...)
 - T6.2: `T6.2: Beranda tunggal, target dan grafik dari profit trade tertutup` (hash: ...)
 - T6.1: `T6.1: total aset nilai pasar di Beranda (harga ticker_all, total aset)` (hash: ...)

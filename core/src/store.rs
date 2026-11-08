@@ -58,6 +58,8 @@ const META_TARGET_HARIAN: &str = "target_harian_persen";
 const META_TARGET_MINGGUAN: &str = "target_mingguan_persen";
 const META_AMOUNT_BERSIH: &str = "arus_kas_amount_sudah_bersih";
 const META_ARUS_KAS_TERAKHIR: &str = "arus_kas_sinkron_terakhir_ms";
+const META_TOTAL_ASET: &str = "total_aset_terakhir";
+const META_TOTAL_ASET_MS: &str = "total_aset_terakhir_ms";
 
 fn gagal(e: impl std::fmt::Display) -> Error {
     Error::Penyimpanan(e.to_string())
@@ -333,6 +335,7 @@ impl Penyimpanan {
         baris.collect::<Result<Vec<_>, _>>().map_err(gagal)
     }
 
+    /// (Sejak T6.4 tidak dipakai layar atau perhitungan; dibiarkan agar cadangan lama tetap terbaca.)
     /// Apakah `amount` WITHDRAW sudah bersih (fee tidak ditambahkan lagi). Bawaan: false.
     /// Deposit tidak terpengaruh: `amount` deposit selalu sudah bersih (terbukti 8 Nov 2026).
     pub fn amount_sudah_bersih(&self) -> Hasil<bool> {
@@ -341,6 +344,22 @@ impl Penyimpanan {
 
     pub fn atur_amount_sudah_bersih(&self, ya: bool) -> Hasil<()> {
         self.atur_meta(META_AMOUNT_BERSIH, if ya { "1" } else { "0" })
+    }
+
+    /// T6.4: total aset terakhir yang berhasil dimuat Beranda (rupiah, waktu ms). Dipakai notifikasi
+    /// jual sebagai pembagi persen target tanpa jaringan (Opsi A). None bila belum pernah disimpan.
+    pub fn total_aset_terakhir(&self) -> Hasil<Option<(Decimal, i64)>> {
+        let (Some(nilai), Some(waktu)) = (self.meta(META_TOTAL_ASET)?, self.meta(META_TOTAL_ASET_MS)?) else {
+            return Ok(None);
+        };
+        let total = Decimal::from_str(&nilai).map_err(gagal)?;
+        let ms = waktu.parse::<i64>().map_err(gagal)?;
+        Ok(Some((total, ms)))
+    }
+
+    pub fn atur_total_aset_terakhir(&self, total: Decimal, waktu_ms: i64) -> Hasil<()> {
+        self.atur_meta(META_TOTAL_ASET, &total.to_string())?;
+        self.atur_meta(META_TOTAL_ASET_MS, &waktu_ms.to_string())
     }
 
     /// Waktu (ms) sinkron arus kas terakhir yang berhasil. None bila belum pernah.
@@ -611,6 +630,16 @@ mod tests {
         assert_eq!(s.arus_kas_terakhir_ms().unwrap(), None);
         s.atur_arus_kas_terakhir_ms(1793984400000).unwrap();
         assert_eq!(s.arus_kas_terakhir_ms().unwrap(), Some(1793984400000));
+    }
+
+    #[test]
+    fn total_aset_terakhir_disimpan_dan_diganti() {
+        let s = Penyimpanan::dalam_memori().unwrap();
+        assert_eq!(s.total_aset_terakhir().unwrap(), None);
+        s.atur_total_aset_terakhir(d("1482350"), 1000).unwrap();
+        assert_eq!(s.total_aset_terakhir().unwrap(), Some((d("1482350"), 1000)));
+        s.atur_total_aset_terakhir(d("1500000.5"), 2000).unwrap();
+        assert_eq!(s.total_aset_terakhir().unwrap(), Some((d("1500000.5"), 2000)));
     }
 
     #[test]

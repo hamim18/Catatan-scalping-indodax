@@ -17,15 +17,13 @@ pub mod ws;
 pub mod ws_klien;
 
 pub use account::{parse_akun, Akun, Saldo};
-pub use arus_kas::{
-    parse_fiat_orders, setoran_bersih, sinkron_arus_kas, ArusKas, HasilArusKas, JenisArusKas,
-};
+pub use arus_kas::{parse_fiat_orders, sinkron_arus_kas, ArusKas, HasilArusKas, JenisArusKas};
 pub use calc::{gabung_per_order, OrderRingkas, Posisi, Sisi};
 pub use client::IndodaxClient;
 pub use error::{Error, Hasil};
 pub use harga::{hitung_total_aset, parse_ticker_all, AsetNilai, HargaIdr, TotalAset};
 pub use model::{parse_my_trades, Trade};
-pub use periode::{awal_hari_wib, awal_minggu_wib, DataSaldo, Pencapaian, RingkasanTarget, SelisihSaldo, TitikGrafik};
+pub use periode::{awal_hari_wib, awal_minggu_wib, deret_profit, pencapaian_profit, PencapaianProfit, TitikProfit};
 pub use posisi::{hitung, HasilHitung, Penyesuaian, PosisiTerbuka, RiwayatSetelan, TradeTertutup};
 pub use statistik::{hitung_statistik, Statistik};
 pub use store::{KoreksiSaldo, Penyimpanan};
