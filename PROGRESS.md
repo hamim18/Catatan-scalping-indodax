@@ -1,7 +1,7 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 8 November 2026 (PRD v1.3 selesai; T5.1 pantauan otomatis setelah reboot: kode selesai, uji HP menunggu)
-Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2 (T2.1 sampai T2.5), Fase 3 (T3.1 sampai T3.3), T4.1 (statistik), dan Fase UI (U1 sampai U5)** (build, tes Rust, dan uji HP dilaporkan pengguna 7 sampai 8 Nov 2026). PRD v1.3 selesai (8 Nov). **T5.1 (pantauan menyala otomatis setelah HP restart): kode selesai, build dan uji HP menunggu.** Langkah berikutnya: uji T5.1; verifikasi mode fee deposit saat ada deposit nyata.
+Terakhir diperbarui: 8 November 2026 (T5.2 perbaiki logika deposit: kode selesai, build, tes, dan uji HP menunggu)
+Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2, Fase 3, T4.1 (statistik), Fase UI (U1 sampai U5), dan T5.1 (pantauan menyala otomatis setelah HP restart)** (build, tes Rust, dan uji HP dilaporkan pengguna 7 sampai 8 Nov 2026). Uji deposit nyata (8 Nov): mode fee bawaan SALAH, `amount` deposit sudah bersih (lihat 1o). Withdraw belum bisa diuji (saldo di bawah batas minimum penarikan Indodax). **T5.2 (perbaiki logika deposit): kode selesai, build, tes, dan uji HP menunggu (lihat 1p).**
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`.
@@ -43,7 +43,8 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 | U3 | Posisi: kartu per posisi dengan tangga SL/modal efektif/TP dan estimasi hasil bersih; TANPA tombol Jual | Selesai (build berhasil, uji HP lulus 8 Nov) |
 | U4 | Riwayat: ringkasan hari ini, daftar trade tertutup (tombol "Tampilkan lebih banyak"), statistik tiga rentang, koreksi saldo | Selesai (build berhasil, uji HP lulus 8 Nov) |
 | U5 | Ekspor/impor data lokal: `Penyimpanan::ekspor_ke/periksa_cadangan/pulihkan` di `store.rs` (VACUUM INTO, cek integritas dan tabel wajib, verifikasi angka desimal, salinan `catatan.db.sebelum-impor`, ganti lewat rename), FFI `ekspor_cadangan/periksa_cadangan/pulihkan_cadangan` (`RingkasanCadanganUi`), `Cadangan.kt` (SAF), kartu "Cadangan data" di Setelan, `MainActivity.onActivityResult`. Kunci API tidak ikut. 4 tes baru di core, 1 di ffi (16 tes ffi) | Selesai (build, tes, uji HP lulus 8 Nov) |
-| T5.1 | Pantauan menyala otomatis setelah HP restart: `PenerimaBoot.kt` (BOOT_COMPLETED), izin `RECEIVE_BOOT_COMPLETED` dan `<receiver>` di `AndroidManifest.xml`. Hanya bila preferensi `aktif` = true (pantauan terakhir menyala), kunci ada, dan pernah sinkron; bila tidak, penanda dimatikan dan alasan dicatat di log | Kode selesai; build dan uji HP menunggu |
+| T5.2 | Logika deposit: `ArusKas::efek_saldo` untuk deposit selalu `+amount` (fee hanya informasi); kotak centang "nominal sudah bersih" DIHAPUS dari layar (withdraw tetap `-(amount + fee)`); teks baris deposit di Setelan diperjelas; 2 tes baru dan 2 tes diubah. Lihat 1p | Kode selesai; build, tes, dan uji HP menunggu |
+| T5.1 | Pantauan menyala otomatis setelah HP restart: `PenerimaBoot.kt` (BOOT_COMPLETED), izin `RECEIVE_BOOT_COMPLETED` dan `<receiver>` di `AndroidManifest.xml`. Hanya bila preferensi `aktif` = true (pantauan terakhir menyala), kunci ada, dan pernah sinkron; bila tidak, penanda dimatikan dan alasan dicatat di log | Selesai (build, tes, uji HP lulus 8 Nov) |
 
 ### 1b. Kesimpulan Fase 0 (masih dipakai)
 - **Fee dalam IDR.** Koin yang diterima tidak dipotong fee. Fee selain IDR sengaja ditolak (error) karena belum pernah ditemui.
@@ -63,7 +64,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 - **Simbol ditolak Indodax** (HTTP 400, kode 1109, contoh `pxgidr`) dilewati dan ditampilkan di layar. Penyebab pasti belum diketahui (dugaan: aset itu tidak punya pasangan IDR).
 - **Snapshot saldo awal** = saldo IDR (tersedia + terkunci) saat sinkron pertama. Koin yang sudah dipegang saat itu tidak dihitung.
 - **Database:** `getDatabasePath("catatan.db")` di penyimpanan privat aplikasi. Berisi trade, snapshot, setelan, meta. Tanpa key.
-- **Pembulatan TP/SL** ke rupiah utuh hanya untuk tampilan (`bulatkan_idr`). Aturan tick harga per koin belum diperiksa (penting untuk koin murah seperti UAI).
+- **Pembulatan TP/SL** ke rupiah utuh hanya untuk tampilan (`bulatkan_idr`). Aturan tick harga per koin TIDAK akan diperiksa: diputuskan 8 Nov 2026 tidak perlu, karena TP/SL hanya acuan dan harga akhir diinput manual di Indodax.
 - Pemisah ribuan sudah diterapkan di UI (U1): `Format.kt` untuk angka mentah dari Rust, dan teks berformat langsung dari Rust untuk layar Posisi dan notifikasi.
 
 ### 1d. T1.3 (detail)
@@ -84,7 +85,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 - Mode hitung: default hanya trade sejak snapshot saldo awal (agar saldo versi aplikasi konsisten).
 - Tes: 12 tes baru di `posisi.rs` (termasuk angka struk ICNT: 4.006,07 / TP 4.046 / SL 3.966 / +380) dan 1 di `store.rs`.
 
-**Keputusan yang dipakai (usulan PRD, belum dikonfirmasi eksplisit oleh pengguna, mudah diubah)**
+**Keputusan yang dipakai (setelan TP/SL baru DIKONFIRMASI 8 Nov 2026; penyesuaian tanpa modal dikonfirmasi 7 Nov 2026)**
 - Setelan TP/SL baru hanya berlaku untuk posisi yang dibuka sesudahnya.
 - Koin yang dijual tanpa modal tercatat menjadi penyesuaian (profit 0), tidak diisi manual.
 
@@ -160,7 +161,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 - Notifikasi jual mengambil trade tertutup terbaru koin itu, hanya bila waktu tutupnya tidak lebih lama dari order jual terbaru (cegah menampilkan hasil jual lama saat jual tanpa modal).
 - Pembulatan tampilan: harga < 100 tampil 2 desimal, selebihnya rupiah utuh (aturan tick per koin masih belum diperiksa).
 - Order beli dikenali sebagai order beli terbaru koin itu; dua beli koin sama yang selesai nyaris bersamaan menampilkan order yang sama (perbaikan butuh ID order di `OrderRingkas` yang cocok dengan ID event WebSocket).
-- Fee jual perkiraan 0,31% dipakai tetap; belum ada setelan pengguna (jual market bisa lebih besar).
+- Fee jual perkiraan 0,31% dipakai tetap; diputuskan 8 Nov 2026 TIDAK perlu setelan (estimasi hanya perkiraan, hasil nyata dari `commission` API).
 - Tombol "Jual di Indodax": DIHAPUS dari rancangan (keputusan 7 Nov 2026, lihat 1l).
 
 ### 1h. T2.1 (detail)
@@ -190,7 +191,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 - Notifikasi jual: baris "Harian: +x% dari target y% (z% tercapai)" dan "Mingguan: ...". "TERCAPAI" muncul bila sebelum penjualan itu belum tercapai dan sesudahnya sudah (dihitung dengan membuang trade itu). Bila progress gagal dihitung (mis. snapshot belum ada), notifikasi tetap tampil tanpa baris itu.
 
 **Keputusan yang dipakai (usulan, BELUM dikonfirmasi pengguna)**
-- Belum diketahui apakah `amount` deposit sudah bersih atau belum dikurangi `totalFee`. Dipakai dua mode: bawaan `amount - fee` untuk deposit dan `-(amount + fee)` untuk withdraw; kotak centang "Nominal sudah bersih" (sekarang di layar Setelan) mengganti ke `+/- amount`. Cara memastikan: bandingkan satu deposit nyata (nominal yang ditransfer, saldo Indodax sebelum dan sesudah) dengan baris "amount ... fee ... → saldo ..." di Setelan.
+- TERJAWAB 8 Nov 2026 untuk deposit: `amount` sudah bersih, fee tidak dikurangkan lagi (lihat 1o). Mode bawaan lama (`amount - fee`) salah dan diperbaiki di T5.2. Untuk withdraw masih dua mode (bawaan `-(amount + fee)`, kotak "sudah bersih" `-amount`), belum terverifikasi.
 - Notifikasi "target tercapai" (FR-18) digabung ke notifikasi jual, bukan notifikasi terpisah (tidak mengubah `LayananLatar.kt`).
 
 **Belum ada / catatan**
@@ -216,7 +217,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 **Keputusan pengguna (7 Nov 2026)**
 - Koin lama yang dipegang sebelum aplikasi dipasang: dibiarkan seperti sekarang (saldo aplikasi = IDR saja). Pengguna memastikan tidak ada koin menggantung dan saldo hanya dari kas sebelum peluncuran. T2.6 (isi modal koin lama) TIDAK dikerjakan. Pertanyaan terbuka no. 6 di PRD: dijawab "diabaikan".
 
-**Belum diverifikasi sejak Fase 2**: mode fee deposit (kotak centang "Nominal sudah bersih"), karena belum ada deposit nyata sejak aplikasi dipasang (arus kas = 0). Verifikasi saat ada deposit pertama.
+**Diverifikasi 8 Nov 2026 (deposit):** `amount` deposit sudah bersih (lihat 1o). Withdraw masih belum diverifikasi.
 
 ### 1k. T4.1 (detail)
 
@@ -302,7 +303,7 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 
 ### 1n. T5.1: pantauan menyala otomatis setelah HP restart (detail)
 
-**Status: Kode selesai (8 Nov 2026); build dan uji HP menunggu.**
+**Status: Selesai.** Kode ditulis 8 Nov 2026; build, tes, dan uji HP lulus (dilaporkan pengguna, 8 Nov 2026).
 
 **Yang dibangun**
 - `PenerimaBoot.kt` (baru): menerima `BOOT_COMPLETED`. Bila `PREF_AKTIF` = true, kunci API ada, dan `PREF_PERNAH_SINKRON` = true, memanggil `LayananLatar.mulai`. Bila syarat tidak terpenuhi atau mulai gagal, `PREF_AKTIF` dimatikan (supaya layar tidak menampilkan "Berjalan" palsu) dan alasannya dicatat di Log pantauan. Dilewati bila pemantau sudah berjalan.
@@ -314,15 +315,53 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 - Pasang ulang/update APK lewat adb mematikan pantauan dan harus dinyalakan manual (perilaku lama; `MY_PACKAGE_REPLACED` sengaja tidak ditangani untuk menghindari mulai ganda dengan START_STICKY).
 - Bila di HP tertentu tidak menyala: izinkan Autostart untuk aplikasi (sebagian merk membatasinya), pastikan optimasi baterai dimatikan; cadangan terakhir ubah `exported` ke `true`.
 
-**Yang perlu diuji di HP**
+**Yang diuji di HP (lulus, 8 Nov 2026)**
 1. Mulai pantauan, restart HP, buka kunci layar, tunggu sekitar 1 menit: notifikasi tetap pantauan muncul tanpa membuka aplikasi.
 2. Buka Setelan: pantauan "Berjalan"; log memuat "dinyalakan otomatis setelah HP restart" dan "Tersambung".
 3. Transaksi kecil di Indodax: notifikasi beli/jual muncul.
 4. Hentikan pantauan, restart HP: tetap mati.
 
----
+### 1o. Uji deposit nyata (8 Nov 2026, detail)
 
-## 2. Masalah
+**Status: Terverifikasi untuk deposit; withdraw belum teruji.** Dilaporkan pengguna dengan screenshot HP, 8 Nov 2026.
+
+**Data nyata**
+- Pengguna mentransfer Rp 11.000. API `fiat/orders` memberi `amount` Rp 7.670 dan `totalFee` Rp 3.330 (7.670 + 3.330 = 11.000).
+- Saldo IDR asli Indodax: Rp 69.652 sebelum, Rp 77.322 sesudah (naik **Rp 7.670** = `amount`).
+- Sebelum deposit: "Cek selisih saldo" = Rp 0 (cocok). Sesudah deposit, dengan mode bawaan: aplikasi mencatat +Rp 4.340 (amount - fee), jadi selisih +Rp 3.330 (saldo aplikasi 73.992 vs asli 77.322).
+
+**Kesimpulan**
+- `amount` deposit SUDAH bersih: fee dipotong Indodax sebelum dana masuk akun. `totalFee` hanya informasi, JANGAN dikurangkan lagi dari saldo.
+- Mode bawaan (`amount - fee` untuk deposit) salah. Memperbaiki lewat kotak "Nominal sudah bersih" menyelesaikan satu kasus, tetapi logika bawaannya perlu diubah (T5.2).
+- Jangan memakai "Catat koreksi" untuk menutup selisih ini (akan menyembunyikan penyebab).
+
+**Withdraw**
+- Belum bisa diuji: saldo pengguna di bawah batas minimum penarikan. Bentuk baris withdraw dan mode fee withdraw tetap BELUM terverifikasi. Uji saat saldo cukup (bandingkan A - B dengan `amount` dan `amount + fee`; bila beda dari deposit, butuh pengaturan terpisah untuk withdraw).
+
+**Catatan lain dari uji**
+- Log "gagal tersambung (os error 103)" pukul 07:47 hanya gangguan jaringan sesaat; sambung ulang langsung berhasil (perilaku normal).
+
+### 1p. T5.2: perbaiki logika deposit (detail)
+
+**Status: Kode selesai (8 Nov 2026); build, tes, dan uji HP menunggu.**
+
+**Yang diubah (hanya 4 file yang sudah ada, tanpa FFI baru)**
+- `core/src/arus_kas.rs`: `efek_saldo` untuk deposit selalu `jumlah` (amount), apa pun modenya; withdraw tetap dua mode (bawaan `-(amount + fee)`, mode bersih `-amount`). Tes `efek_saldo_dua_mode` diganti nama dan isinya; tes baru `deposit_nyata_8_nov_amount_7670_fee_3330_menambah_7670`.
+- `core/src/periode.rs`: tes `fee_deposit_mengubah_saldo_sesuai_mode` diganti menjadi `fee_deposit_tidak_mengubah_saldo_fee_withdraw_sesuai_mode`; tes baru `deposit_nyata_8_nov_saldo_cocok_dengan_saldo_asli` (69.652 + 7.670 = 77.322).
+- `core/src/store.rs`: hanya komentar `amount_sudah_bersih` (berlaku untuk withdraw saja).
+- `LayarSetelan.kt`: kotak centang "nominal sudah bersih" dan fungsi `ubahModeFee` DIHAPUS (usulan pengguna 8 Nov 2026, karena tidak berpengaruh untuk deposit). Teks kartu diperjelas, baris deposit tampil "amount X (fee Y sudah dipotong) → saldo +X". Saat layar dimuat, bila database lama masih menyimpan mode "bersih", dikembalikan ke bawaan (false) lewat `aturAmountSudahBersih`, agar withdraw selalu `-(amount + fee)`. Fungsi FFI dan `store.rs` untuk mode itu tetap ada (tidak dipakai layar).
+- Tidak berubah: `ffi/src/lib.rs` (file ini tidak diunggah; perubahan ini mengandalkan FFI memanggil `efek_saldo` untuk `efekSaldo`; periksa dengan `grep -n "efek_saldo" ffi/src/lib.rs`), skema database, `setoran_bersih`, `sinkron_arus_kas`.
+- Karena saldo dihitung ulang dari catatan, deposit 8 Nov otomatis benar tanpa migrasi data.
+
+**Temuan uji awal (8 Nov 2026):** dengan build yang masih memakai logika lama, baris deposit menampilkan +7.670 bila kotak dicentang dan +4.340 bila tidak. Itu membuktikan kotak memang memengaruhi deposit di logika lama; setelah T5.2 baris harus +7.670 tanpa kotak. Pengguna mengusulkan kotak dihapus. Catatan: data aplikasi sempat dihapus pengguna (database baru), sehingga deposit 8 Nov (07:51) berada sebelum snapshot awal baru dan tidak dihitung ke saldo; ada satu posisi koin lama yang belum terjual (penjualannya akan tercatat sebagai penyesuaian).
+
+**Yang perlu diuji**
+1. `cargo test -p scalping-core` dan `cargo test -p scalping-ffi` lulus (periksa jumlah tes terbaru).
+2. Build lewat `bash tools/bangun_android.sh --pasang <serial>`.
+3. Di HP (kotak centang sudah tidak ada): Riwayat, "Cek selisih saldo": IDR menurut aplikasi = saldo asli, selisih Rp 0 (dengan deposit 8 Nov: 77.322).
+4. Setelan: baris deposit tampil "amount Rp 7.670 (fee Rp 3.330 sudah dipotong) → saldo +Rp 7.670".
+5. Beranda: saldo dan modal aktif ikut naik 7.670; hasil dan pencapaian tidak berubah. Sinkron ulang tidak menggandakan.
+
 
 ### Belum terselesaikan atau dikenal
 | Masalah | Penyebab / dugaan | Status |
@@ -330,15 +369,15 @@ Status: **Semua fase rencana selesai dan lolos uji: Fase 0, Fase 1 (MVP), Fase 2
 | Impor cadangan saat sinkron manual atau otomatis berjalan tidak dicegah | Impor hanya mengecek pantauan mati | Dikenal (U5); jangan impor saat sinkron berjalan |
 | `tradeId` event WebSocket vs REST belum dibandingkan | Belum ada data pembanding | Tidak menghalangi (anti-dobel dari REST) |
 | Kemungkinan "database is locked" saat dua koneksi SQLite aktif bersamaan | `busy_timeout` 5 detik ada; layar kini membaca lewat antrean satu thread, tulis oleh pantau tetap bisa bersamaan | Pantau saat uji lanjutan |
-| Pantauan tidak menyala sendiri setelah HP reboot | Belum ada penerima BOOT_COMPLETED | Dikerjakan di T5.1 (kode selesai); menunggu uji HP |
+| Pantauan tidak menyala sendiri setelah HP reboot | Belum ada penerima BOOT_COMPLETED | Selesai (T5.1, lulus uji HP 8 Nov 2026) |
 | Clearing fee baru teramati bernilai 0 | Hanya 2 sampel kecil (UAI) | Pantau; bila `commission` REST berbeda dari fee+tax+clearing event, andalkan REST |
 | Koin yang sudah tidak dipegang (contoh ICNT) tidak terpindai | Daftar koin dari saldo + riwayat tersimpan | Dikenal; solusi sementara `koin_tambahan`, belum ada isiannya di UI |
 | `pxgidr` ditolak Indodax (kode 1109) | Dugaan: tidak ada pasangan IDR | Dilewati dengan benar; penyebab belum dipastikan |
-| TP/SL dibulatkan ke rupiah utuh | Aturan tick harga per koin belum diperiksa | Belum diperiksa |
+| TP/SL dibulatkan ke rupiah utuh | Aturan tick harga per koin belum diperiksa | Diputuskan tidak perlu (8 Nov 2026): TP/SL hanya acuan, harga akhir diinput manual di Indodax |
 | Dua order beli koin sama yang selesai nyaris bersamaan menampilkan notifikasi order yang sama | Order dikenali dari order beli terbaru koin itu; `OrderRingkas` belum punya ID order | Dikenal (T1.5); perbaikan bila ID order cocok dengan ID event WebSocket |
-| Fee jual perkiraan 0,31% tetap untuk estimasi bersih (notifikasi dan layar Posisi); jual market sekitar 0,61% (struk UAI 7 Nov: 123 dari 20.112) | Belum ada setelan | Dikenal; estimasi bisa terlalu optimistis untuk jual market; statistik memakai fee nyata |
-| `amount` deposit: bersih atau belum dikurangi `totalFee`? | Belum diverifikasi dengan saldo nyata | Dua mode tersedia (1i); konfirmasi dengan satu deposit nyata |
-| Bentuk baris withdraw belum teramati | Respons withdraw akun masih kosong | Parser toleran; validasi saat ada withdraw nyata |
+| Fee jual perkiraan 0,31% tetap untuk estimasi bersih (notifikasi dan layar Posisi); jual market sekitar 0,61% (struk UAI 7 Nov: 123 dari 20.112) | Belum ada setelan | Diputuskan tidak perlu setelan (8 Nov 2026): estimasi hanya perkiraan; hasil nyata memakai `commission` API (riwayat, saldo, statistik) |
+| `amount` deposit: bersih atau belum dikurangi `totalFee`? | Diuji 8 Nov 2026: saldo asli naik sebesar `amount` | TERJAWAB: sudah bersih. Logika bawaan diperbaiki di T5.2 |
+| Bentuk baris withdraw dan mode fee withdraw belum teramati | Withdraw nyata belum bisa diuji (saldo di bawah batas minimum penarikan) | Parser toleran; validasi saat ada withdraw nyata |
 | Ukuran halaman `fiat/orders` tidak diketahui | Tidak ada dokumen/uji | Rentang >= 100 baris dibelah; pantau |
 | Selisih saldo sementara saat order limit terisi sebagian | Order dicatat saat DONE/CANCELLED (FR-08), tetapi saldo asli sudah berubah | Dikenal (T3.3); jangan koreksi saat ada order menggantung, sinkron dulu |
 | Selisih 1 rupiah antara hasil jual dan modal beli berikutnya (data 3 Nov) | Diduga pembulatan | Belum dikonfirmasi, tidak berdampak |
@@ -360,18 +399,25 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 ### Task berikutnya (urut)
 | Task | Isi | Syarat |
 | --- | --- | --- |
-| T5.1 uji HP | Build lewat `bangun_android.sh`, jalankan 4 poin uji di 1n, laporkan hasil, lalu commit `T5.1: pantauan menyala otomatis setelah HP restart` | Pengguna |
+| T5.2 | Perbaiki logika deposit: `amount` deposit dianggap sudah bersih (fee dari `totalFee` hanya ditampilkan, tidak dikurangkan). Perlu diputuskan perlakuan withdraw (lihat usulan di bawah) | Pengguna mengirim kode terkait (lihat catatan di bawah) |
+| Opsional | Uji withdraw nyata saat saldo cukup (bentuk baris dan mode fee) | Menunggu saldo di atas batas minimum penarikan |
 | Opsional | Verifikasi mode fee deposit saat ada deposit nyata pertama | Menunggu deposit nyata |
 
 ### Keputusan yang masih terbuka
 | Hal | Pilihan | Status |
 | --- | --- | --- |
-| Setelan TP/SL baru | Hanya posisi baru atau juga yang terbuka | Dipakai usulan "hanya posisi baru" (T1.3); catatan ini tampil di layar Setelan; belum dikonfirmasi eksplisit |
+| Setelan TP/SL baru | Hanya posisi baru atau juga yang terbuka | Terjawab: hanya posisi baru (dikonfirmasi 8 Nov 2026) |
 | Koin yang dipegang sebelum app dipasang | Diabaikan atau diisi modalnya | Terjawab: diabaikan (7 Nov 2026) |
-| Mode fee deposit/withdraw (`amount` bersih atau tidak) | Lihat 1i | Belum (butuh deposit nyata) |
-| Pantauan menyala otomatis setelah HP reboot | Perlu atau tidak | Terjawab: dikerjakan di T5.1 (8 Nov 2026), menunggu uji HP |
+| Mode fee deposit/withdraw (`amount` bersih atau tidak) | Lihat 1i dan 1o | Deposit: TERJAWAB, bersih (8 Nov 2026). Withdraw: dipakai `-(amount + fee)` tanpa pilihan di layar, belum terverifikasi (batas minimum penarikan) |
+| Pantauan menyala otomatis setelah HP reboot | Perlu atau tidak | Terjawab: dikerjakan di T5.1, lulus uji HP (8 Nov 2026) |
 
 ### Keputusan yang sudah terjawab
+- Deposit: `amount` dari API sudah bersih, `totalFee` hanya informasi (uji nyata 8 Nov 2026, Rp 11.000 menjadi Rp 7.670 masuk). Perbaikan logika = T5.2.
+- Withdraw nyata tidak bisa diuji sekarang (saldo di bawah batas minimum penarikan); dicatat, diuji nanti (8 Nov 2026).
+- Setelan TP/SL baru: berlaku untuk posisi baru saja (dikonfirmasi 8 Nov 2026).
+- Aturan tick harga per koin: tidak perlu dikerjakan; TP/SL hanya acuan, harga akhir diinput manual di Indodax (8 Nov 2026).
+- Setelan fee jual (limit/market): tidak perlu; estimasi hanya perkiraan, hasil nyata dari `commission` API (8 Nov 2026).
+- T5.1 (pantauan menyala otomatis setelah HP restart): lulus uji HP (8 Nov 2026).
 - Tombol "Jual di Indodax": dihapus (7 Nov 2026).
 - Cadangan data: ekspor/impor ke penyimpanan lokal saja (7 Nov 2026); dikerjakan di U5, lulus uji HP 8 Nov 2026.
 - Zona waktu WIB dan minggu mulai Senin: dikonfirmasi (7 Nov 2026).
@@ -387,7 +433,16 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - Layar asli U1 sampai U4 lolos uji HP, semua sesuai kriteria (8 Nov 2026).
 - U5: salinan database lama otomatis disimpan sebagai `.sebelum-impor`; kunci API tidak dicadangkan; impor wajib dengan pantauan mati (usulan, lolos uji HP).
 
+### Usulan T5.2 (dikerjakan 8 Nov 2026 sesuai usulan ini; hasil di 1p)
+- Deposit: selalu `+amount`; `totalFee` hanya disimpan dan ditampilkan sebagai informasi di baris deposit. Kotak "Nominal sudah bersih" tidak lagi memengaruhi deposit.
+- Withdraw: selalu `-(amount + fee)` tanpa pilihan di layar (usulan pengguna menghapus kotak, 8 Nov 2026). Ini dugaan berdasarkan deposit (amount = nominal bersih, fee terpisah), BELUM terverifikasi; bila meleset, "Cek selisih saldo" akan menunjukkan selisih dan perlu ditinjau lagi saat ada withdraw nyata.
+- Catatan deposit lama di database dihitung ulang otomatis bila fee tidak disimpan sebagai angka jadi (saldo dihitung dari catatan); perlu dipastikan di kode.
+- Kode yang perlu dilihat (jangan berasumsi isinya, minta dulu): `core/src/arus_kas.rs`, `core/src/store.rs` (fungsi arus kas dan `atur_amount_sudah_bersih`), `core/src/periode.rs` (pemakaian arus kas bersih), `ffi/src/lib.rs` (bagian arus kas), `app/aplikasi/src/main/kotlin/id/catatanscalping/app/LayarSetelan.kt` (kotak centang dan teks baris deposit).
+- Kriteria uji: dengan data deposit nyata di atas, tanpa mencentang apa pun, saldo aplikasi = Rp 77.322, "Cek selisih saldo" = Rp 0, modal aktif naik 7.670, hasil dan pencapaian tidak berubah, sinkron ulang tidak menggandakan.
+
 ### Pekerjaan kecil
+- PRD v1.5: SELESAI (8 Nov 2026). Perubahan: hasil uji deposit nyata (bagian 9), pertanyaan terbuka no. 10 terjawab untuk deposit, status withdraw. Simpan sebagai `docs/PRD_Aplikasi_Catatan_Trading_Crypto.md` (timpa v1.4).
+- PRD v1.4: SELESAI (8 Nov 2026). Perubahan: FR-05 dikonfirmasi, pertanyaan terbuka no. 5 dan 11 terjawab, Fase 5 selesai, dua baris risiko (fee jual, tick) diberi keputusan. Simpan sebagai `docs/PRD_Aplikasi_Catatan_Trading_Crypto.md` (timpa v1.3).
 - PRD v1.3: SELESAI (8 Nov 2026). Berisi FR-14 tanpa tombol Jual, FR-16 dan FR-18 (progress dan penanda tercapai di notifikasi jual), FR-22/23/25 sudah diimplementasikan, FR-26 (cadangan), FR-27 (koreksi saldo), saldo versi aplikasi dihitung dari catatan, bagian 9 (token WebSocket dengan key v2, SHA512, status FILL, WebSocket sebagai pemicu), pertanyaan terbuka no. 3, 4, 6, 8, 9 terjawab. Simpan sebagai `docs/PRD_Aplikasi_Catatan_Trading_Crypto.md` (timpa v1.2).
 
 ### Fase berikutnya
@@ -395,7 +450,7 @@ Rust untuk semua logika dan backend (berjalan di dalam HP), Kotlin/Java hanya kl
 - **Fase 3**: selesai (T3.1 sampai T3.3)
 - **Fase 4**: selesai (T4.1)
 - **Fase UI**: selesai (U1 sampai U5, lulus uji HP 8 Nov 2026)
-- **Fase 5 (penyempurnaan)**: T5.1 kode selesai, uji HP menunggu
+- **Fase 5 (penyempurnaan)**: T5.1 selesai (lulus uji HP 8 Nov 2026); T5.2 (perbaiki logika deposit): kode selesai, uji menunggu
 
 ---
 
@@ -519,7 +574,7 @@ catatan-scalping/
 │           ├── java/uniffi/             (OTOMATIS dari bindgen, tidak di-commit)
 │           └── jniLibs/                 (OTOMATIS dari cargo ndk, tidak di-commit)
 ├── docs/
-│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.3)
+│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.5)
 │   └── prototype/
 │       └── Catatan_trading__prototype_UI.html
 └── tools/
@@ -532,12 +587,15 @@ catatan-scalping/
 ```
 
 ### Rencana
-Semua task pada rencana awal selesai; PRD v1.3 selesai. Tersisa uji HP T5.1 dan verifikasi mode fee deposit (lihat bagian 3). Struktur di atas sudah mencakup U5; tidak ada file baru lain yang direncanakan.
+Semua task pada rencana awal selesai; PRD v1.5 selesai. Tersisa T5.2 (perbaiki logika deposit) dan uji withdraw nyata nanti (lihat bagian 3). T5.2 hanya mengubah file yang sudah ada. Struktur di atas sudah mencakup U5; tidak ada file baru lain yang direncanakan.
 
 ---
 
 ## 6. Log commit
 (isi hash dan pesan commit di sini)
+- T5.2: `T5.2: deposit amount sudah bersih, fee hanya informasi` (hash: ...)
+- Dokumen: `Dokumen: PRD v1.5 dan PROGRESS (hasil uji deposit nyata, rencana T5.2)` (hash: ...)
+- Dokumen: `Dokumen: PRD v1.4 dan PROGRESS (T5.1 lulus, keputusan 8 Nov)` (hash: ...)
 - T5.1: `T5.1: pantauan menyala otomatis setelah HP restart` (hash: ...)
 - PRD v1.3: `Dokumen: PRD v1.3 sesuai aplikasi` (hash: ...)
 - U5: `U5: ekspor dan impor data lokal` (hash: ...)

@@ -419,11 +419,26 @@ mod tests {
     }
 
     #[test]
-    fn fee_deposit_mengubah_saldo_sesuai_mode() {
+    fn fee_deposit_tidak_mengubah_saldo_fee_withdraw_sesuai_mode() {
+        // deposit: amount sudah bersih (fee hanya informasi), modenya tidak berpengaruh
         let mut a = deposit("d1", "50000", 5);
         a.biaya = d("2500");
         let data = |bersih| DataSaldo { snapshot_awal_ms: 0, penyesuaian: vec![], saldo_awal: d("1000"), profit_tertutup: vec![], arus_kas: vec![a.clone()], amount_sudah_bersih: bersih };
         assert_eq!(data(true).saldo_pada(10), d("51000"));
-        assert_eq!(data(false).saldo_pada(10), d("48500"));
+        assert_eq!(data(false).saldo_pada(10), d("51000"));
+        // withdraw: masih dua mode (belum terverifikasi)
+        let w = ArusKas { id_sumber: "withdraw:1".into(), jenis: JenisArusKas::Withdraw, jumlah: d("20000"), biaya: d("6500"), waktu_ms: 5 };
+        let dw = |bersih| DataSaldo { snapshot_awal_ms: 0, penyesuaian: vec![], saldo_awal: d("100000"), profit_tertutup: vec![], arus_kas: vec![w.clone()], amount_sudah_bersih: bersih };
+        assert_eq!(dw(true).saldo_pada(10), d("80000"));
+        assert_eq!(dw(false).saldo_pada(10), d("73500"));
+    }
+
+    #[test]
+    fn deposit_nyata_8_nov_saldo_cocok_dengan_saldo_asli() {
+        // saldo aplikasi 69.652 + deposit (amount 7.670, fee 3.330) = saldo asli 77.322
+        let mut a = deposit("d-nyata", "7670", 5);
+        a.biaya = d("3330");
+        let data = DataSaldo { snapshot_awal_ms: 0, penyesuaian: vec![], saldo_awal: d("69652"), profit_tertutup: vec![], arus_kas: vec![a], amount_sudah_bersih: false };
+        assert_eq!(data.saldo_pada(10), d("77322"));
     }
 }

@@ -12,7 +12,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.Button
-import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import uniffi.scalping_ffi.StatusKoneksi
@@ -58,7 +57,6 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
     private lateinit var tombolEkspor: Button
     private lateinit var tombolImpor: Button
     private val infoCadangan = ui.mute("", 12f)
-    private lateinit var cekBersih: CheckBox
     private val teksLog = ui.mono("")
 
     init {
@@ -127,15 +125,11 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         val kArus = ui.kartu()
         kArus.tambah(ui.teks("Deposit dan withdraw IDR", 14f, tebal = true))
         kArus.tambah(
-            ui.mute("Dikeluarkan dari pencapaian target dan tidak dihitung sebagai profit. Dilengkapi otomatis; tombol ini untuk memaksa.", 12f),
+            ui.mute("Dikeluarkan dari pencapaian target dan tidak dihitung sebagai profit. Dilengkapi otomatis; tombol ini untuk memaksa. Deposit: nominal sudah bersih (fee hanya informasi). Withdraw: saldo berkurang sebesar amount + fee.", 12f),
             atas = 6,
         )
         tombolArusKas = ui.tombol("Sinkron deposit/withdraw") { sinkronArusKasManual() }
         kArus.tambah(tombolArusKas, atas = 10)
-        cekBersih = ui.cek("Nominal (amount) sudah bersih: fee TIDAK dikurangkan lagi").apply {
-            setOnClickListener { ubahModeFee() }
-        }
-        kArus.tambah(cekBersih, atas = 6)
         kArus.tambah(infoArusKas, atas = 6)
         isi.tambah(kArus, atas = 12)
 
@@ -239,17 +233,22 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
     private fun muatArusKas() {
         val db = a.pathDb
         Latar.baca({
-            // mode fee ikut dibaca dari ringkasan; bila belum ada snapshot, kotak centang dibiarkan
-            Pair(daftarArusKas(db, 5u), runCatching { hitungTarget(db).amountSudahBersih }.getOrNull())
+            // Pilihan "nominal sudah bersih" sudah dihapus dari layar (T5.2). Bila database lama
+            // masih menyimpan mode "bersih", kembalikan ke bawaan agar withdraw dihitung amount + fee.
+            runCatching { if (hitungTarget(db).amountSudahBersih) aturAmountSudahBersih(db, false) }
+            daftarArusKas(db, 5u)
         }) { r ->
-            r.onSuccess { (daftar, bersih) ->
-                if (bersih != null) cekBersih.isChecked = bersih
+            r.onSuccess { daftar ->
                 infoArusKas.text = if (daftar.isEmpty()) {
                     "(belum ada deposit/withdraw tercatat)"
                 } else {
                     daftar.joinToString("\n") { x ->
                         "${Format.tanggalJam(x.waktuMs)}  ${x.jenis.uppercase()}\n" +
-                            "  amount ${Format.rupiah(x.jumlah)} · fee ${Format.rupiah(x.biaya)} → saldo ${Format.untung(x.efekSaldo)}"
+                            (if (x.jenis.equals("deposit", ignoreCase = true)) {
+                                "  amount ${Format.rupiah(x.jumlah)} (fee ${Format.rupiah(x.biaya)} sudah dipotong) → saldo ${Format.untung(x.efekSaldo)}"
+                            } else {
+                                "  amount ${Format.rupiah(x.jumlah)} · fee ${Format.rupiah(x.biaya)} → saldo ${Format.untung(x.efekSaldo)}"
+                            })
                     }
                 }
             }
@@ -340,14 +339,6 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
         }
     }
 
-    private fun ubahModeFee() {
-        val ya = cekBersih.isChecked
-        val db = a.pathDb
-        Latar.baca({ aturAmountSudahBersih(db, ya) }) { r ->
-            r.onSuccess { muatArusKas(); a.dataBerubah() }
-            r.onFailure { infoArusKas.text = "Mode fee tidak disimpan: ${Latar.pesan(it)}" }
-        }
-    }
 
     // ---------- pantauan realtime ----------
 

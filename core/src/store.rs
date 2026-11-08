@@ -333,7 +333,8 @@ impl Penyimpanan {
         baris.collect::<Result<Vec<_>, _>>().map_err(gagal)
     }
 
-    /// Apakah `amount` deposit/withdraw sudah bersih (fee tidak dikurangkan lagi). Bawaan: false.
+    /// Apakah `amount` WITHDRAW sudah bersih (fee tidak ditambahkan lagi). Bawaan: false.
+    /// Deposit tidak terpengaruh: `amount` deposit selalu sudah bersih (terbukti 8 Nov 2026).
     pub fn amount_sudah_bersih(&self) -> Hasil<bool> {
         Ok(self.meta(META_AMOUNT_BERSIH)?.as_deref() == Some("1"))
     }

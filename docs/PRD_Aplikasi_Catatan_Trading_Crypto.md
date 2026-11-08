@@ -1,6 +1,6 @@
 # PRD: Aplikasi Catatan Trading Crypto
 
-Versi 1.3 · 8 November 2026 (disinkronkan dengan aplikasi yang sudah berjalan: Fase 0 sampai Fase UI selesai) · Pemilik produk: Raya Abdullah Ar Rasyid · Status: diimplementasikan; dokumen mengikuti kondisi aplikasi
+Versi 1.5 · 8 November 2026 (disinkronkan dengan aplikasi yang sudah berjalan: semua fase selesai, T5.1 lulus uji HP, deposit nyata teruji) · Pemilik produk: Raya Abdullah Ar Rasyid · Status: diimplementasikan; dokumen mengikuti kondisi aplikasi
 
 ## 1. Ringkasan
 
@@ -76,7 +76,7 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 ### 7.2 Setelan
 
 - **FR-04** Pengguna mengatur, semuanya dalam persen: TP per trade, SL per trade, target harian, target mingguan.
-- **FR-05** Perubahan setelan TP/SL berlaku untuk posisi baru. Posisi yang sudah terbuka tidak berubah (diimplementasikan sebagai usulan; belum dikonfirmasi eksplisit, lihat bagian 16). Target harian dan mingguan hanya menyimpan nilai terbaru (lebih dari 0 dan paling banyak 100 persen); mengosongkan keduanya berarti tanpa target.
+- **FR-05** Perubahan setelan TP/SL berlaku untuk posisi baru. Posisi yang sudah terbuka tidak berubah (dikonfirmasi 8 November 2026). Target harian dan mingguan hanya menyimpan nilai terbaru (lebih dari 0 dan paling banyak 100 persen); mengosongkan keduanya berarti tanpa target.
 
 ### 7.3 Deteksi dan pencatatan trade
 
@@ -181,7 +181,8 @@ Berdasarkan dokumentasi resmi Indodax (repo btcid/indodax-official-api-docs) per
 - Rekonsiliasi riwayat harus berputar per koin dan per rentang 7 hari.
 - Terjawab di Fase 0 (6 November 2026, trade ICNT 3 dan 5 November): (a) fee dalam IDR (`commissionAsset` = idr), koin yang diterima tidak dipotong; (b) `commission` dari API sama dengan "Biaya Transaksi" di struk; (c) `quoteQty` sama dengan "Total Diterima" (IDR) pada struk beli. Tanda tangan v2 memakai HMAC-SHA256.
 - Terjawab di T0.6 (7 November 2026): key v2 baca saja dapat dipakai untuk token WebSocket privat.
-- Belum terverifikasi: apakah `amount` pada deposit sudah bersih atau belum dikurangi `totalFee` (aplikasi menyediakan dua mode; konfirmasi dengan deposit nyata). Bentuk baris withdraw juga belum teramati.
+- Terjawab (8 November 2026, deposit nyata Rp 11.000): `amount` 7.670, `totalFee` 3.330 (7.670 + 3.330 = 11.000), saldo asli naik 7.670. `amount` deposit SUDAH bersih: fee dipotong sebelum dana masuk akun, jadi `totalFee` hanya informasi dan tidak dikurangkan lagi. Perilaku aplikasi sebelum T5.2 (mengurangi fee lagi) salah dan diperbaiki di T5.2.
+- Belum terverifikasi: bentuk baris withdraw dan apakah `amount` withdraw sudah termasuk fee. Withdraw nyata belum bisa diuji karena saldo di bawah batas minimum penarikan Indodax.
 - Tarif fee tidak tetap (beli limit ±0,10%, beli market ±0,20%, jual limit ±0,31% pada data nyata), jadi selalu pakai nilai `commission` dari API.
 
 ## 10. Arsitektur dan teknologi (keputusan 7 November 2026)
@@ -255,7 +256,7 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 | 3. Riwayat dan grafik | Daftar trade tertutup, grafik saldo dan modal aktif, tombol koreksi saldo | Pertumbuhan terlihat | Selesai |
 | 4. Statistik | Win rate, total fee, persen profit termakan fee | Evaluasi gaya trading | Selesai |
 | UI. Layar asli | Beranda, Posisi, Riwayat, Setelan sesuai prototype; cadangan data lokal (U1 sampai U5) | Aplikasi dipakai sehari-hari | Selesai |
-| 5. Penyempurnaan | Pantauan menyala otomatis setelah HP restart (T5.1) | Pantauan tidak perlu dinyalakan ulang | Kode selesai; uji HP menunggu |
+| 5. Penyempurnaan | Pantauan menyala otomatis setelah HP restart (T5.1) | Pantauan tidak perlu dinyalakan ulang | Selesai (lulus uji HP 8 Nov 2026) |
 
 ## 16. Pertanyaan terbuka
 
@@ -263,13 +264,13 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 2. ~~Apakah total biaya di struk sama dengan commission dari API~~ **Terjawab: sama.** (lihat bagian 9) (diselesaikan di Fase 0)?
 3. ~~Fungsi tombol Jual di Open Posisi~~ **Terjawab (7 Nov 2026): tombol dihapus**; penjualan terdeteksi otomatis (lihat FR-14).
 4. ~~Estimasi hasil bersih di bawah TP dan SL~~ **Terjawab (7 Nov 2026): ditampilkan**, memakai fee jual perkiraan 0,31%.
-5. Setelan TP/SL baru: berlaku untuk posisi baru saja, atau boleh diubah per posisi yang sedang terbuka? **Dipakai usulan "posisi baru saja"; belum dikonfirmasi eksplisit.**
+5. ~~Setelan TP/SL baru: berlaku untuk posisi baru saja, atau boleh diubah per posisi yang sedang terbuka?~~ **Terjawab (8 Nov 2026): posisi baru saja.**
 6. ~~Koin yang sudah dipegang sebelum aplikasi dipasang~~ **Terjawab (7 Nov 2026): diabaikan** (saldo aplikasi = IDR saja).
 7. ~~Teknologi pembuatan aplikasi~~ **Terjawab (7 Nov 2026): Rust untuk logika, Kotlin/Java untuk klien Android** (lihat bagian 10).
 8. ~~Cadangan data~~ **Terjawab (7 Nov 2026): perlu, ke penyimpanan lokal saja** (FR-26, selesai di U5).
 9. ~~Hari mulai minggu dan zona waktu~~ **Terjawab (7 Nov 2026): Senin dan WIB.**
-10. Apakah `amount` deposit sudah bersih atau belum dikurangi `totalFee`? Menunggu deposit nyata pertama (aplikasi menyediakan dua mode).
-11. ~~Pantauan menyala otomatis setelah HP restart~~ **Dikerjakan (T5.1)**; menunggu uji HP.
+10. ~~Apakah `amount` deposit sudah bersih atau belum dikurangi `totalFee`?~~ **Terjawab (8 Nov 2026): sudah bersih** (deposit nyata Rp 11.000 menjadi Rp 7.670 masuk; fee 3.330 hanya informasi). Withdraw masih belum diverifikasi (saldo di bawah batas minimum penarikan).
+11. ~~Pantauan menyala otomatis setelah HP restart~~ **Selesai (T5.1), lulus uji HP 8 Nov 2026.**
 
 ## 17. Risiko dan asumsi
 
@@ -281,6 +282,6 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 | Batas laju (300 per menit) | Rekonsiliasi lambat | Rekonsiliasi per koin yang aktif, jeda antar permintaan |
 | Kebocoran kunci API | Data akun terbaca | Izin baca saja, simpan aman, tanpa izin trade atau withdraw |
 | Pembatasan IP pada key | Koneksi gagal di jaringan seluler | Jangan aktifkan pembatasan IP untuk key baca |
-| Fee jual market lebih besar dari perkiraan 0,31% (contoh ±0,61%) | Estimasi hasil bersih terlalu optimistis | Hasil nyata memakai `commission` dari API; estimasi hanya perkiraan |
-| Aturan tick harga per koin belum diperiksa | TP/SL (dibulatkan ke rupiah utuh) mungkin tidak persis sesuai kelipatan harga koin murah | Tampilan saja; dicatat di PROGRESS.md |
+| Fee jual market lebih besar dari perkiraan 0,31% (contoh ±0,61%) | Estimasi hasil bersih terlalu optimistis | Hasil nyata memakai `commission` dari API; estimasi hanya perkiraan. Diputuskan 8 Nov 2026: tanpa setelan fee jual |
+| Aturan tick harga per koin belum diperiksa | TP/SL (dibulatkan ke rupiah utuh) mungkin tidak persis sesuai kelipatan harga koin murah | Diputuskan tidak perlu diperbaiki (8 Nov 2026): TP/SL hanya acuan, harga akhir diinput manual di Indodax |
 | Asumsi: satu pengguna, satu akun Indodax, hanya pasangan IDR | Cakupan terbatas | Dicatat sebagai non-tujuan |

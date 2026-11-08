@@ -66,13 +66,16 @@ pub struct ArusKas {
 
 impl ArusKas {
     /// Perubahan saldo IDR (positif = masuk, negatif = keluar).
-    /// Belum diketahui apakah `amount` sudah memperhitungkan fee, jadi ada dua mode:
-    /// - `amount_sudah_bersih` = true: saldo berubah sebesar amount saja.
-    /// - false: deposit = amount - fee, withdraw = -(amount + fee).
+    /// DEPOSIT: `amount` dari API SUDAH bersih (terbukti dengan deposit nyata 8 Nov 2026:
+    /// transfer 11.000, amount 7.670, totalFee 3.330, saldo asli naik 7.670). Fee sudah
+    /// dipotong Indodax sebelum dana masuk, jadi `biaya` hanya informasi dan TIDAK
+    /// dikurangkan lagi; parameter `amount_sudah_bersih` tidak berlaku untuk deposit.
+    /// WITHDRAW: belum terverifikasi, jadi masih ada dua mode:
+    /// - `amount_sudah_bersih` = true: saldo berubah sebesar -amount saja.
+    /// - false (bawaan): -(amount + fee).
     pub fn efek_saldo(&self, amount_sudah_bersih: bool) -> Decimal {
         match (self.jenis, amount_sudah_bersih) {
-            (JenisArusKas::Deposit, true) => self.jumlah,
-            (JenisArusKas::Deposit, false) => self.jumlah - self.biaya,
+            (JenisArusKas::Deposit, _) => self.jumlah,
             (JenisArusKas::Withdraw, true) => -self.jumlah,
             (JenisArusKas::Withdraw, false) => -(self.jumlah + self.biaya),
         }
@@ -288,13 +291,22 @@ mod tests {
     }
 
     #[test]
-    fn efek_saldo_dua_mode() {
+    fn efek_saldo_deposit_selalu_amount_withdraw_dua_mode() {
         let dep = ArusKas { id_sumber: "deposit:1".into(), jenis: JenisArusKas::Deposit, jumlah: d("50000"), biaya: d("2500"), waktu_ms: 1 };
         let wd = ArusKas { id_sumber: "withdraw:1".into(), jenis: JenisArusKas::Withdraw, jumlah: d("20000"), biaya: d("6500"), waktu_ms: 1 };
         assert_eq!(dep.efek_saldo(true), d("50000"));
-        assert_eq!(dep.efek_saldo(false), d("47500"));
+        // deposit: fee tidak pernah dikurangkan lagi, apa pun modenya
+        assert_eq!(dep.efek_saldo(false), d("50000"));
         assert_eq!(wd.efek_saldo(true), d("-20000"));
         assert_eq!(wd.efek_saldo(false), d("-26500"));
+    }
+
+    #[test]
+    fn deposit_nyata_8_nov_amount_7670_fee_3330_menambah_7670() {
+        // transfer 11.000 = amount 7.670 + totalFee 3.330; saldo asli Indodax naik 7.670
+        let dep = ArusKas { id_sumber: "deposit:nyata".into(), jenis: JenisArusKas::Deposit, jumlah: d("7670"), biaya: d("3330"), waktu_ms: 1 };
+        assert_eq!(dep.efek_saldo(false), d("7670"));
+        assert_eq!(dep.efek_saldo(true), d("7670"));
     }
 
     #[test]
