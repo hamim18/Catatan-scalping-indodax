@@ -1316,6 +1316,9 @@ pub struct AsetUi {
     pub jumlah: String,
     /// harga terakhir per koin, contoh "3.512" (koin murah 2 desimal)
     pub harga: String,
+    /// harga terakhir tanpa format dan tanpa pembulatan (contoh "8.953"); T6.3: diteruskan Kotlin
+    /// ke `floating_posisi` agar floating memakai harga yang sama dengan total aset
+    pub harga_angka: String,
     /// contoh "Rp 150.000"
     pub nilai: String,
 }
@@ -1353,6 +1356,7 @@ pub fn total_aset(key: String, secret: String) -> Result<TotalAsetUi, ErrorApp> 
                 koin: k.koin.clone(),
                 jumlah: ribuan(&k.jumlah.round_dp(8).normalize().to_string()),
                 harga: fmt_harga(k.harga),
+                harga_angka: k.harga.to_string(),
                 nilai: format!("Rp {}", fmt_rupiah(k.nilai)),
             })
             .collect(),
@@ -1462,6 +1466,192 @@ pub fn data_grafik_profit(path_db: String, maks_titik: u32) -> Result<Vec<TitikP
         .into_iter()
         .map(|t| TitikProfitUi { waktu_ms: t.waktu_ms, profit: bulatkan_idr(t.profit_kumulatif).to_string() })
         .collect())
+}
+
+// ---------------------------------------------------------------------------------------------
+// T6.3: floating P/L posisi terbuka = jumlah koin x harga terakhir - modal, SEBELUM fee jual
+// (fee nyata baru ada setelah koin dijual; tarif beda per order). TIDAK masuk target, grafik,
+// atau statistik (keputusan 8 Nov 2026, pilihan 1). Dua langkah agar jaringan dan database tidak
+// tercampur di satu thread:
+//   1. `ambil_harga_terakhir`: jaringan (ticker_all publik), tanpa database
+//   2. `floating_posisi`: database + harga yang diteruskan Kotlin, tanpa jaringan
+// ---------------------------------------------------------------------------------------------
+
+/// Harga terakhir satu koin. `koin` huruf besar (contoh "DOGE"), `harga` desimal mentah ("3512.5").
+#[derive(uniffi::Record)]
+pub struct HargaKoinUi {
+    pub koin: String,
+    pub harga: String,
+}
+
+/// Floating satu posisi. Angka mentah (rupiah utuh / persen 2 desimal, bertanda) supaya Kotlin
+/// memakai pemformat yang sama dengan profit; hanya `harga_sekarang` yang sudah berformat.
+#[derive(uniffi::Record)]
+pub struct FloatingPosisiUi {
+    pub simbol: String,
+    pub nama: String,
+    /// contoh "3.480"; None bila koin tanpa harga IDR
+    pub harga_sekarang: Option<String>,
+    /// rupiah utuh bertanda, contoh "-3200"
+    pub floating_angka: Option<String>,
+    /// persen terhadap modal posisi, 2 desimal, contoh "-0.91"
+    pub floating_persen: Option<String>,
+    /// letak harga pada tangga untuk menggambar penanda: 0.0 = SL, 0.5 = modal efektif, 1.0 = TP
+    /// (dijepit ke 0..1). Hanya geometri tampilan, bukan uang.
+    pub skala: Option<f64>,
+    /// harga sekarang <= harga SL
+    pub di_bawah_sl: bool,
+    /// harga sekarang >= harga TP
+    pub di_atas_tp: bool,
+}
+
+#[derive(uniffi::Record)]
+pub struct FloatingUi {
+    /// urutan sama dengan `daftar_posisi` (terbaru di atas)
+    pub posisi: Vec<FloatingPosisiUi>,
+    /// jumlah floating posisi yang punya harga; None bila tidak ada satu pun
+    pub total_angka: Option<String>,
+    pub total_persen: Option<String>,
+    /// koin yang tidak punya harga IDR: tidak dihitung dalam total
+    pub tanpa_harga: Vec<String>,
+}
+
+/// Bagian posisi yang dibutuhkan untuk menghitung floating (dipisah agar mudah dites).
+struct DataPosisi {
+    simbol: String,
+    nama: String,
+    koin: Decimal,
+    /// IDR yang keluar untuk koin yang masih dipegang (sama dengan modal efektif x koin)
+    modal_total: Decimal,
+    modal_efektif: Decimal,
+    harga_sl: Decimal,
+    harga_tp: Decimal,
+}
+
+/// Ambil hanya harga koin yang diminta dari daftar harga; koin tanpa harga dilewati, duplikat dibuang.
+fn harga_untuk_koin(harga: &scalping_core::harga::HargaIdr, koin: &[String]) -> Vec<HargaKoinUi> {
+    let mut hasil: Vec<HargaKoinUi> = Vec::new();
+    for k in koin {
+        let nama = k.trim().to_uppercase();
+        if nama.is_empty() || hasil.iter().any(|h| h.koin == nama) {
+            continue;
+        }
+        if let Some(h) = harga.get(&nama.to_lowercase()) {
+            hasil.push(HargaKoinUi { koin: nama, harga: h.to_string() });
+        }
+    }
+    hasil
+}
+
+/// Harga terakhir (ticker_all publik) untuk koin yang diminta, contoh ["DOGE", "SOL"].
+/// Hanya membaca. Memblokir (jaringan); panggil dari thread latar. Tanpa database.
+#[uniffi::export]
+pub fn ambil_harga_terakhir(key: String, secret: String, koin: Vec<String>) -> Result<Vec<HargaKoinUi>, ErrorApp> {
+    let klien = IndodaxClient::new(key, secret);
+    let harga = klien.ambil_harga_idr().map_err(gagal)?;
+    Ok(harga_untuk_koin(&harga, &koin))
+}
+
+/// Letak harga pada tangga SL - modal efektif - TP: 0.0 di SL, 0.5 di modal efektif, 1.0 di TP,
+/// linear di tiap sisi dan dijepit ke 0..1 (penanda tetap tergambar saat harga keluar rentang).
+fn skala_tangga(sl: Decimal, modal: Decimal, tp: Decimal, harga: Decimal) -> f64 {
+    use rust_decimal::prelude::ToPrimitive;
+    let setengah = Decimal::new(5, 1);
+    let s = if harga <= modal {
+        let lebar = modal - sl;
+        if lebar <= Decimal::ZERO { setengah } else { setengah * ((harga - sl) / lebar) }
+    } else {
+        let lebar = tp - modal;
+        if lebar <= Decimal::ZERO { setengah } else { setengah + setengah * ((harga - modal) / lebar) }
+    };
+    s.max(Decimal::ZERO).min(Decimal::ONE).to_f64().unwrap_or(0.5)
+}
+
+/// Floating tiap posisi dan totalnya. `harga` berkunci huruf besar (nama koin). Tanpa jaringan.
+fn floating_dari(posisi: &[DataPosisi], harga: &std::collections::HashMap<String, Decimal>) -> FloatingUi {
+    let mut hasil = Vec::new();
+    let mut tanpa_harga = Vec::new();
+    let mut total = Decimal::ZERO;
+    let mut modal_berharga = Decimal::ZERO;
+    let mut ada = false;
+    for p in posisi {
+        match harga.get(&p.nama) {
+            Some(h) => {
+                // nilai pasar - modal (fee beli sudah ada di modal; fee jual sengaja tidak dihitung)
+                let floating = p.koin * *h - p.modal_total;
+                let persen = if p.modal_total.is_zero() {
+                    Decimal::ZERO
+                } else {
+                    floating / p.modal_total * Decimal::from(100)
+                };
+                total += floating;
+                modal_berharga += p.modal_total;
+                ada = true;
+                hasil.push(FloatingPosisiUi {
+                    simbol: p.simbol.clone(),
+                    nama: p.nama.clone(),
+                    harga_sekarang: Some(fmt_harga(*h)),
+                    floating_angka: Some(bulatkan_idr(floating).to_string()),
+                    floating_persen: Some(persen.round_dp(2).to_string()),
+                    skala: Some(skala_tangga(p.harga_sl, p.modal_efektif, p.harga_tp, *h)),
+                    di_bawah_sl: *h <= p.harga_sl,
+                    di_atas_tp: *h >= p.harga_tp,
+                });
+            }
+            None => {
+                tanpa_harga.push(p.nama.clone());
+                hasil.push(FloatingPosisiUi {
+                    simbol: p.simbol.clone(),
+                    nama: p.nama.clone(),
+                    harga_sekarang: None,
+                    floating_angka: None,
+                    floating_persen: None,
+                    skala: None,
+                    di_bawah_sl: false,
+                    di_atas_tp: false,
+                });
+            }
+        }
+    }
+    let total_persen = if ada && !modal_berharga.is_zero() {
+        Some((total / modal_berharga * Decimal::from(100)).round_dp(2).to_string())
+    } else {
+        None
+    };
+    FloatingUi {
+        posisi: hasil,
+        total_angka: if ada { Some(bulatkan_idr(total).to_string()) } else { None },
+        total_persen,
+        tanpa_harga,
+    }
+}
+
+/// Floating semua posisi terbuka dari database dan harga yang diteruskan Kotlin (dari
+/// `ambil_harga_terakhir` atau `AsetUi.harga_angka`). Tanpa jaringan.
+#[uniffi::export]
+pub fn floating_posisi(path_db: String, harga: Vec<HargaKoinUi>) -> Result<FloatingUi, ErrorApp> {
+    let simpan = Penyimpanan::buka(&path_db).map_err(gagal)?;
+    let h = hitung_aplikasi(&simpan)?;
+    let mut peta = std::collections::HashMap::new();
+    for k in &harga {
+        peta.insert(k.koin.trim().to_uppercase(), desimal(&k.harga)?);
+    }
+    // urutan sama dengan daftar_posisi: terbaru di atas
+    let mut posisi: Vec<_> = h.posisi.iter().collect();
+    posisi.sort_by_key(|p| std::cmp::Reverse(p.waktu_buka_ms));
+    let data: Vec<DataPosisi> = posisi
+        .into_iter()
+        .map(|p| DataPosisi {
+            simbol: p.simbol.clone(),
+            nama: nama_koin(&p.simbol),
+            koin: p.koin,
+            modal_total: p.total_idr_keluar,
+            modal_efektif: p.modal_efektif,
+            harga_sl: p.harga_sl,
+            harga_tp: p.harga_tp,
+        })
+        .collect();
+    Ok(floating_dari(&data, &peta))
 }
 
 #[cfg(test)]
@@ -1917,5 +2107,113 @@ mod tes_beranda_profit {
         assert_eq!(d(&r.profit_total), Decimal::ZERO);
         assert_eq!(r.jumlah_trade, 0);
         assert_eq!(d(r.harian.persen.as_deref().unwrap()), Decimal::ZERO);
+    }
+}
+
+#[cfg(test)]
+mod tes_floating {
+    use super::*;
+
+    fn d(s: &str) -> Decimal {
+        Decimal::from_str(s).unwrap()
+    }
+
+    // 100 koin, modal 351.200 (modal efektif 3.512), SL 1% = 3.476,88, TP 1% = 3.547,12
+    fn doge() -> DataPosisi {
+        DataPosisi {
+            simbol: "dogeidr".into(),
+            nama: "DOGE".into(),
+            koin: d("100"),
+            modal_total: d("351200"),
+            modal_efektif: d("3512"),
+            harga_sl: d("3476.88"),
+            harga_tp: d("3547.12"),
+        }
+    }
+
+    fn peta(pasangan: &[(&str, &str)]) -> std::collections::HashMap<String, Decimal> {
+        pasangan.iter().map(|(k, h)| (k.to_string(), d(h))).collect()
+    }
+
+    #[test]
+    fn floating_rugi_di_antara_sl_dan_modal() {
+        let f = floating_dari(&[doge()], &peta(&[("DOGE", "3480")]));
+        let p = &f.posisi[0];
+        // 100 x 3.480 - 351.200 = -3.200 ; -3.200 / 351.200 x 100 = -0,91
+        assert_eq!(d(p.floating_angka.as_deref().unwrap()), d("-3200"));
+        assert_eq!(p.floating_persen.as_deref(), Some("-0.91"));
+        assert_eq!(p.harga_sekarang.as_deref(), Some("3.480"));
+        assert!(!p.di_bawah_sl && !p.di_atas_tp);
+        // (3480 - 3476,88) / 35,12 x 0,5 = 0,0444
+        assert!((p.skala.unwrap() - 0.0444).abs() < 0.001);
+        assert_eq!(d(f.total_angka.as_deref().unwrap()), d("-3200"));
+        assert_eq!(f.total_persen.as_deref(), Some("-0.91"));
+        assert!(f.tanpa_harga.is_empty());
+    }
+
+    #[test]
+    fn harga_di_bawah_sl_ditandai_dan_skala_dijepit_nol() {
+        let f = floating_dari(&[doge()], &peta(&[("DOGE", "3400")]));
+        let p = &f.posisi[0];
+        assert!(p.di_bawah_sl && !p.di_atas_tp);
+        assert_eq!(p.skala, Some(0.0));
+        // tepat di SL dihitung "di bawah SL" (SL sudah tersentuh)
+        let f = floating_dari(&[doge()], &peta(&[("DOGE", "3476.88")]));
+        assert!(f.posisi[0].di_bawah_sl);
+    }
+
+    #[test]
+    fn harga_modal_efektif_di_tengah_dan_tp_di_ujung() {
+        let tengah = floating_dari(&[doge()], &peta(&[("DOGE", "3512")]));
+        assert_eq!(tengah.posisi[0].skala, Some(0.5));
+        assert_eq!(d(tengah.posisi[0].floating_angka.as_deref().unwrap()), d("0"));
+        let tp = floating_dari(&[doge()], &peta(&[("DOGE", "3547.12")]));
+        assert_eq!(tp.posisi[0].skala, Some(1.0));
+        assert!(tp.posisi[0].di_atas_tp);
+        let lewat = floating_dari(&[doge()], &peta(&[("DOGE", "3600")]));
+        assert_eq!(lewat.posisi[0].skala, Some(1.0)); // dijepit
+        assert_eq!(d(lewat.posisi[0].floating_angka.as_deref().unwrap()), d("8800"));
+    }
+
+    #[test]
+    fn koin_tanpa_harga_ditandai_dan_tidak_masuk_total() {
+        let mut sol = doge();
+        sol.simbol = "solidr".into();
+        sol.nama = "SOL".into();
+        sol.koin = d("0.1");
+        sol.modal_total = d("300000");
+        let f = floating_dari(&[doge(), sol], &peta(&[("DOGE", "3600")]));
+        assert_eq!(f.tanpa_harga, vec!["SOL".to_string()]);
+        assert!(f.posisi[1].harga_sekarang.is_none() && f.posisi[1].skala.is_none());
+        // total hanya dari DOGE: 360.000 - 351.200 = 8.800 ; persen terhadap modal DOGE saja
+        assert_eq!(d(f.total_angka.as_deref().unwrap()), d("8800"));
+        assert_eq!(f.total_persen.as_deref(), Some("2.51"));
+    }
+
+    #[test]
+    fn total_dua_posisi_dan_tanpa_satu_pun_harga() {
+        let mut sol = doge();
+        sol.nama = "SOL".into();
+        sol.simbol = "solidr".into();
+        // SOL: 100 x 3.400 - 351.200 = -11.200 ; DOGE: +8.800 ; total -2.400
+        let f = floating_dari(&[doge(), sol], &peta(&[("DOGE", "3600"), ("SOL", "3400")]));
+        assert_eq!(d(f.total_angka.as_deref().unwrap()), d("-2400"));
+        // -2.400 / 702.400 x 100 = -0,34
+        assert_eq!(f.total_persen.as_deref(), Some("-0.34"));
+        let kosong = floating_dari(&[doge()], &peta(&[]));
+        assert_eq!(kosong.total_angka, None);
+        assert_eq!(kosong.total_persen, None);
+        assert_eq!(floating_dari(&[], &peta(&[])).posisi.len(), 0);
+    }
+
+    #[test]
+    fn harga_untuk_koin_tanpa_beda_huruf_dan_tanpa_duplikat() {
+        let mut h = scalping_core::harga::HargaIdr::new();
+        h.insert("doge".into(), d("3512.5"));
+        h.insert("sol".into(), d("2950000"));
+        let r = harga_untuk_koin(&h, &["DOGE".into(), "doge".into(), " sol ".into(), "xyz".into()]);
+        assert_eq!(r.len(), 2); // xyz tanpa harga, doge tidak ganda
+        assert_eq!((r[0].koin.as_str(), r[0].harga.as_str()), ("DOGE", "3512.5"));
+        assert_eq!((r[1].koin.as_str(), r[1].harga.as_str()), ("SOL", "2950000"));
     }
 }

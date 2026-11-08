@@ -7,11 +7,14 @@ import android.view.View
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.LinearLayout
 import android.widget.TextView
+import uniffi.scalping_ffi.FloatingUi
+import uniffi.scalping_ffi.HargaKoinUi
 import uniffi.scalping_ffi.RingkasanProfitUi
 import uniffi.scalping_ffi.TargetProfitUi
 import uniffi.scalping_ffi.TitikProfitUi
 import uniffi.scalping_ffi.TotalAsetUi
 import uniffi.scalping_ffi.dataGrafikProfit
+import uniffi.scalping_ffi.floatingPosisi
 import uniffi.scalping_ffi.ringkasanProfit
 import uniffi.scalping_ffi.totalAset
 
@@ -22,7 +25,11 @@ import uniffi.scalping_ffi.totalAset
  *
  * Total aset: jaringan, saat layar dibuka dan tiap 10 detik selama Beranda terlihat dan aplikasi
  * di depan. Profit, target, dan grafik: dari database lokal (trade tertutup), bebas dari harga;
- * total aset hanya dipakai sebagai pembagi persen target. Floating P/L menyusul di T6.3.
+ * total aset hanya dipakai sebagai pembagi persen target.
+ *
+ * T6.3: satu baris "Floating" (koin yang sedang dipegang, nilai pasar dikurangi modal, SEBELUM fee
+ * jual) di bawah Profit trading. Harga diambil dari total aset yang sama (tanpa permintaan
+ * jaringan tambahan). Floating TIDAK masuk target dan grafik.
  */
 class LayarBeranda(a: MainActivity) : Layar(a) {
     private val chip = ui.Chip()
@@ -39,6 +46,9 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
     private var asetGalat: String? = null
     private var asetMemuat = false
     private var asetMulaiMs = 0L
+
+    // floating posisi terbuka (database + harga dari total aset)
+    private var floating: FloatingUi? = null
 
     // profit trade tertutup (database lokal)
     private var profit: RingkasanProfitUi? = null
@@ -100,6 +110,22 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
         segarkanChip()
         muatAset()
         muatProfit()
+        muatFloating() // posisi bisa berubah (beli/jual); memakai harga terakhir yang sudah ada
+    }
+
+    /**
+     * Floating dari posisi di database dan harga koin pada total aset terakhir. Tanpa jaringan.
+     * Gagal (misal belum ada setelan atau snapshot) = baris Floating disembunyikan.
+     */
+    private fun muatFloating() {
+        val d = asetTerakhir ?: return
+        val harga = d.koin.map { HargaKoinUi(koin = it.koin, harga = it.hargaAngka) }
+        val db = a.pathDb
+        Latar.baca({ floatingPosisi(db, harga) }) { r ->
+            r.onSuccess { floating = it }
+            r.onFailure { floating = null }
+            render()
+        }
     }
 
     /**
@@ -154,7 +180,10 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
                 r.onFailure { asetGalat = Latar.pesan(it) }
                 render()
                 // total aset baru = pembagi persen target baru
-                if (r.isSuccess) muatProfit()
+                if (r.isSuccess) {
+                    muatProfit()
+                    muatFloating()
+                }
             }
         }
     }
@@ -211,6 +240,7 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
             atas = 16,
         )
         kartuAset.tambah(ui.mute("${p.jumlahTrade} trade tertutup sejak aplikasi dipasang", 12f))
+        tampilFloating()
         kartuAset.tambah(grafik, atas = 12)
         grafik.setProfit(grafikProfit)
         val legenda = LinearLayout(a).apply {
@@ -229,6 +259,24 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
             ui.mute("Harga koin = transaksi terakhir. Profit dan target hanya dari trade yang sudah tertutup.", 12f),
             atas = 6,
         )
+    }
+
+    /** Satu baris Floating di bawah Profit trading; hilang bila tidak ada posisi terbuka. */
+    private fun tampilFloating() {
+        val fl = floating ?: return
+        if (fl.posisi.isEmpty()) return
+        val total = fl.totalAngka
+        if (total != null) {
+            val persen = fl.totalPersen
+            val teks = Format.untung(total) + (if (persen != null) " (${Format.persenBertanda(persen)})" else "")
+            kartuAset.tambah(
+                ui.baris(ui.teks("Floating", 14f, tebal = true), ui.teks(teks, 15f, t.warnaTanda(total), tebal = true)),
+                atas = 10,
+            )
+        }
+        val ket = StringBuilder("${fl.posisi.size} posisi terbuka · sebelum fee jual · tidak masuk target dan grafik")
+        if (fl.tanpaHarga.isNotEmpty()) ket.append(" · tanpa harga: ").append(fl.tanpaHarga.joinToString(", "))
+        kartuAset.tambah(ui.mute(ket.toString(), 12f))
     }
 
     private fun tampilTarget() {
