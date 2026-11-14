@@ -1,10 +1,10 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9 Screener dirancang; PRD v1.8; T9.0, T9.1, dan T9.2 selesai; T9.3 dibatalkan)
+Terakhir diperbarui: 14 November 2026 (notifikasi lonjakan dan `LayananScreener` dibatalkan; T9.4 menjadi filter Lonjakan di layar Screener dengan harga dasar rata-rata 1 jam; PRD v1.9)
 
 **Status:** Fase 0 sampai 8 SELESAI dan lulus uji HP. Rilis uji pribadi 0.8.0-uji (versionCode 2) dipakai harian; uji lapangan sampai 14 Nov 2026: tidak ada kendala, aplikasi nyaman dipakai, tidak ada perbaikan yang diperlukan. Jumlah tes terakhir: core 125, ffi 29.
 
-**Sekarang:** Fase 9 (Screener). T9.0, T9.1, dan T9.2 SELESAI (14 Nov 2026; tes lulus, build sukses, uji HP sesuai kriteria penerimaan). Layar Screener (tab ke-5) dan setelan ambang sudah jalan; belum ada notifikasi lonjakan. T9.3 (tombol buka pair) DIBATALKAN atas keputusan pengguna. Langkah berikutnya: T9.4 (deteksi lonjakan, `LayananScreener`, notifikasi lonjakan), setelah berkas di bagian 5 dikirim dan perilaku ketuk notifikasi diputuskan.
+**Sekarang:** Fase 9 (Screener). T9.0, T9.1, dan T9.2 SELESAI (tes lulus, uji HP lulus). Layar Screener (tab ke-5) dan setelan ambang sudah jalan. T9.3 (tombol buka pair) DIBATALKAN. Notifikasi lonjakan dan `LayananScreener` juga DIBATALKAN (14 Nov 2026, takut terlalu banyak notifikasi). Langkah berikutnya: T9.4 versi baru = filter Lonjakan di layar Screener, tanpa layanan, manifest, atau notifikasi. Sebelum mulai, kirim `core/src/screener.rs`, `ffi/src/screener_ffi.rs`, dan `LayarScreener.kt` terbaru, dan jawab pertanyaan terbuka no. 21 (lihat bagian 5).
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`. Setelah tiap task: perbarui file ini, lalu commit.
@@ -61,7 +61,9 @@ Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9
 - Satu angka saldo: Total aset nilai pasar; target = profit periode ÷ (total aset − profit periode) × 100; grafik = akumulasi profit tertutup; floating terpisah dan dihitung sebelum fee jual; deposit/withdraw hanya riwayat; riwayat hanya sejak aplikasi dipasang (8 Nov).
 - Notifikasi jual memakai total aset terakhir yang disimpan Beranda (Opsi A, 8 Nov). Harga memakai `last` saja.
 - Tampilan minimalis (Fase 7, 8 Nov): lihat tabel di atas.
-- **Fase 9 (14 Nov 2026):** fitur Screener khusus penyaringan, tidak menyentuh perhitungan trading; semua parameter bisa diatur di aplikasi; modal per trade berubah-ubah (tidak ada modal tetap; isian opsional "Modal trade ini" tidak disimpan permanen); ada filter lonjakan ▲/▼ dengan trx/mnt tinggi yang langsung masuk notifikasi; notifikasi lonjakan di **layanan terpisah dengan saklar sendiri** (`LayananScreener`, `LayananLatar` tidak diubah); garis besar format notifikasi disetujui.
+- **Fase 9 (14 Nov 2026):** fitur Screener khusus penyaringan, tidak menyentuh perhitungan trading; semua parameter bisa diatur di aplikasi; modal per trade berubah-ubah (tidak ada modal tetap; isian opsional "Modal trade ini" tidak disimpan permanen).
+- **Notifikasi lonjakan DIBATALKAN (14 Nov 2026):** pengguna khawatir terlalu banyak notifikasi. FR-35 dan FR-36 dihapus; `LayananScreener`, saluran notifikasi, dan perubahan manifest tidak dibuat; `LayananLatar` tidak disentuh.
+- **Lonjakan = filter terpisah di layar Screener (14 Nov 2026):** menjangkau semua pair lewat pemicu snapshot ringkasan pasar (bukan hanya 40 pair teramai). Dasar penilaian: harga sekarang dibanding RATA-RATA HARGA 1 JAM TERAKHIR (bukan harga sebelumnya). Snapshot hanya di memori, tidak disimpan ke database; titik lebih tua dari 60 menit dibuang.
 - **Deep link (14 Nov 2026, dicek lewat adb):** tautan web `https://indodax.com/market/<PAIR>` membuka BROWSER, bukan aplikasi Indodax. Opsi (1) FR-37 gugur. **Keputusan pengguna (14 Nov 2026): tombol buka pair TIDAK dibuat** (T9.3 dibatalkan; fallback salin pair juga tidak dikerjakan). Pengguna membuka Indodax sendiri.
 
 ## 4. Masalah dikenal dan hal yang belum tuntas
@@ -79,7 +81,7 @@ Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9
 | Clearing fee WebSocket baru teramati bernilai 0 | Sampel kecil; REST selalu menjadi acuan | Pantau |
 | Ukuran halaman `fiat/orders` tidak diketahui | Rentang ≥ 100 baris dibelah | Pantau |
 | Jenis build APK (debug atau release) dari `bangun_android.sh` | Hasil grep 14 Nov: `buildTypes` ada, `isMinifyEnabled = false` (baris 20), tidak ada `signingConfig`. Nama blok di baris 19 dan perintah Gradle di `bangun_android.sh` belum terlihat, jadi debug atau release belum pasti | Menunggu `sed -n 10,35p app/aplikasi/build.gradle.kts` dan `grep -n "assemble" tools/bangun_android.sh` |
-| Pengunduhan data Screener | Ringkasan pasar ±94,7 KB per request; `trades` ±45 KB per pair. Satu pemindaian layar Screener: sampai 40 pair, ±1,8 MB (+ `depth` bila filter kedalaman aktif). Gzip di `ureq` tidak diaktifkan; apakah server mengompresi belum diverifikasi | Terbuka; pantau pemakaian data. Untuk T9.4 (polling ringkasan 10 sampai 15 dtk) hitung ulang bebannya. `MAKS_KANDIDAT` bisa diubah |
+| Pengunduhan data Screener | Ringkasan pasar ±94,7 KB per request; `trades` ±45 KB per pair. Satu pemindaian layar Screener: sampai 40 pair, ±1,8 MB (+ `depth` bila filter kedalaman aktif). Mode Lonjakan (T9.4): satu ringkasan tiap 15 sampai 30 dtk (±12 sampai 23 MB per jam bila tidak terkompresi) + maksimal 15 `trades` per siklus, hanya saat layar terbuka. Gzip di `ureq` tidak diaktifkan; apakah server mengompresi belum diverifikasi | Terbuka; pantau pemakaian data. `MAKS_KANDIDAT` bisa diubah |
 | Filter "spread terikat TP" (FR-32) | Belum ada di modul T9.1 sehingga tidak ada di layar Screener | Opsional, terbuka |
 | Kedalaman gagal diambil di tahap 2 | Filter kedalaman dilewati untuk pair itu (pair tetap lolos) | Dikenal, diterima |
 
@@ -100,10 +102,10 @@ Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9
 7. Dominasi satu transaksi (> 40% volume jendela) hanya diberi tanda peringatan.
 8. Skor urutan = gerak 10 menit ÷ (spread + biaya round-trip).
 
-**Lonjakan dan notifikasi**
-- Lonjakan: jendela pendek (bawaan 3 menit) vs dasar 10 menit sebelumnya; trx/mnt ≥ N × dasar dan ≥ M absolut; perubahan harga ≥ X%; ▲ naik dan ▼ turun punya saklar terpisah; syarat dasar (spread, usia transaksi) tetap berlaku.
-- Notifikasi: judul contoh `▲ ABC +2,4% · 18 trx/mnt`; satu notifikasi per pair diperbarui di tempat; jeda per pair sekitar 5 menit; hilang sendiri sekitar 2 menit; maksimal 3 terpisah per menit, sisanya rangkuman "+N pair lonjakan"; saluran notifikasi sendiri; ketuk notifikasi: BELUM diputuskan (tombol buka Indodax dibatalkan; usulan: membuka aplikasi ini di tab Screener). Informasi saja.
-- Deteksi tahap 1: satu request ringkasan pasar tiap sekitar 10 sampai 15 detik, bandingkan dengan snapshot di memori; hanya pair yang tampak melonjak diperiksa lewat `trades`. Notifikasi bisa terlambat sekitar satu siklus (bukan realtime).
+**Lonjakan (filter di layar Screener; notifikasi dibatalkan 14 Nov 2026)**
+- Harga dasar = rata-rata `last` dari snapshot ringkasan pasar dalam 60 menit terakhir, berbobot waktu (usulan). Melonjak bila |harga sekarang - dasar| ÷ dasar ≥ X%; ▲ naik dan ▼ turun punya saklar terpisah. Tahap 2 dari `trades`: trx/mnt jendela pendek (bawaan 3 menit) ≥ M (usulan; apakah juga N kali dasar 10 menit: pertanyaan no. 21). Syarat dasar (spread, usia transaksi) tetap berlaku.
+- Pemicu: satu request ringkasan tiap 15 sampai 30 dtk (bisa diatur) hanya saat layar Screener terbuka dan mode Lonjakan aktif; pair yang sudah melewati separuh X diperiksa lewat `trades`, maksimal 15 pair per siklus. Rust tetap murni: snapshot dikirim dari Kotlin sebagai masukan; Rust yang menghitung dasar, pemicu, dan arah (Decimal).
+- Masa pemanasan: pair belum dinilai sebelum ada snapshot minimal sekitar 10 menit (usulan); dasar memakai data yang ada sampai 60 menit. Ukuran memori kecil (satu titik per pair per polling, atau satu titik per menit).
 
 **Layar dan tombol**
 - Layar Screener: satu daftar (pair, harga, trx/mnt, spread, gerak 10m, buy%), tanpa teks penjelas; penanda untuk pair yang sedang dipegang. Dipasang sebagai tab ke-5 di T9.2 (indeks 4; Setelan tetap indeks 3) dan lulus uji HP.
@@ -118,7 +120,7 @@ Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9
 - Deep link: lihat bagian 3 (membuka browser; tombol buka pair dibatalkan).
 
 **Usulan desain dari hasil T9.0 (belum dikonfirmasi pengguna)**
-1. Pemicu lonjakan tahap 1: perubahan `last` terhadap snapshot di memori; pair yang melewati separuh ambang X baru diperiksa lewat `trades`. `vol_idr` bukan pemicu.
+1. Pemicu lonjakan tahap 1 (diperbarui 14 Nov): bandingkan `last` sekarang dengan harga dasar 1 jam dari snapshot di memori; pair yang melewati separuh ambang X baru diperiksa lewat `trades`. `vol_idr` bukan pemicu.
 2. Usia transaksi dihitung dari `server_time` ringkasan, bukan jam HP.
 3. Kedalaman: nilai = harga x jumlah (jumlah dianggap koin, BELUM dikonfirmasi), dihitung dari best bid dan best ask sejauh 0,5%.
 4. Interval polling bawaan 15 sampai 30 dtk dan bisa diatur: 94,7 KB tiap 15 dtk = ±23 MB per jam bila tidak terkompresi.
@@ -136,8 +138,8 @@ Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9
 | T9.1 | `core/src/screener.rs`: parser ringkasan pasar, transaksi, kedalaman; filter dua tahap; skor; Decimal; tanpa UI | **Selesai 14 Nov 2026** (core 119 tes lulus). Lihat catatan T9.1 di bawah |
 | T9.2 | FFI + layar Screener + setelan ambang (tabel `meta`) + isian "Modal trade ini" | **Selesai 14 Nov 2026** (core 125 tes, ffi 29 tes lulus; uji HP lulus). Lihat catatan T9.2 di bawah |
 | T9.3 | Tombol buka pair di Indodax | **DIBATALKAN 14 Nov 2026** (tautan web membuka browser; pengguna tidak memerlukan tombol ini). Tidak ada kode; nomor T9.3 tidak dipakai ulang |
-| T9.4 | Deteksi lonjakan, `LayananScreener` (layanan terpisah, saklar sendiri), saluran dan notifikasi lonjakan | Butuh melihat `LayananLatar.kt` (sebagai acuan, tidak diubah) dan manifest |
-| Penutup | Uji bersamaan dengan pantauan order; PRD v1.9 bila ada perubahan; rilis 0.9.0-uji | Pastikan notifikasi TP/SL tidak terganggu |
+| T9.4 | Filter Lonjakan di layar Screener (versi baru): Rust: snapshot harga sebagai masukan, harga dasar rata-rata 60 menit, pemicu, tahap 2 dari `trades`, arah ▲/▼; FFI: fungsi baru di `screener_ffi.rs`; Kotlin: sakelar Lonjakan, polling ringkasan 15 sampai 30 dtk saat layar terbuka, ambang X/M di kartu "Ambang". TANPA `LayananScreener`, manifest, atau notifikasi | Butuh `screener.rs`, `screener_ffi.rs`, `LayarScreener.kt` terbaru; jawab pertanyaan no. 21 dulu |
+| Penutup | PRD v1.10 bila ada perubahan; uji lapangan angka default lonjakan; rilis 0.9.0-uji | Tidak perlu uji bersamaan dengan pantauan order karena tidak ada layanan baru; tetap cek notifikasi TP/SL normal |
 
 **Catatan T9.1 (selesai 14 Nov 2026)**
 - Modul `core/src/screener.rs` MURNI: tanpa jaringan dan tanpa database; hanya mengurai teks JSON yang diberikan pemanggil. Pengambilan data publik (summaries, trades, depth) ditambahkan di T9.2 pada sisi klien (`client.rs`, selesai).
@@ -157,11 +159,11 @@ Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9
 - Kotlin: `LayarScreener.kt` sebagai tab ke-5; `MainActivity.kt` hanya berubah 3 baris (nama tab, daftar layar, komentar). Penyegaran 45 dtk hanya saat layar terlihat; jeda minimal 40 dtk (otomatis) dan 10 dtk (tombol Segarkan). Baris dua tingkat: nama, penanda (⚠ dominasi, Dipegang), harga; lalu trx/mnt, spread, gerak, buy. Kartu "Ambang" tersembunyi sampai diketuk. Layar jalan tanpa kunci API. Mengetuk baris tidak melakukan apa pun (tombol buka pair dibatalkan); komentar kelas di `LayarScreener.kt` masih menyebut T9.3, rapikan saat berkas itu disentuh lagi.
 - `tools/terapkan_t9_2.sh` hanya alat pemasangan sekali pakai (menambah baris `mod` dan ekspor); tidak perlu disimpan di repo bila tidak mau.
 - Tes: core 119 -> 125 (+5 setelan, +1 client), ffi 24 -> 29 (+5).
-- Belum ada: filter spread terikat TP (FR-32), lonjakan dan `LayananScreener` (T9.4). Buka pair di Indodax dibatalkan.
+- Belum ada: filter spread terikat TP (FR-32), filter Lonjakan (T9.4, tanpa layanan). Buka pair di Indodax dibatalkan.
 
-**Berkas yang diminta sebelum T9.4 (jangan menebak isinya):** `app/aplikasi/src/main/AndroidManifest.xml` (deklarasi `LayananScreener`), `app/aplikasi/src/main/kotlin/id/catatanscalping/app/LayananLatar.kt` (acuan pola layanan dan notifikasi, tidak diubah), `PenerimaBoot.kt` (apakah `LayananScreener` ikut menyala setelah boot), `Aplikasi.kt` (kemungkinan tempat membuat saluran notifikasi), `PenjagaPantauan.kt` dan `LogDiag.kt` bila `LayananScreener` perlu log; `Sinkron.kt` hanya bila perlu. Juga `core/src/screener.rs` versi terbaru bila sudah berubah.
+**Berkas yang diminta sebelum T9.4 (diperbarui 14 Nov; jangan menebak isinya):** `core/src/screener.rs`, `ffi/src/screener_ffi.rs`, `app/aplikasi/src/main/kotlin/id/catatanscalping/app/LayarScreener.kt`. Manifest, `LayananLatar.kt`, `PenerimaBoot.kt`, dan `Aplikasi.kt` tidak lagi diperlukan untuk T9.4 (tanpa layanan dan notifikasi).
 
-**Pertanyaan terbuka Fase 9:** angka default lonjakan dan filter tambahan (ditentukan dari uji lapangan); WebSocket publik. Terjawab: tab ke-5 (dipakai di T9.2, lulus uji HP); arti `jumlah` depth = KOIN (dikonfirmasi pengguna, dipakai di T9.1). Skema deep link terjawab (membuka browser; tombol buka pair dibatalkan). Terbuka untuk T9.4: apa yang terjadi saat notifikasi lonjakan diketuk (usulan: buka aplikasi ini di tab Screener). PRD bagian 16 (no. 16, 17, dan 18) belum diperbarui; catat di PRD v1.9 (no. 16: tab ke-5 dipakai; no. 17: deep link web membuka browser, tombol buka pair dibatalkan dan FR-37 dihapus; no. 18: `trades` selalu 500 item, bentuk `depth` dan `vol_idr` terjawab di T9.0).
+**Pertanyaan terbuka Fase 9:** (21) snapshot harga lonjakan tetap di memori selama proses aplikasi hidup (usulan, agar menutup layar sebentar tidak mengulang pemanasan sampai 1 jam) atau dikosongkan tiap layar Screener ditutup; dan syarat trx/mnt tahap 2: M absolut saja atau juga N kali dasar 10 menit. Angka default lonjakan (X, M, jendela, interval polling, minimal pemanasan, maks pair per siklus) ditentukan dari uji lapangan; WebSocket publik tidak diasumsikan. Terjawab: tab ke-5, arti `jumlah` depth = KOIN, deep link membuka browser (tombol buka pair dibatalkan), notifikasi dan layanan terpisah dibatalkan. PRD v1.9 sudah memperbarui bagian 16 no. 15 sampai 20 dan menghapus FR-35, FR-36, FR-37.
 
 ---
 
@@ -216,9 +218,9 @@ catatan-scalping/
 │           LayarSetelan, Cadangan, PenerimaBoot, Tema, Format, Komponen,
 │           Latar, Sinkron, GrafikView, LayananLatar, LogDiag, Aplikasi,
 │           PenjagaPantauan, KunciAman
-│           [Fase 9: LayarScreener (T9.2, selesai); BARU: LayananScreener]
+│           [Fase 9: LayarScreener (T9.2, selesai); T9.4 mengubah file ini, tanpa layanan baru]
 ├── docs/
-│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.8)
+│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.9)
 │   ├── PANDUAN_RELEASE.md
 │   └── prototype/Catatan_trading__prototype_UI.html
 └── tools/
@@ -227,7 +229,7 @@ catatan-scalping/
     [Fase 9: verifikasi_api_publik.py (T9.0, selesai)]
 ```
 
-Nama berkas Fase 9 yang belum dikerjakan (LayananScreener) masih rencana; final saat dikerjakan.
+Tidak ada berkas layanan baru di Fase 9 (`LayananScreener` dibatalkan 14 Nov 2026).
 
 ---
 
@@ -242,5 +244,6 @@ Terkonfirmasi dari `git log` (14 Nov 2026):
 - T9.0: verifikasi API publik Indodax (hash: isi dari `git log --oneline -1`)
 - T9.1: modul screener (hash: isi dari `git log --oneline -1`)
 - T9.2: FFI, layar Screener, setelan ambang (hash: isi dari `git log --oneline -1`)
+- Dokumen: PRD v1.9 dan PROGRESS (notifikasi lonjakan dibatalkan; T9.4 jadi filter Lonjakan, dasar rata-rata 1 jam) (hash: isi dari `git log --oneline -1`)
 
 Titik rollback sebelum Fase 9: tag `v0.8.0-uji`.
