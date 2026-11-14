@@ -43,17 +43,17 @@ import uniffi.scalping_ffi.simpanSetelanScreener
  * apa pun; status koneksi exchange hanya dirinci bila ada yang bermasalah.
  */
 class LayarScreener(a: MainActivity) : Layar(a) {
-    private val isiModal = ui.input("Modal trade ini (Rp)")
+    private val isiModal = ui.input("Modal trade ini (Rp)").ribuan()
     private val statusLonjakan = ui.mute("", 12f)
     private val statusDaftar = ui.mute("", 12f)
     private val kartuLonjakan = ui.kartu()
     private val kartuDaftar = ui.kartu()
 
     // --- ambang (semua dari Rust; kosong = filter mati) ---
-    private val fHargaMin = ui.input("mati")
-    private val fHargaMaks = ui.input("mati")
-    private val fVolMin = ui.input("mati")
-    private val fVolMaks = ui.input("mati")
+    private val fHargaMin = ui.input("mati").ribuan()
+    private val fHargaMaks = ui.input("mati").ribuan()
+    private val fVolMin = ui.input("mati").ribuan()
+    private val fVolMaks = ui.input("mati").ribuan()
     private val fTrxMin = ui.input("mati")
     private val fJendela = ui.input("wajib")
     private val fSpread = ui.input("mati")
@@ -270,7 +270,7 @@ class LayarScreener(a: MainActivity) : Layar(a) {
         if (perluDaftar) daftarMs = sekarang
         renderStatus()
         val db = a.pathDb
-        val modal = isiModal.text.toString().trim()
+        val modal = isiModal.teksAngka()
         Latar.jaringan.execute {
             val rl = runCatching { pindaiLonjakan(db) }
             val rd = if (perluDaftar) runCatching { jalankanScreener(db, modal) } else null
@@ -602,10 +602,10 @@ class LayarScreener(a: MainActivity) : Layar(a) {
     private fun ambilKolom(): SetelanScreenerUi {
         fun teks(e: EditText) = e.text.toString().trim()
         return SetelanScreenerUi(
-            hargaMin = teks(fHargaMin),
-            hargaMaks = teks(fHargaMaks),
-            volMin = teks(fVolMin),
-            volMaks = teks(fVolMaks),
+            hargaMin = fHargaMin.teksAngka(),
+            hargaMaks = fHargaMaks.teksAngka(),
+            volMin = fVolMin.teksAngka(),
+            volMaks = fVolMaks.teksAngka(),
             trxMntMin = teks(fTrxMin),
             jendelaMenit = teks(fJendela),
             spreadMaks = teks(fSpread),

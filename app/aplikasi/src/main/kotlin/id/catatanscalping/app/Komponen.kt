@@ -6,7 +6,10 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
+import android.text.method.DigitsKeyListener
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -43,6 +46,61 @@ fun Button.aktif(ya: Boolean) {
     isEnabled = ya
     alpha = if (ya) 1f else 0.45f
 }
+
+/**
+ * T10.6: kolom nominal (harga, volume, modal) menampilkan titik pemisah ribuan saat diketik:
+ * 2000000000 menjadi 2.000.000.000. Koma tetap pemisah desimal; titik selalu pemisah ribuan.
+ * Pakai `teksAngka()` untuk membaca nilainya (titik dibuang) sebelum dikirim ke Rust.
+ */
+fun EditText.ribuan(): EditText {
+    // Pendengar tombol bawaan angka-desimal hanya menerima koma (locale id); titik perlu diterima juga.
+    @Suppress("DEPRECATION")
+    keyListener = object : DigitsKeyListener() {
+        override fun getAcceptedChars(): CharArray = "0123456789.,".toCharArray()
+    }
+    setRawInputType(InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
+    addTextChangedListener(object : TextWatcher {
+        private var sibuk = false
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        override fun afterTextChanged(e: Editable) {
+            if (sibuk) return
+            val mentah = e.toString()
+            val hasil = formatRibuan(mentah)
+            if (hasil == mentah) return
+            val posisi = selectionStart.coerceIn(0, mentah.length)
+            val penting = mentah.substring(0, posisi).count { it.isDigit() || it == ',' }
+            sibuk = true
+            e.replace(0, e.length, hasil)
+            var n = 0
+            var idx = 0
+            while (idx < hasil.length && n < penting) {
+                if (hasil[idx].isDigit() || hasil[idx] == ',') n++
+                idx++
+            }
+            setSelection(idx.coerceIn(0, hasil.length))
+            sibuk = false
+        }
+    })
+    return this
+}
+
+/** "2000000" menjadi "2.000.000"; "1234,5" menjadi "1.234,5". Titik di masukan dianggap sisa pemisah ribuan. */
+fun formatRibuan(masuk: String): String {
+    val koma = masuk.indexOf(',')
+    val bulat = (if (koma >= 0) masuk.substring(0, koma) else masuk).filter { it.isDigit() }
+    val desimal = if (koma >= 0) masuk.substring(koma + 1).filter { it.isDigit() } else null
+    val sb = StringBuilder()
+    for ((i, c) in bulat.withIndex()) {
+        if (i > 0 && (bulat.length - i) % 3 == 0) sb.append('.')
+        sb.append(c)
+    }
+    if (desimal != null) sb.append(',').append(desimal)
+    return sb.toString()
+}
+
+/** Nilai kolom nominal tanpa titik ribuan (koma desimal tetap), siap dikirim ke Rust. */
+fun EditText.teksAngka(): String = text.toString().trim().replace(".", "")
 
 /** Pabrik komponen bertema (kartu, tombol, kolom isian, dan seterusnya). Hanya tampilan. */
 class Ui(val ctx: Context, val t: Tema) {
