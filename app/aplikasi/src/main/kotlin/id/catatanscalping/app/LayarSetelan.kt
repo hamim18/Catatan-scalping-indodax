@@ -56,7 +56,7 @@ class LayarSetelan(a: MainActivity) : Layar(a) {
     private val teksLog = ui.mono("")
 
     init {
-        header("Setelan")
+        header("Setelan", kembali = true)
 
         // --- Target per trade ---
         val kTrade = ui.kartu()

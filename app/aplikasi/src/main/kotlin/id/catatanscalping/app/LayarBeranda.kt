@@ -215,7 +215,10 @@ class LayarBeranda(a: MainActivity) : Layar(a) {
             kartuAset.tambah(ui.mute(pesan), atas = 4)
         } else {
             kartuAset.tambah(ui.teks(d.total, 32f, tebal = true), atas = 2)
-            kartuAset.tambah(ui.baris(ui.mute("Buying power"), ui.teks(d.idr, 14f, tebal = true)), atas = 6)
+            // T10.4: tanpa koin, Buying power sama dengan total aset, jadi barisnya disembunyikan
+            if (d.koin.isNotEmpty()) {
+                kartuAset.tambah(ui.baris(ui.mute("Buying power"), ui.teks(d.idr, 14f, tebal = true)), atas = 6)
+            }
             for (k in d.koin) {
                 kartuAset.tambah(ui.baris(ui.teks(k.koin, 14f, tebal = true), ui.teks(k.nilai, 14f)), atas = 8)
             }

@@ -1,9 +1,11 @@
 package id.catatanscalping.app
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Typeface
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -14,9 +16,13 @@ import android.view.WindowInsets
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 
 /**
- * Kerangka aplikasi: lima tab (Beranda, Posisi, Riwayat, Setelan, Screener) dengan navigasi bawah seperti prototype.
+ * Kerangka aplikasi: empat tab di navigasi bawah (Beranda, Posisi, Riwayat, Screener) dan menu ☰ di
+ * pojok kanan atas tiap layar (Setelan, Panduan). Layar menu tidak punya tab; tombol kembali sistem
+ * atau ‹ membawa pengguna ke tab sebelumnya.
  * Hanya tampilan; semua logika ada di Rust.
  */
 class MainActivity : Activity() {
@@ -30,12 +36,16 @@ class MainActivity : Activity() {
     val prefs get() = getSharedPreferences(PantauBersama.PREF, MODE_PRIVATE)
     val pathDb: String get() = Sinkron.pathDb(this)
 
-    private val namaTab = listOf("Beranda", "Posisi", "Riwayat", "Setelan", "Screener")
+    // Urutan layar: 0..3 = tab navigasi, 4 = Setelan, 5 = Panduan (dibuka dari menu ☰).
+    private val namaTab = listOf("Beranda", "Posisi", "Riwayat", "Screener")
     private lateinit var layar: List<Layar>
     private val tombolNav = ArrayList<TextView>()
     private var aktif = 0
+    private var tabSebelumMenu = 0
     private val utama = Handler(Looper.getMainLooper())
     private val segarkanTunda = Runnable { layar[aktif].segarkan() }
+
+    private var callbackKembali: Any? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,7 +55,10 @@ class MainActivity : Activity() {
         ui = Ui(this, tema)
         kunci = KunciAman(this)
 
-        layar = listOf(LayarBeranda(this), LayarPosisi(this), LayarRiwayat(this), LayarSetelan(this), LayarScreener(this))
+        layar = listOf(
+            LayarBeranda(this), LayarPosisi(this), LayarRiwayat(this), LayarScreener(this),
+            LayarSetelan(this), LayarPanduan(this),
+        )
         val konten = FrameLayout(this)
         for (l in layar) konten.addView(l.root, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
@@ -88,7 +101,9 @@ class MainActivity : Activity() {
 
         // Pertama kali (belum ada kunci) langsung ke Setelan.
         // (data dimuat di onResume, jadi tidak dimuat dua kali)
-        pilih(savedInstanceState?.getInt(KUNCI_TAB) ?: if (kunci.ujungKey() == null) 3 else 0, muat = false)
+        val awal = savedInstanceState?.getInt(KUNCI_TAB) ?: if (kunci.ujungKey() == null) TAB_SETELAN else 0
+        tabSebelumMenu = savedInstanceState?.getInt(KUNCI_TAB_SEBELUM) ?: 0
+        pilih(awal, muat = false)
     }
 
     private fun pilih(i: Int, muat: Boolean = true) {
@@ -99,8 +114,45 @@ class MainActivity : Activity() {
             b.setTextColor(if (n == i) tema.accent else tema.mute)
             b.typeface = Typeface.create(Typeface.DEFAULT, if (n == i) 700 else 500, false)
         }
-        if (ganti) layar[i].root.scrollTo(0, 0)
+        if (ganti) layar[i].gulirKeAtas()
+        aturTombolKembali(i >= TAB_SETELAN)
         if (muat) layar[i].segarkan()
+    }
+
+    /** Menu ☰: dipanggil dari header tiap layar tab. */
+    fun bukaMenu() {
+        val daftar = arrayOf("Setelan", "Panduan")
+        AlertDialog.Builder(this)
+            .setItems(daftar) { _, n ->
+                if (aktif < TAB_SETELAN) tabSebelumMenu = aktif
+                pilih(if (n == 0) TAB_SETELAN else TAB_PANDUAN)
+            }
+            .show()
+    }
+
+    /** Dari layar menu kembali ke tab terakhir. */
+    fun kembaliDariMenu() {
+        if (aktif >= TAB_SETELAN) pilih(tabSebelumMenu.coerceIn(0, namaTab.size - 1))
+    }
+
+    /** Pada Android 13+ tombol kembali predictif tidak lagi memanggil onBackPressed: daftarkan callback hanya di layar menu. */
+    private fun aturTombolKembali(layarMenu: Boolean) {
+        if (Build.VERSION.SDK_INT < 33) return
+        val d = onBackInvokedDispatcher
+        val lama = callbackKembali as? OnBackInvokedCallback
+        if (layarMenu && lama == null) {
+            val c = OnBackInvokedCallback { kembaliDariMenu() }
+            callbackKembali = c
+            d.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, c)
+        } else if (!layarMenu && lama != null) {
+            d.unregisterOnBackInvokedCallback(lama)
+            callbackKembali = null
+        }
+    }
+
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+    override fun onBackPressed() {
+        if (aktif >= TAB_SETELAN) kembaliDariMenu() else super.onBackPressed()
     }
 
     /** Dipanggil setelah data berubah (sinkron selesai, setelan disimpan, dan seterusnya). */
@@ -132,6 +184,7 @@ class MainActivity : Activity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt(KUNCI_TAB, aktif)
+        outState.putInt(KUNCI_TAB_SEBELUM, tabSebelumMenu)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -157,7 +210,9 @@ class MainActivity : Activity() {
 
     companion object {
         const val KODE_NOTIF = 7
-        const val TAB_SETELAN = 3
+        const val TAB_SETELAN = 4
+        const val TAB_PANDUAN = 5
         private const val KUNCI_TAB = "tab"
+        private const val KUNCI_TAB_SEBELUM = "tab_sebelum"
     }
 }

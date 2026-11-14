@@ -24,7 +24,6 @@ import uniffi.scalping_ffi.floatingPosisi
  * dihitung di Rust. Gagal ambil harga tidak mengganggu daftar posisi.
  */
 class LayarPosisi(a: MainActivity) : Layar(a) {
-    private val chip = ui.Chip()
     private val daftar = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
 
     // posisi dari database dan floating terakhir per simbol
@@ -52,8 +51,7 @@ class LayarPosisi(a: MainActivity) : Layar(a) {
     }
 
     init {
-        chip.atur("0 posisi", null)
-        header("Open posisi", chip.root)
+        header("Open posisi")
         isi.tambah(daftar)
         pengatur.postDelayed(putaranHarga, JEDA_PUTARAN_MS)
     }
@@ -126,7 +124,6 @@ class LayarPosisi(a: MainActivity) : Layar(a) {
 
     private fun tampilGalat(pesan: String) {
         daftar.removeAllViews()
-        chip.atur("-", null)
         val k = ui.kartu()
         k.tambah(
             ui.mute(
@@ -139,7 +136,6 @@ class LayarPosisi(a: MainActivity) : Layar(a) {
 
     private fun tampil(posisi: List<PosisiUi>) {
         daftar.removeAllViews()
-        chip.atur("${posisi.size} posisi", null)
         if (posisi.isEmpty()) {
             daftar.tambah(ui.kartu().apply { tambah(ui.mute("Belum ada posisi terbuka.")) })
             return

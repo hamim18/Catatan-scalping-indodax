@@ -89,6 +89,9 @@ pub struct BarisTertutup {
     pub diterima: String,
     pub profit: String,
     pub persen: String,
+    /// T10.2: harga beli dan jual per koin (sudah termasuk fee, = modal dan diterima dibagi koin), siap tampil
+    pub harga_beli: String,
+    pub harga_jual: String,
     pub waktu_buka_ms: i64,
     pub waktu_tutup_ms: i64,
 }
@@ -282,6 +285,8 @@ pub fn hitung_posisi(path_db: String, semua_riwayat: bool) -> Result<RingkasanHi
                 diterima: bulatkan_idr(t.idr_diterima).to_string(),
                 profit: bulatkan_idr(t.profit).to_string(),
                 persen: t.persen.round_dp(2).to_string(),
+                harga_beli: harga_per_koin(t.modal, t.koin),
+                harga_jual: harga_per_koin(t.idr_diterima, t.koin),
                 waktu_buka_ms: t.waktu_buka_ms,
                 waktu_tutup_ms: t.waktu_tutup_ms,
             })
@@ -540,6 +545,11 @@ fn fmt_harga(d: Decimal) -> String {
     } else {
         ribuan(&bulatkan_idr(d).to_string())
     }
+}
+
+/// T10.2: harga per koin untuk tampilan riwayat (IDR dibagi koin). "-" bila koin nol.
+fn harga_per_koin(idr: Decimal, koin: Decimal) -> String {
+    idr.checked_div(koin).map(fmt_harga).unwrap_or_else(|| "-".to_string())
 }
 
 fn fmt_rupiah(d: Decimal) -> String {
@@ -929,6 +939,8 @@ fn baris_tertutup(t: &TradeTertutup) -> BarisTertutup {
         diterima: bulatkan_idr(t.idr_diterima).to_string(),
         profit: bulatkan_idr(t.profit).to_string(),
         persen: t.persen.round_dp(2).to_string(),
+        harga_beli: harga_per_koin(t.modal, t.koin),
+        harga_jual: harga_per_koin(t.idr_diterima, t.koin),
         waktu_buka_ms: t.waktu_buka_ms,
         waktu_tutup_ms: t.waktu_tutup_ms,
     }
@@ -1967,5 +1979,31 @@ mod tes_floating {
         assert_eq!(r.len(), 2); // xyz tanpa harga, doge tidak ganda
         assert_eq!((r[0].koin.as_str(), r[0].harga.as_str()), ("DOGE", "3512.5"));
         assert_eq!((r[1].koin.as_str(), r[1].harga.as_str()), ("SOL", "2950000"));
+    }
+}
+
+#[cfg(test)]
+mod tes_harga_per_koin {
+    use super::*;
+
+    #[test]
+    fn harga_beli_dan_jual_icnt() {
+        let koin: Decimal = "16.35667833".parse().unwrap();
+        let modal: Decimal = "65526".parse().unwrap();
+        let diterima: Decimal = "65906".parse().unwrap();
+        assert_eq!(harga_per_koin(modal, koin), "4.006");
+        assert_eq!(harga_per_koin(diterima, koin), "4.029");
+    }
+
+    #[test]
+    fn koin_nol_tidak_panik() {
+        assert_eq!(harga_per_koin(Decimal::from(1000), Decimal::ZERO), "-");
+    }
+
+    #[test]
+    fn koin_murah_dua_desimal() {
+        let koin: Decimal = "100".parse().unwrap();
+        let modal: Decimal = "7904".parse().unwrap();
+        assert_eq!(harga_per_koin(modal, koin), "79,04");
     }
 }

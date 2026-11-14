@@ -30,27 +30,23 @@ import uniffi.scalping_ffi.simpanSetelanLonjakan
 import uniffi.scalping_ffi.simpanSetelanScreener
 
 /**
- * T9.2: layar Screener (tab ke-5). HANYA informasi: daftar pair IDR yang lolos kriteria pengguna,
- * tanpa teks penjelas (gaya Fase 7). Tidak memengaruhi posisi, profit, target, grafik, atau statistik.
+ * Screener (T9.2, T9.4 sampai T9.6; T10.3): dua bagian pada satu layar, tanpa saklar mode:
+ * "Lonjakan" di atas (pair yang menyimpang dari rata-rata harga dasar) dan "Daftar" di bawah (pair yang
+ * lolos kriteria). HANYA informasi, tidak memengaruhi posisi, profit, target, grafik, atau statistik.
  * Data publik tanpa key, jadi layar ini jalan walau kunci API belum diisi.
- * Penyegaran otomatis hanya saat layar terlihat (FR-30). Hanya tampilan; semua hitungan di Rust.
- * Mengetuk baris tidak melakukan apa pun (tombol buka pair dibatalkan).
+ * Penyegaran otomatis hanya saat layar terlihat (FR-30): tiap siklus memindai Lonjakan, dan Daftar
+ * ikut dipindai bila sudah lewat jeda daftar (satu thread jaringan, berurutan). Tanpa layanan latar
+ * dan tanpa notifikasi. Hanya tampilan; semua hitungan di Rust.
  *
- * T9.4: tombol mode "Daftar / Lonjakan". Mode Lonjakan memolling ringkasan pasar tiap beberapa detik
- * (interval dari setelan) HANYA saat layar terlihat dan mode aktif; riwayat harga ada di memori Rust.
- * Tanpa layanan latar dan tanpa notifikasi.
- *
- * T9.5: harga global. Tiap baris (kedua mode) memuat harga wajar dari Binance, Bybit, OKX dan selisih
- * Indodax; di bawah status ada baris koneksi exchange dan perbandingan kurs. Hanya informasi
- * pembanding; semua hitungan di Rust.
- *
- * T9.6: arah harga global. Satu baris tambahan per pair: perubahan N menit terakhir di exchange luar
- * (median) dibanding Indodax dalam USDT. Kosong sampai data riwayat cukup (hanya terkumpul saat layar
- * ini terbuka). Hanya informasi; semua hitungan di Rust.
+ * Harga global (T9.5, T9.6): tiap baris memuat harga wajar dari Binance, Bybit, OKX, selisih Indodax,
+ * dan arah harga N menit terakhir (kosong sampai data cukup). Baris tanpa pembanding tidak menampilkan
+ * apa pun; status koneksi exchange hanya dirinci bila ada yang bermasalah.
  */
 class LayarScreener(a: MainActivity) : Layar(a) {
     private val isiModal = ui.input("Modal trade ini (Rp)")
-    private val statusTeks = ui.mute("", 12f)
+    private val statusLonjakan = ui.mute("", 12f)
+    private val statusDaftar = ui.mute("", 12f)
+    private val kartuLonjakan = ui.kartu()
     private val kartuDaftar = ui.kartu()
 
     // --- ambang (semua dari Rust; kosong = filter mati) ---
@@ -86,8 +82,6 @@ class LayarScreener(a: MainActivity) : Layar(a) {
     private var lTurun = true
     private lateinit var tombolNaik: Button
     private lateinit var tombolTurun: Button
-    private lateinit var tombolMode: Button
-    private var modeLonjakan = false
     private var intervalMs = 20_000L
 
     // --- ambang Harga global (T9.5) ---
@@ -108,6 +102,7 @@ class LayarScreener(a: MainActivity) : Layar(a) {
     private var galatL: String? = null
     private var memuat = false
     private var mulaiMs = 0L
+    private var daftarMs = 0L
 
     private val pengatur = Handler(Looper.getMainLooper())
     private var pernahTerpasang = false
@@ -119,7 +114,7 @@ class LayarScreener(a: MainActivity) : Layar(a) {
                 return // layar sudah dilepas: hentikan putaran
             }
             if (root.isShown && root.windowVisibility == View.VISIBLE) muat(jedaOtomatisMin())
-            pengatur.postDelayed(this, if (modeLonjakan) intervalMs else JEDA_PUTARAN_MS)
+            pengatur.postDelayed(this, intervalMs)
         }
     }
 
@@ -130,21 +125,22 @@ class LayarScreener(a: MainActivity) : Layar(a) {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             tambah(isiModal, bobot = 1f, lebar = 0)
-            tambah(ui.tombol("Segarkan") { muat(JEDA_MANUAL_MIN_MS) }, kiri = 8, lebar = WRAP_CONTENT)
+            tambah(ui.tombol("Segarkan") { muat(JEDA_MANUAL_MIN_MS, paksaDaftar = true) }, kiri = 8, lebar = WRAP_CONTENT)
         }
         isi.tambah(barisModal)
-        tombolMode = ui.tombol("Mode: Daftar") {
-            modeLonjakan = !modeLonjakan
-            perbaruiTombolMode()
-            render()
-            muat(0L)
-        }
-        isi.tambah(tombolMode, atas = 8)
-        isi.tambah(statusTeks, atas = 8, bawah = 2)
-        isi.tambah(statusGlobal, bawah = 10)
+        isi.tambah(statusGlobal, atas = 8)
+
+        // --- Lonjakan ---
+        isi.tambah(ui.judulBagian("Lonjakan"), atas = 12)
+        isi.tambah(statusLonjakan, atas = 2, bawah = 6)
+        isi.tambah(kartuLonjakan)
+
+        // --- Daftar ---
+        isi.tambah(ui.judulBagian("Daftar"), atas = 18)
+        isi.tambah(statusDaftar, atas = 2, bawah = 6)
         isi.tambah(kartuDaftar)
 
-        // --- kartu ambang (tersembunyi sampai judul diketuk) ---
+        // --- kartu ambang (tersembunyi sampai judul diketuk; tiga bagian lipat) ---
         val kartuAmbang = ui.kartu()
         val judul = ui.teks("Ambang  ▸", 14f, tebal = true)
         val isiAmbang = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
@@ -157,26 +153,30 @@ class LayarScreener(a: MainActivity) : Layar(a) {
         kartuAmbang.tambah(judul)
         kartuAmbang.tambah(isiAmbang, atas = 6)
 
-        isiAmbang.tambah(ui.mute("Kosong = filter mati.", 12f), bawah = 4)
-        isiAmbang.tambah(barisIsian("Harga minimum (Rp)", fHargaMin))
-        isiAmbang.tambah(barisIsian("Harga maksimum (Rp)", fHargaMaks))
-        isiAmbang.tambah(barisIsian("Volume 24 jam minimum (Rp)", fVolMin))
-        isiAmbang.tambah(barisIsian("Volume 24 jam maksimum (Rp)", fVolMaks))
-        isiAmbang.tambah(barisIsian("Trx/mnt minimum", fTrxMin))
-        isiAmbang.tambah(barisIsian("Jendela (menit)", fJendela))
-        isiAmbang.tambah(barisIsian("Spread maksimum (%)", fSpread))
-        isiAmbang.tambah(barisIsian("Range 24 jam minimum (%)", fRange24))
-        isiAmbang.tambah(barisIsian("Usia transaksi maksimum (detik)", fUsia))
-        isiAmbang.tambah(barisIsian("Gerak jendela minimum (%)", fGerak))
-        isiAmbang.tambah(barisIsian("Menit aktif minimum (%)", fMenitAktif))
-        isiAmbang.tambah(barisIsian("Arah jendela minimum (%)", fArah))
-        isiAmbang.tambah(barisIsian("Kedalaman: kelipatan modal", fKedKelipatan))
-        isiAmbang.tambah(barisIsian("Kedalaman: jarak (%)", fKedJarak))
-        isiAmbang.tambah(barisIsian("Tanda dominasi (%)", fDominasi))
-        isiAmbang.tambah(barisIsian("Biaya round-trip (%)", fBiaya))
+        val bagianDaftar = bagianLipat(isiAmbang, "Daftar", atas = 8)
+        bagianDaftar.tambah(barisIsian("Harga minimum (Rp)", fHargaMin))
+        bagianDaftar.tambah(barisIsian("Harga maksimum (Rp)", fHargaMaks))
+        bagianDaftar.tambah(barisIsian("Volume 24 jam minimum (Rp)", fVolMin))
+        bagianDaftar.tambah(barisIsian("Volume 24 jam maksimum (Rp)", fVolMaks))
+        bagianDaftar.tambah(barisIsian("Trx/mnt minimum", fTrxMin))
+        bagianDaftar.tambah(barisIsian("Jendela (menit)", fJendela))
+        bagianDaftar.tambah(barisIsian("Spread maksimum (%)", fSpread))
+        bagianDaftar.tambah(barisIsian("Range 24 jam minimum (%)", fRange24))
+        bagianDaftar.tambah(barisIsian("Usia transaksi maksimum (detik)", fUsia))
+        bagianDaftar.tambah(barisIsian("Gerak jendela minimum (%)", fGerak))
+        bagianDaftar.tambah(barisIsian("Menit aktif minimum (%)", fMenitAktif))
+        bagianDaftar.tambah(barisIsian("Arah jendela minimum (%)", fArah))
+        bagianDaftar.tambah(barisIsian("Kedalaman: kelipatan modal", fKedKelipatan))
+        bagianDaftar.tambah(barisIsian("Kedalaman: jarak (%)", fKedJarak))
+        bagianDaftar.tambah(barisIsian("Tanda dominasi (%)", fDominasi))
+        bagianDaftar.tambah(barisIsian("Biaya round-trip (%)", fBiaya))
+        tombolUrutan = ui.tombol("Urutan: Skor") {
+            urutan = if (urutan == "skor") "trx" else "skor"
+            perbaruiTombolUrutan()
+        }
+        bagianDaftar.tambah(tombolUrutan, atas = 8)
 
-        isiAmbang.tambah(ui.teks("Lonjakan", 14f, tebal = true), atas = 14, bawah = 4)
-        isiAmbang.tambah(ui.mute("Dasar = rata-rata harga dalam periode di bawah. Tanpa notifikasi.", 12f), bawah = 4)
+        val bagianLonjakan = bagianLipat(isiAmbang, "Lonjakan", atas = 10)
         tombolNaik = ui.tombol("Naik ▲: ya") {
             lNaik = !lNaik
             perbaruiTombolArah()
@@ -190,34 +190,27 @@ class LayarScreener(a: MainActivity) : Layar(a) {
             tambah(tombolNaik, bobot = 1f, lebar = 0, kanan = 4)
             tambah(tombolTurun, bobot = 1f, lebar = 0, kiri = 4)
         }
-        isiAmbang.tambah(barisArah, bawah = 4)
-        isiAmbang.tambah(barisIsian("Lonjakan minimum (%)", fLX))
-        isiAmbang.tambah(barisIsian("Trx/mnt minimum", fLM))
-        isiAmbang.tambah(barisIsian("Jendela trx/mnt (menit)", fLJendela))
-        isiAmbang.tambah(barisIsian("Rata-rata harga dasar (menit)", fLDasar))
-        isiAmbang.tambah(barisIsian("Pemanasan minimum (menit)", fLPemanasan))
-        isiAmbang.tambah(barisIsian("Maks pair diperiksa", fLMaks))
-        isiAmbang.tambah(barisIsian("Interval (detik)", fLInterval))
+        bagianLonjakan.tambah(barisArah, bawah = 4)
+        bagianLonjakan.tambah(barisIsian("Lonjakan minimum (%)", fLX))
+        bagianLonjakan.tambah(barisIsian("Trx/mnt minimum", fLM))
+        bagianLonjakan.tambah(barisIsian("Jendela trx/mnt (menit)", fLJendela))
+        bagianLonjakan.tambah(barisIsian("Rata-rata harga dasar (menit)", fLDasar))
+        bagianLonjakan.tambah(barisIsian("Pemanasan minimum (menit)", fLPemanasan))
+        bagianLonjakan.tambah(barisIsian("Maks pair diperiksa", fLMaks))
+        bagianLonjakan.tambah(barisIsian("Interval (detik)", fLInterval))
 
-        isiAmbang.tambah(ui.teks("Harga global", 14f, tebal = true), atas = 14, bawah = 4)
-        isiAmbang.tambah(ui.mute("Pembanding harga exchange luar. Hanya informasi.", 12f), bawah = 4)
+        val bagianGlobal = bagianLipat(isiAmbang, "Harga global", atas = 10)
         tombolGlobal = ui.tombol("Harga global: ya") {
             gAktif = !gAktif
             perbaruiTombolGlobal()
         }
-        isiAmbang.tambah(tombolGlobal, bawah = 4)
-        isiAmbang.tambah(barisIsian("Sebaran maksimum antar exchange (%)", fGSebaran))
-        isiAmbang.tambah(barisIsian("Curiga bila selisih di atas (%)", fGCuriga))
-        isiAmbang.tambah(barisIsian("Tanda selisih kurs di atas (%)", fGKurs))
-        isiAmbang.tambah(barisIsian("Interval ambil data (detik)", fGInterval))
-        isiAmbang.tambah(barisIsian("Jendela arah harga (menit)", fGArahMenit))
-        isiAmbang.tambah(barisIsian("Tanda arah: selisih minimum (%)", fGArahAmbang))
-
-        tombolUrutan = ui.tombol("Urutan: Skor") {
-            urutan = if (urutan == "skor") "trx" else "skor"
-            perbaruiTombolUrutan()
-        }
-        isiAmbang.tambah(tombolUrutan, atas = 10)
+        bagianGlobal.tambah(tombolGlobal, bawah = 4)
+        bagianGlobal.tambah(barisIsian("Sebaran maksimum antar exchange (%)", fGSebaran))
+        bagianGlobal.tambah(barisIsian("Curiga bila selisih di atas (%)", fGCuriga))
+        bagianGlobal.tambah(barisIsian("Tanda selisih kurs di atas (%)", fGKurs))
+        bagianGlobal.tambah(barisIsian("Interval ambil data (detik)", fGInterval))
+        bagianGlobal.tambah(barisIsian("Jendela arah harga (menit)", fGArahMenit))
+        bagianGlobal.tambah(barisIsian("Tanda arah: selisih minimum (%)", fGArahAmbang))
 
         val barisTombol = LinearLayout(a).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -228,9 +221,9 @@ class LayarScreener(a: MainActivity) : Layar(a) {
                 isiKolomGlobal(setelanGlobalBawaan())
             }, bobot = 1f, lebar = 0, kiri = 4)
         }
-        isiAmbang.tambah(barisTombol, atas = 10)
+        isiAmbang.tambah(barisTombol, atas = 12)
         isiAmbang.tambah(infoAmbang, atas = 8)
-        isi.tambah(kartuAmbang, atas = 12)
+        isi.tambah(kartuAmbang, atas = 18)
 
         perbaruiTombolArah()
         perbaruiTombolGlobal()
@@ -239,78 +232,87 @@ class LayarScreener(a: MainActivity) : Layar(a) {
         pengatur.postDelayed(putaran, JEDA_PUTARAN_MS)
     }
 
+    /** Subbagian ambang yang bisa dilipat (tertutup bawaan). Mengembalikan kolom isinya. */
+    private fun bagianLipat(induk: LinearLayout, nama: String, atas: Int): LinearLayout {
+        val judul = ui.teks("$nama  ▸", 14f, tebal = true)
+        val isiBagian = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL }
+        isiBagian.visibility = View.GONE
+        judul.setOnClickListener {
+            val buka = isiBagian.visibility != View.VISIBLE
+            isiBagian.visibility = if (buka) View.VISIBLE else View.GONE
+            judul.text = if (buka) "$nama  ▾" else "$nama  ▸"
+        }
+        induk.tambah(judul, atas = atas)
+        induk.tambah(isiBagian, atas = 4)
+        return isiBagian
+    }
+
     /** Dipanggil saat tab dibuka atau data aplikasi berubah (bisa sering): ada jeda minimal antar-pemindaian. */
     override fun segarkan() {
         muat(jedaOtomatisMin())
     }
 
-    private fun jedaOtomatisMin(): Long =
-        if (modeLonjakan) (intervalMs - 1_000L).coerceAtLeast(5_000L) else JEDA_OTOMATIS_MIN_MS
+    private fun jedaOtomatisMin(): Long = (intervalMs - 1_000L).coerceAtLeast(5_000L)
 
     // ---------- pemindaian ----------
 
-    private fun muat(jedaMinMs: Long) {
+    /**
+     * Satu siklus: Lonjakan selalu dipindai (snapshot harga terkumpul tiap siklus); Daftar ikut dipindai
+     * bila belum pernah, sudah lewat `JEDA_DAFTAR_MS`, atau dipaksa (tombol Segarkan, simpan ambang).
+     * Keduanya berurutan di satu thread jaringan; gagal satu tidak menggagalkan yang lain.
+     */
+    private fun muat(jedaMinMs: Long, paksaDaftar: Boolean = false) {
         val sekarang = System.currentTimeMillis()
         if (memuat || sekarang - mulaiMs < jedaMinMs) return
         memuat = true
         mulaiMs = sekarang
+        val perluDaftar = paksaDaftar || hasil == null || sekarang - daftarMs >= JEDA_DAFTAR_MS
+        if (perluDaftar) daftarMs = sekarang
         renderStatus()
         val db = a.pathDb
         val modal = isiModal.text.toString().trim()
-        val lonjakan = modeLonjakan
         Latar.jaringan.execute {
-            if (lonjakan) {
-                val r = runCatching { pindaiLonjakan(db) }
-                Latar.ui {
-                    memuat = false
-                    r.onSuccess {
-                        hasilL = it
-                        galatL = null
-                    }
-                    r.onFailure { galatL = Latar.pesan(it) }
-                    selesai(lonjakan)
+            val rl = runCatching { pindaiLonjakan(db) }
+            val rd = if (perluDaftar) runCatching { jalankanScreener(db, modal) } else null
+            Latar.ui {
+                memuat = false
+                rl.onSuccess {
+                    hasilL = it
+                    galatL = null
                 }
-            } else {
-                val r = runCatching { jalankanScreener(db, modal) }
-                Latar.ui {
-                    memuat = false
-                    r.onSuccess {
-                        hasil = it
-                        galat = null
-                    }
-                    r.onFailure { galat = Latar.pesan(it) }
-                    selesai(lonjakan)
+                rl.onFailure { galatL = Latar.pesan(it) }
+                rd?.onSuccess {
+                    hasil = it
+                    galat = null
                 }
+                rd?.onFailure { galat = Latar.pesan(it) }
+                render()
             }
         }
-    }
-
-    /** Mode bisa berganti saat pemindaian berjalan: tampilkan hasil mode aktif, lalu muat bila mode berubah. */
-    private fun selesai(modeSaatMulai: Boolean) {
-        render()
-        if (modeSaatMulai != modeLonjakan) muat(0L)
     }
 
     // ---------- tampilan ----------
 
     private fun render() {
+        kartuLonjakan.removeAllViews()
+        renderLonjakan()
         kartuDaftar.removeAllViews()
-        if (modeLonjakan) renderLonjakan() else renderDaftar()
+        renderDaftar()
         renderStatus()
     }
 
     private fun renderLonjakan() {
         val h = hasilL
         if (h == null) {
-            kartuDaftar.tambah(ui.mute(if (memuat) "Memuat..." else "–"))
+            kartuLonjakan.tambah(ui.mute(if (memuat) "Memuat..." else "–"))
         } else if (h.baris.isEmpty()) {
-            kartuDaftar.tambah(
+            kartuLonjakan.tambah(
                 ui.mute(if (h.jumlahPunyaDasar == 0) "Menunggu data harga dasar..." else "Tidak ada lonjakan."),
             )
         } else {
             for ((i, b) in h.baris.withIndex()) {
-                if (i > 0) kartuDaftar.tambah(View(a).apply { setBackgroundColor(t.line) }, tinggi = a.dp(1))
-                kartuDaftar.tambah(barisLonjakanView(b))
+                if (i > 0) kartuLonjakan.tambah(View(a).apply { setBackgroundColor(t.line) }, tinggi = a.dp(1))
+                kartuLonjakan.tambah(barisLonjakanView(b))
             }
         }
     }
@@ -331,36 +333,62 @@ class LayarScreener(a: MainActivity) : Layar(a) {
 
     private fun renderStatus() {
         renderStatusGlobal()
-        if (modeLonjakan) {
-            renderStatusLonjakan()
-            return
-        }
+        renderStatusDaftar()
+        renderStatusLonjakan()
+    }
+
+    private fun renderStatusDaftar() {
         val h = hasil
         val g = galat
-        statusTeks.text = when {
+        statusDaftar.text = when {
             g != null -> "Gagal memuat: $g" + (h?.let { " · daftar ${Format.waktuSingkat(it.waktuMs)}" } ?: "")
             h == null -> if (memuat) "Memuat..." else ""
             else -> buildString {
                 append(Format.waktuSingkat(h.waktuMs))
                 append(" · ").append(h.baris.size).append(" pair")
                 if (h.jumlahGagal > 0) append(" · ").append(h.jumlahGagal).append(" gagal")
-                if (h.jumlahDiperiksa < h.jumlahKandidat) {
-                    append(" · diperiksa ").append(h.jumlahDiperiksa).append(" dari ").append(h.jumlahKandidat)
-                }
             }
         }
-        statusTeks.setTextColor(if (g != null) t.loss else t.mute)
+        statusDaftar.setTextColor(if (g != null) t.loss else t.mute)
     }
 
-    /** Status koneksi exchange luar dan perbandingan kurs (T9.5). Hilang bila fitur dimatikan. */
+    private fun renderStatusLonjakan() {
+        val h = hasilL
+        val g = galatL
+        statusLonjakan.text = when {
+            g != null -> "Gagal memuat: $g" + (h?.let { " · daftar ${Format.waktuSingkat(it.waktuMs)}" } ?: "")
+            h == null -> if (memuat) "Memuat..." else ""
+            else -> buildString {
+                append(Format.waktuSingkat(h.waktuMs))
+                if (h.jumlahPunyaDasar == 0) {
+                    append(" · pemanasan ").append(h.rentangMenit).append(" dari ").append(h.pemanasanMenit).append(" mnt")
+                } else {
+                    append(" · ").append(h.baris.size).append(" lonjakan")
+                    append(" · data ").append(h.rentangMenit).append(" mnt")
+                }
+                if (h.jumlahGagal > 0) append(" · ").append(h.jumlahGagal).append(" gagal")
+            }
+        }
+        statusLonjakan.setTextColor(if (g != null) t.loss else t.mute)
+    }
+
+    /**
+     * Status koneksi exchange luar (T9.5). Semua tersambung dan kurs wajar: satu baris ringkas;
+     * bila ada yang gagal atau kurs menyimpang: rincian dan petunjuk.
+     */
     private fun renderStatusGlobal() {
-        val s = if (modeLonjakan) hasilL?.globalStatus else hasil?.globalStatus
+        val s = hasilL?.globalStatus ?: hasil?.globalStatus
         if (s == null) {
             statusGlobal.visibility = View.GONE
             return
         }
         statusGlobal.visibility = View.VISIBLE
         val gagal = s.exchange.filter { !it.ok }
+        if (gagal.isEmpty() && !s.kursTanda) {
+            statusGlobal.text = "Global ✓ ${s.exchange.size}/${s.exchange.size}"
+            statusGlobal.setTextColor(t.mute)
+            return
+        }
         statusGlobal.text = buildString {
             append("Global: ")
             append(s.exchange.joinToString("  ") { (if (it.ok) "✓ " else "✗ ") + it.nama })
@@ -372,7 +400,7 @@ class LayarScreener(a: MainActivity) : Layar(a) {
             for (g in gagal) append("\n").append(g.nama).append(": ").append(g.pesan)
             if (s.petunjukDns) append("\nNama host tidak ditemukan. Coba Private DNS HP: dns.google")
         }
-        statusGlobal.setTextColor(if (gagal.isNotEmpty() || s.kursTanda) t.warn else t.mute)
+        statusGlobal.setTextColor(t.warn)
     }
 
     /** Persen mentah dari Rust ("-1.25") menjadi teks bertanda memakai Format yang sama dengan layar lain. */
@@ -382,23 +410,23 @@ class LayarScreener(a: MainActivity) : Layar(a) {
         else -> "+" + Format.persen(s)
     }
 
-    /** Dua baris harga global: harga wajar + selisih + kualitas; lalu harga tiap exchange. */
+    /**
+     * Harga global per pair. Tanpa pembanding: tidak menampilkan apa pun. Satu baris wajar + selisih
+     * (+ kualitas); rincian per exchange hanya bila minimal dua exchange punya harga; lalu baris arah bila ada.
+     */
     private fun tambahGlobal(v: LinearLayout, g: InfoGlobalUi?) {
-        if (g == null) return
-        if (g.wajar.isEmpty()) {
-            v.tambah(ui.mute("global: ${g.kualitas}", 12f), atas = 2)
-            return
-        }
+        if (g == null || g.wajar.isEmpty()) return
         val atas = buildString {
             append("wajar ").append(g.wajar).append(" (").append(persenBertanda(g.selisih)).append(")")
             if (g.kualitas != "tinggi") append(" · ").append(g.kualitas)
             if (g.curiga) append(" ⚠")
         }
         v.tambah(if (g.curiga) ui.teks(atas, 12f, t.warn) else ui.mute(atas, 12f), atas = 2)
-        val rincian = g.rincian.joinToString("  ·  ") {
-            if (it.harga.isEmpty()) "${it.nama} –" else "${it.nama} ${it.harga} (${persenBertanda(it.selisih)})"
+        val ada = g.rincian.filter { it.harga.isNotEmpty() }
+        if (ada.size >= 2) {
+            val rincian = ada.joinToString("  ·  ") { "${it.nama} ${it.harga} (${persenBertanda(it.selisih)})" }
+            v.tambah(ui.mute(rincian, 12f), atas = 2)
         }
-        v.tambah(ui.mute(rincian, 12f), atas = 2)
         val ar = g.arah
         if (ar != null) {
             val teksArah = "${ar.menit} mnt: global ${panah(ar.global)}  ·  Indodax ${panah(ar.indodax)}" +
@@ -413,29 +441,6 @@ class LayarScreener(a: MainActivity) : Layar(a) {
         s.startsWith("-") -> "▼" + Format.persen(s.substring(1))
         s == "0" -> Format.persen(s)
         else -> "▲" + Format.persen(s)
-    }
-
-    private fun renderStatusLonjakan() {
-        val h = hasilL
-        val g = galatL
-        statusTeks.text = when {
-            g != null -> "Gagal memuat: $g" + (h?.let { " · daftar ${Format.waktuSingkat(it.waktuMs)}" } ?: "")
-            h == null -> if (memuat) "Memuat..." else ""
-            else -> buildString {
-                append(Format.waktuSingkat(h.waktuMs))
-                if (h.jumlahPunyaDasar == 0) {
-                    append(" · pemanasan ").append(h.rentangMenit).append(" dari ").append(h.pemanasanMenit).append(" mnt")
-                } else {
-                    append(" · ").append(h.baris.size).append(" lonjakan")
-                    append(" · data ").append(h.rentangMenit).append(" mnt")
-                    if (h.jumlahDiperiksa < h.jumlahPemicu) {
-                        append(" · diperiksa ").append(h.jumlahDiperiksa).append(" dari ").append(h.jumlahPemicu)
-                    }
-                }
-                if (h.jumlahGagal > 0) append(" · ").append(h.jumlahGagal).append(" gagal")
-            }
-        }
-        statusTeks.setTextColor(if (g != null) t.loss else t.mute)
     }
 
     /** Dua baris per pair: nama, penanda, arah dan persen, harga; lalu trx/mnt, spread, harga dasar. */
@@ -460,7 +465,7 @@ class LayarScreener(a: MainActivity) : Layar(a) {
         val rincian = listOf(
             "${Format.ribuan(b.trxMnt)} trx/mnt",
             "spread ${if (b.spread.isEmpty()) "–" else Format.persen(b.spread)}",
-            "dasar ${b.dasar} (${b.lamaDasarMenit} mnt)",
+            "dasar ${b.dasar}",
         ).joinToString("  ·  ")
         v.tambah(ui.mute(rincian, 12f), atas = 3)
         tambahGlobal(v, b.global)
@@ -506,10 +511,6 @@ class LayarScreener(a: MainActivity) : Layar(a) {
 
     private fun perbaruiTombolUrutan() {
         tombolUrutan.text = if (urutan == "skor") "Urutan: Skor" else "Urutan: Trx/mnt"
-    }
-
-    private fun perbaruiTombolMode() {
-        tombolMode.text = if (modeLonjakan) "Mode: Lonjakan" else "Mode: Daftar"
     }
 
     private fun perbaruiTombolArah() {
@@ -661,7 +662,7 @@ class LayarScreener(a: MainActivity) : Layar(a) {
             r.onSuccess {
                 infoAmbang.text = "Ambang tersimpan."
                 l.intervalDetik.toLongOrNull()?.let { intervalMs = it * 1000L }
-                muat(0L)
+                muat(0L, paksaDaftar = true)
             }
             r.onFailure { infoAmbang.text = "Tidak disimpan: ${Latar.pesan(it)}" }
         }
@@ -671,8 +672,8 @@ class LayarScreener(a: MainActivity) : Layar(a) {
         /** Putaran penyegaran saat layar terlihat. */
         private const val JEDA_PUTARAN_MS = 45_000L
 
-        /** Jeda minimal antar-pemindaian otomatis (segarkan() bisa dipanggil sering). */
-        private const val JEDA_OTOMATIS_MIN_MS = 40_000L
+        /** Jeda minimal antar-pemindaian Daftar (Lonjakan dipindai tiap siklus). */
+        private const val JEDA_DAFTAR_MS = 40_000L
 
         /** Jeda minimal untuk tombol Segarkan. */
         private const val JEDA_MANUAL_MIN_MS = 10_000L
