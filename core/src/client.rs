@@ -1,6 +1,7 @@
 //! Klien REST Indodax TAPI v2. HANYA metode GET (baca saja).
 use crate::arus_kas::{parse_fiat_orders, HasilParseFiat, JenisArusKas};
 use crate::harga::{parse_ticker_all, HargaIdr};
+use crate::harga_global::Exchange;
 use crate::screener::pair_path;
 use crate::{account::{parse_akun, Akun}, model::parse_my_trades, sign::tanda_tangan, Error, Hasil, Trade};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -175,6 +176,37 @@ impl IndodaxClient {
     }
 }
 
+/// T9.5: klien publik exchange luar (Binance, Bybit, OKX). Tanpa key, tanpa tanda tangan, hanya GET.
+/// Terpisah dari `IndodaxClient` dengan batas waktu lebih pendek: exchange yang tidak terjangkau
+/// (mis. diblokir DNS) tidak boleh menahan layar Screener lama. Resolver DNS = bawaan sistem.
+pub struct KlienGlobal {
+    agen: ureq::Agent,
+}
+
+impl KlienGlobal {
+    pub fn baru() -> Self {
+        Self { agen: ureq::AgentBuilder::new().timeout(Duration::from_secs(15)).build() }
+    }
+
+    /// JSON mentah daftar harga semua pair dari satu exchange (diurai `harga_global::parse_*`).
+    pub fn ambil_mentah(&self, exchange: Exchange) -> Hasil<String> {
+        let res = self
+            .agen
+            .get(exchange.url())
+            .set("User-Agent", USER_AGENT)
+            .set("Accept", "application/json")
+            .call();
+        match res {
+            Ok(r) => r.into_string().map_err(|e| Error::Jaringan(e.to_string())),
+            Err(ureq::Error::Status(kode, r)) => {
+                let isi = r.into_string().unwrap_or_default();
+                Err(Error::Http { kode, isi_awal: isi.chars().take(400).collect() })
+            }
+            Err(e) => Err(Error::Jaringan(e.to_string())),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +229,11 @@ mod tests {
         let c = IndodaxClient::new("KUNCI-RAHASIA", "SECRET-RAHASIA");
         let s = format!("{:?}", c);
         assert!(!s.contains("RAHASIA"));
+    }
+
+    #[test]
+    fn klien_global_dibuat_tanpa_kunci() {
+        let _ = KlienGlobal::baru(); // hanya memastikan konstruksi; tanpa jaringan
     }
 
     #[test]

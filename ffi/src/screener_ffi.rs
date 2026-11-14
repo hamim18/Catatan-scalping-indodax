@@ -3,10 +3,11 @@
 //! statistik, atau database trade (database hanya dibaca untuk setelan ambang dan daftar koin
 //! yang sedang dipegang, untuk penanda). Logika ada di `scalping_core::screener`.
 //! Semua fungsi jaringan memblokir; panggil dari thread latar.
+use super::global_ffi::{mulai_global, InfoGlobalUi, StatusGlobalUi};
 use super::{desimal, fmt_harga, gagal, hitung_aplikasi, nama_koin, sekarang_ms, ErrorApp};
 use rust_decimal::Decimal;
 use scalping_core::{
-    cari_pemicu, muat_konfig, muat_konfig_lonjakan, nilai_lonjakan, nilai_tahap2, pair_path, parse_kedalaman,
+    cari_pemicu, muat_konfig, muat_konfig_global, muat_konfig_lonjakan, nilai_lonjakan, nilai_tahap2, pair_path, parse_kedalaman,
     parse_ringkasan, parse_transaksi, saring_tahap1, simpan_konfig, simpan_konfig_lonjakan, urutkan,
     urutkan_lonjakan, BarisLonjakan, BarisScreener, IndodaxClient, KandidatScreener, KedalamanPasar,
     KonfigLonjakan, KonfigScreener, Penyimpanan, RiwayatHarga, TransaksiPublik, UrutanScreener,
@@ -181,6 +182,8 @@ pub struct BarisScreenerUi {
     pub dominasi_tinggi: bool,
     /// koin ini sedang menjadi posisi terbuka (hanya penanda; tidak memengaruhi posisi)
     pub dipegang: bool,
+    /// T9.5: harga global (harga wajar dan exchange luar); None bila fitur mati atau data tidak ada
+    pub global: Option<InfoGlobalUi>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -194,6 +197,8 @@ pub struct HasilScreenerUi {
     pub jumlah_diperiksa: i32,
     /// pair yang gagal diambil riwayat transaksinya (dilewati)
     pub jumlah_gagal: i32,
+    /// T9.5: status koneksi exchange luar dan kurs; None bila fitur dimatikan
+    pub global_status: Option<StatusGlobalUi>,
 }
 
 fn opsi_persen(v: Option<Decimal>) -> String {
@@ -211,6 +216,7 @@ fn ke_baris_ui(b: &BarisScreener, dipegang: &HashSet<String>) -> BarisScreenerUi
         buy_persen: b.metrik.buy_persen.round_dp(0).normalize().to_string(),
         dominasi_tinggi: b.dominasi_tinggi,
         dipegang: dipegang.contains(&pair_path(&b.pair)),
+        global: None,
     }
 }
 
@@ -274,6 +280,9 @@ pub fn jalankan_screener(path_db: String, modal_trade: String) -> Result<HasilSc
     kand.sort_by(|a, b| b.ringkasan.vol_idr.cmp(&a.ringkasan.vol_idr));
     kand.truncate(MAKS_KANDIDAT);
 
+    // T9.5: harga exchange luar diambil paralel dengan `trades`; gagal membaca setelan = bawaan.
+    let tugas_global = mulai_global(muat_konfig_global(&simpan).unwrap_or_default(), &ringkasan);
+
     let pakai_kedalaman = konfig.kedalaman_kelipatan.is_some() && modal.map(|m| m > Decimal::ZERO).unwrap_or(false);
     let data = ambil_paralel(&klien, &kand, pakai_kedalaman);
     let sekarang_detik = sekarang_ms() / 1000;
@@ -291,13 +300,22 @@ pub fn jalankan_screener(path_db: String, modal_trade: String) -> Result<HasilSc
         }
     }
     urutkan(&konfig, &mut baris);
+    let hg = tugas_global.selesai();
 
     Ok(HasilScreenerUi {
-        baris: baris.iter().map(|b| ke_baris_ui(b, &dipegang)).collect(),
+        baris: baris
+            .iter()
+            .map(|b| {
+                let mut u = ke_baris_ui(b, &dipegang);
+                u.global = hg.info(&b.pair, b.harga);
+                u
+            })
+            .collect(),
         waktu_ms: sekarang_ms(),
         jumlah_kandidat: jumlah_kandidat as i32,
         jumlah_diperiksa: kand.len() as i32,
         jumlah_gagal,
+        global_status: hg.status(),
     })
 }
 
@@ -393,6 +411,8 @@ pub struct BarisLonjakanUi {
     pub lama_dasar_menit: String,
     pub dominasi_tinggi: bool,
     pub dipegang: bool,
+    /// T9.5: harga global (harga wajar dan exchange luar); None bila fitur mati atau data tidak ada
+    pub global: Option<InfoGlobalUi>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -409,6 +429,8 @@ pub struct HasilLonjakanUi {
     /// yang benar-benar diperiksa lewat `trades`
     pub jumlah_diperiksa: i32,
     pub jumlah_gagal: i32,
+    /// T9.5: status koneksi exchange luar dan kurs; None bila fitur dimatikan
+    pub global_status: Option<StatusGlobalUi>,
 }
 
 fn ke_baris_lonjakan_ui(b: &BarisLonjakan, dipegang: &HashSet<String>) -> BarisLonjakanUi {
@@ -424,6 +446,7 @@ fn ke_baris_lonjakan_ui(b: &BarisLonjakan, dipegang: &HashSet<String>) -> BarisL
         lama_dasar_menit: (b.lama_dasar_detik / 60).to_string(),
         dominasi_tinggi: b.baris.dominasi_tinggi,
         dipegang: dipegang.contains(&pair_path(&b.baris.pair)),
+        global: None,
     }
 }
 
@@ -462,6 +485,8 @@ pub fn pindai_lonjakan(path_db: String) -> Result<HasilLonjakanUi, ErrorApp> {
     };
 
     let kand: Vec<KandidatScreener> = pemicu.pemicu.iter().map(|p| p.kandidat.clone()).collect();
+    // T9.5: harga exchange luar diambil paralel dengan `trades`; gagal membaca setelan = bawaan.
+    let tugas_global = mulai_global(muat_konfig_global(&simpan).unwrap_or_default(), &ringkasan);
     let data = ambil_paralel(&klien, &kand, false);
     let mut jumlah_gagal = 0_i32;
     let mut baris: Vec<BarisLonjakan> = Vec::new();
@@ -476,9 +501,17 @@ pub fn pindai_lonjakan(path_db: String) -> Result<HasilLonjakanUi, ErrorApp> {
         }
     }
     urutkan_lonjakan(&mut baris);
+    let hg = tugas_global.selesai();
 
     Ok(HasilLonjakanUi {
-        baris: baris.iter().map(|b| ke_baris_lonjakan_ui(b, &dipegang)).collect(),
+        baris: baris
+            .iter()
+            .map(|b| {
+                let mut u = ke_baris_lonjakan_ui(b, &dipegang);
+                u.global = hg.info(&b.baris.pair, b.baris.harga);
+                u
+            })
+            .collect(),
         waktu_ms: sekarang_ms(),
         rentang_menit: (rentang / 60) as i32,
         pemanasan_menit: kl.pemanasan_menit as i32,
@@ -486,6 +519,7 @@ pub fn pindai_lonjakan(path_db: String) -> Result<HasilLonjakanUi, ErrorApp> {
         jumlah_pemicu: pemicu.jumlah_total as i32,
         jumlah_diperiksa: kand.len() as i32,
         jumlah_gagal,
+        global_status: hg.status(),
     })
 }
 

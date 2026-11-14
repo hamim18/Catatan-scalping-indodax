@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 uniffi::setup_scaffolding!();
 
 mod screener_ffi;
-
+mod global_ffi;
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum ErrorApp {
     #[error("{pesan}")]

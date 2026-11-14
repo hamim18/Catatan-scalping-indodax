@@ -13,14 +13,19 @@ import uniffi.scalping_ffi.BarisLonjakanUi
 import uniffi.scalping_ffi.BarisScreenerUi
 import uniffi.scalping_ffi.HasilLonjakanUi
 import uniffi.scalping_ffi.HasilScreenerUi
+import uniffi.scalping_ffi.InfoGlobalUi
+import uniffi.scalping_ffi.SetelanGlobalUi
 import uniffi.scalping_ffi.SetelanLonjakanUi
 import uniffi.scalping_ffi.SetelanScreenerUi
+import uniffi.scalping_ffi.bacaSetelanGlobal
 import uniffi.scalping_ffi.bacaSetelanLonjakan
 import uniffi.scalping_ffi.bacaSetelanScreener
 import uniffi.scalping_ffi.jalankanScreener
 import uniffi.scalping_ffi.pindaiLonjakan
+import uniffi.scalping_ffi.setelanGlobalBawaan
 import uniffi.scalping_ffi.setelanLonjakanBawaan
 import uniffi.scalping_ffi.setelanScreenerBawaan
+import uniffi.scalping_ffi.simpanSetelanGlobal
 import uniffi.scalping_ffi.simpanSetelanLonjakan
 import uniffi.scalping_ffi.simpanSetelanScreener
 
@@ -34,6 +39,10 @@ import uniffi.scalping_ffi.simpanSetelanScreener
  * T9.4: tombol mode "Daftar / Lonjakan". Mode Lonjakan memolling ringkasan pasar tiap beberapa detik
  * (interval dari setelan) HANYA saat layar terlihat dan mode aktif; riwayat harga ada di memori Rust.
  * Tanpa layanan latar dan tanpa notifikasi.
+ *
+ * T9.5: harga global. Tiap baris (kedua mode) memuat harga wajar dari Binance, Bybit, OKX dan selisih
+ * Indodax; di bawah status ada baris koneksi exchange dan perbandingan kurs. Hanya informasi
+ * pembanding; semua hitungan di Rust.
  */
 class LayarScreener(a: MainActivity) : Layar(a) {
     private val isiModal = ui.input("Modal trade ini (Rp)")
@@ -77,6 +86,15 @@ class LayarScreener(a: MainActivity) : Layar(a) {
     private var modeLonjakan = false
     private var intervalMs = 20_000L
 
+    // --- ambang Harga global (T9.5) ---
+    private val fGSebaran = ui.input("wajib")
+    private val fGCuriga = ui.input("wajib")
+    private val fGKurs = ui.input("wajib")
+    private val fGInterval = ui.input("wajib")
+    private var gAktif = true
+    private lateinit var tombolGlobal: Button
+    private val statusGlobal = ui.mute("", 12f)
+
     // --- keadaan pemindaian ---
     private var hasil: HasilScreenerUi? = null
     private var galat: String? = null
@@ -116,7 +134,8 @@ class LayarScreener(a: MainActivity) : Layar(a) {
             muat(0L)
         }
         isi.tambah(tombolMode, atas = 8)
-        isi.tambah(statusTeks, atas = 8, bawah = 10)
+        isi.tambah(statusTeks, atas = 8, bawah = 2)
+        isi.tambah(statusGlobal, bawah = 10)
         isi.tambah(kartuDaftar)
 
         // --- kartu ambang (tersembunyi sampai judul diketuk) ---
@@ -174,6 +193,18 @@ class LayarScreener(a: MainActivity) : Layar(a) {
         isiAmbang.tambah(barisIsian("Maks pair diperiksa", fLMaks))
         isiAmbang.tambah(barisIsian("Interval (detik)", fLInterval))
 
+        isiAmbang.tambah(ui.teks("Harga global", 14f, tebal = true), atas = 14, bawah = 4)
+        isiAmbang.tambah(ui.mute("Pembanding harga exchange luar. Hanya informasi.", 12f), bawah = 4)
+        tombolGlobal = ui.tombol("Harga global: ya") {
+            gAktif = !gAktif
+            perbaruiTombolGlobal()
+        }
+        isiAmbang.tambah(tombolGlobal, bawah = 4)
+        isiAmbang.tambah(barisIsian("Sebaran maksimum antar exchange (%)", fGSebaran))
+        isiAmbang.tambah(barisIsian("Curiga bila selisih di atas (%)", fGCuriga))
+        isiAmbang.tambah(barisIsian("Tanda selisih kurs di atas (%)", fGKurs))
+        isiAmbang.tambah(barisIsian("Interval ambil data (detik)", fGInterval))
+
         tombolUrutan = ui.tombol("Urutan: Skor") {
             urutan = if (urutan == "skor") "trx" else "skor"
             perbaruiTombolUrutan()
@@ -186,6 +217,7 @@ class LayarScreener(a: MainActivity) : Layar(a) {
             tambah(ui.tombol("Nilai awal") {
                 isiKolom(setelanScreenerBawaan())
                 isiKolomLonjakan(setelanLonjakanBawaan())
+                isiKolomGlobal(setelanGlobalBawaan())
             }, bobot = 1f, lebar = 0, kiri = 4)
         }
         isiAmbang.tambah(barisTombol, atas = 10)
@@ -193,6 +225,7 @@ class LayarScreener(a: MainActivity) : Layar(a) {
         isi.tambah(kartuAmbang, atas = 12)
 
         perbaruiTombolArah()
+        perbaruiTombolGlobal()
         muatAmbang()
         render()
         pengatur.postDelayed(putaran, JEDA_PUTARAN_MS)
@@ -289,6 +322,7 @@ class LayarScreener(a: MainActivity) : Layar(a) {
     }
 
     private fun renderStatus() {
+        renderStatusGlobal()
         if (modeLonjakan) {
             renderStatusLonjakan()
             return
@@ -308,6 +342,55 @@ class LayarScreener(a: MainActivity) : Layar(a) {
             }
         }
         statusTeks.setTextColor(if (g != null) t.loss else t.mute)
+    }
+
+    /** Status koneksi exchange luar dan perbandingan kurs (T9.5). Hilang bila fitur dimatikan. */
+    private fun renderStatusGlobal() {
+        val s = if (modeLonjakan) hasilL?.globalStatus else hasil?.globalStatus
+        if (s == null) {
+            statusGlobal.visibility = View.GONE
+            return
+        }
+        statusGlobal.visibility = View.VISIBLE
+        val gagal = s.exchange.filter { !it.ok }
+        statusGlobal.text = buildString {
+            append("Global: ")
+            append(s.exchange.joinToString("  ") { (if (it.ok) "✓ " else "✗ ") + it.nama })
+            if (s.kursIndodax.isNotEmpty() && s.kursBinance.isNotEmpty()) {
+                append(" · kurs ").append(s.kursIndodax).append(" vs ").append(s.kursBinance)
+                append(" (").append(persenBertanda(s.selisihKurs)).append(")")
+                if (s.kursTanda) append(" ⚠")
+            }
+            for (g in gagal) append("\n").append(g.nama).append(": ").append(g.pesan)
+            if (s.petunjukDns) append("\nNama host tidak ditemukan. Coba Private DNS HP: dns.google")
+        }
+        statusGlobal.setTextColor(if (gagal.isNotEmpty() || s.kursTanda) t.warn else t.mute)
+    }
+
+    /** Persen mentah dari Rust ("-1.25") menjadi teks bertanda memakai Format yang sama dengan layar lain. */
+    private fun persenBertanda(s: String): String = when {
+        s.isEmpty() -> "–"
+        s.startsWith("-") -> "-" + Format.persen(s.substring(1))
+        else -> "+" + Format.persen(s)
+    }
+
+    /** Dua baris harga global: harga wajar + selisih + kualitas; lalu harga tiap exchange. */
+    private fun tambahGlobal(v: LinearLayout, g: InfoGlobalUi?) {
+        if (g == null) return
+        if (g.wajar.isEmpty()) {
+            v.tambah(ui.mute("global: ${g.kualitas}", 12f), atas = 2)
+            return
+        }
+        val atas = buildString {
+            append("wajar ").append(g.wajar).append(" (").append(persenBertanda(g.selisih)).append(")")
+            if (g.kualitas != "tinggi") append(" · ").append(g.kualitas)
+            if (g.curiga) append(" ⚠")
+        }
+        v.tambah(if (g.curiga) ui.teks(atas, 12f, t.warn) else ui.mute(atas, 12f), atas = 2)
+        val rincian = g.rincian.joinToString("  ·  ") {
+            if (it.harga.isEmpty()) "${it.nama} –" else "${it.nama} ${it.harga} (${persenBertanda(it.selisih)})"
+        }
+        v.tambah(ui.mute(rincian, 12f), atas = 2)
     }
 
     private fun renderStatusLonjakan() {
@@ -358,6 +441,7 @@ class LayarScreener(a: MainActivity) : Layar(a) {
             "dasar ${b.dasar} (${b.lamaDasarMenit} mnt)",
         ).joinToString("  ·  ")
         v.tambah(ui.mute(rincian, 12f), atas = 3)
+        tambahGlobal(v, b.global)
         return v
     }
 
@@ -384,6 +468,7 @@ class LayarScreener(a: MainActivity) : Layar(a) {
             "buy ${Format.persen(b.buyPersen)}",
         ).joinToString("  ·  ")
         v.tambah(ui.mute(rincian, 12f), atas = 3)
+        tambahGlobal(v, b.global)
         return v
     }
 
@@ -408,6 +493,31 @@ class LayarScreener(a: MainActivity) : Layar(a) {
     private fun perbaruiTombolArah() {
         tombolNaik.text = if (lNaik) "Naik ▲: ya" else "Naik ▲: tidak"
         tombolTurun.text = if (lTurun) "Turun ▼: ya" else "Turun ▼: tidak"
+    }
+
+    private fun perbaruiTombolGlobal() {
+        tombolGlobal.text = if (gAktif) "Harga global: ya" else "Harga global: tidak"
+    }
+
+    private fun isiKolomGlobal(s: SetelanGlobalUi) {
+        fun atur(e: EditText, nilai: String) = e.setText(Format.komaDesimal(nilai))
+        gAktif = s.aktif
+        perbaruiTombolGlobal()
+        atur(fGSebaran, s.sebaranMaks)
+        atur(fGCuriga, s.curiga)
+        atur(fGKurs, s.kursTanda)
+        atur(fGInterval, s.intervalDetik)
+    }
+
+    private fun ambilKolomGlobal(): SetelanGlobalUi {
+        fun teks(e: EditText) = e.text.toString().trim()
+        return SetelanGlobalUi(
+            aktif = gAktif,
+            sebaranMaks = teks(fGSebaran),
+            curiga = teks(fGCuriga),
+            kursTanda = teks(fGKurs),
+            intervalDetik = teks(fGInterval),
+        )
     }
 
     private fun isiKolomLonjakan(s: SetelanLonjakanUi) {
@@ -502,16 +612,25 @@ class LayarScreener(a: MainActivity) : Layar(a) {
                 infoAmbang.text = "Gagal membaca ambang Lonjakan: ${Latar.pesan(it)}"
             }
         }
+        Latar.baca({ bacaSetelanGlobal(db) }) { r ->
+            r.onSuccess { isiKolomGlobal(it) }
+            r.onFailure {
+                isiKolomGlobal(setelanGlobalBawaan())
+                infoAmbang.text = "Gagal membaca ambang Harga global: ${Latar.pesan(it)}"
+            }
+        }
     }
 
     private fun simpanAmbang() {
         val s = ambilKolom()
         val l = ambilKolomLonjakan()
+        val g = ambilKolomGlobal()
         val db = a.pathDb
         infoAmbang.text = "Menyimpan..."
         Latar.baca({
             simpanSetelanScreener(db, s)
             simpanSetelanLonjakan(db, l)
+            simpanSetelanGlobal(db, g)
         }) { r ->
             r.onSuccess {
                 infoAmbang.text = "Ambang tersimpan."

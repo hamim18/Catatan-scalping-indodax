@@ -6,6 +6,8 @@ pub mod calc;
 pub mod client;
 pub mod error;
 pub mod harga;
+pub mod harga_global;
+pub mod harga_global_setelan;
 pub mod lonjakan;
 pub mod lonjakan_setelan;
 pub mod model;
@@ -23,7 +25,7 @@ pub mod ws_klien;
 pub use account::{parse_akun, Akun, Saldo};
 pub use arus_kas::{parse_fiat_orders, sinkron_arus_kas, ArusKas, HasilArusKas, JenisArusKas};
 pub use calc::{gabung_per_order, OrderRingkas, Posisi, Sisi};
-pub use client::IndodaxClient;
+pub use client::{IndodaxClient, KlienGlobal};
 pub use error::{Error, Hasil};
 pub use harga::{hitung_total_aset, parse_ticker_all, AsetNilai, HargaIdr, TotalAset};
 pub use model::{parse_my_trades, Trade};
@@ -43,6 +45,11 @@ pub use ws::{
 pub use ws_klien::{pantau, KejadianPantau};
 
 pub use screener_setelan::{muat_konfig, periksa_konfig, simpan_konfig};
+pub use harga_global::{
+    bandingkan_kurs, hitung_harga_global, parse_binance, parse_bybit, parse_okx, Exchange, HargaGlobal, HargaUsdt,
+    HasilBinance, KonfigGlobal, Kualitas, RincianExchange, SelisihKurs,
+};
+pub use harga_global_setelan::{muat_konfig_global, periksa_konfig_global, simpan_konfig_global};
 pub use lonjakan::{
     cari_pemicu, nilai_lonjakan, urutkan_lonjakan, BarisLonjakan, DasarHarga, HasilPemicu, KonfigLonjakan,
     PemicuLonjakan, RiwayatHarga,

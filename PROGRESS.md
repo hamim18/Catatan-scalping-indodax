@@ -1,10 +1,10 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 14 November 2026 (uji lapangan Lonjakan berhasil; fitur Harga global exchange luar diputuskan, direncanakan T9.5 dan T9.6; PRD v1.11; jawaban pertanyaan 22 sampai 24 dicatat, PRD v1.12 menyusul)
+Terakhir diperbarui: 14 November 2026 (T9.5 Harga global tahap 1 SELESAI: tes, build, dan uji HP lulus, sudah di-commit; berikutnya T9.6 atau penutup Fase 9; PRD v1.12 belum diperbarui)
 
-**Status:** Fase 0 sampai 8 SELESAI dan lulus uji HP. Rilis uji pribadi 0.8.0-uji (versionCode 2) dipakai harian; uji lapangan sampai 14 Nov 2026: tidak ada kendala, aplikasi nyaman dipakai, tidak ada perbaikan yang diperlukan. Jumlah tes terakhir: core 142, ffi 32.
+**Status:** Fase 0 sampai 8 SELESAI dan lulus uji HP. Rilis uji pribadi 0.8.0-uji (versionCode 2) dipakai harian; uji lapangan sampai 14 Nov 2026: tidak ada kendala, aplikasi nyaman dipakai, tidak ada perbaikan yang diperlukan. Jumlah tes: harapan setelah T9.5 core 158 dan ffi 39 (sebelumnya core 142, ffi 32; pengguna melaporkan semua tes lulus, angka persis belum dicatat).
 
-**Sekarang:** Fase 9 (Screener). T9.0, T9.1, T9.2, dan T9.4 SELESAI (tes lulus, uji HP lulus 14 Nov 2026). T9.3 dan notifikasi/`LayananScreener` DIBATALKAN. Uji lapangan Lonjakan (14 Nov 2026, beberapa jam, beberapa setelan): berhasil dan sesuai kriteria; angka final belum dicatat. Fitur baru DIPUTUSKAN 14 Nov: **Harga global** (harga exchange luar di layar Screener), dua tahap: **T9.5** (snapshot: harga wajar, selisih, daftar 3 exchange, status koneksi) lalu **T9.6** (arah harga global). Pertanyaan no. 23 dan 24 dijawab (tiga exchange: Binance, Bybit, OKX; kurs pembanding dari Binance saja); no. 22 (DNS-over-HTTPS) masih usulan. Langkah berikutnya: perbarui PRD ke v1.12 (menyelaraskan FR-38 sampai FR-40 dengan jawaban ini), kirim berkas yang diminta untuk T9.5 (bagian 5), lalu T9.5. Penutup Fase 9 (rilis 0.9.0-uji; tetap cek notifikasi TP/SL normal) setelah T9.6, atau setelah T9.5 bila T9.6 ditunda; pemakaian data Screener tetap dipantau.
+**Sekarang:** Fase 9 (Screener). T9.0, T9.1, T9.2, T9.4, dan T9.5 SELESAI (tes lulus, uji HP lulus; T9.5 lulus 14 Nov 2026 dan sudah di-commit). T9.3 dan notifikasi/`LayananScreener` DIBATALKAN. Uji lapangan Lonjakan (14 Nov 2026): berhasil; angka final belum dicatat. **Harga global** (harga exchange luar di layar Screener) dikerjakan dua tahap: T9.5 (snapshot: harga wajar, selisih, 3 exchange, status koneksi) SELESAI; **T9.6** (arah harga global) berikutnya, belum dimulai. Langkah berikutnya: pilih antara T9.6 (butuh `lonjakan.rs` terbaru) atau langsung penutup Fase 9 (rilis 0.9.0-uji; tetap cek notifikasi TP/SL normal; pemakaian data Screener dan Harga global tetap dipantau); selaraskan PRD ke v1.12 (FR-38 sampai FR-40 dengan hasil T9.5); catat angka default final Lonjakan dan Harga global dari uji lapangan.
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`. Setelah tiap task: perbarui file ini, lalu commit.
@@ -66,9 +66,10 @@ Terakhir diperbarui: 14 November 2026 (uji lapangan Lonjakan berhasil; fitur Har
 - **Lonjakan = filter terpisah di layar Screener (14 Nov 2026):** menjangkau semua pair lewat pemicu snapshot ringkasan pasar (bukan hanya 40 pair teramai). Dasar penilaian: harga sekarang dibanding RATA-RATA HARGA 1 JAM TERAKHIR (bukan harga sebelumnya). Snapshot hanya di memori, tidak disimpan ke database; titik lebih tua dari 60 menit dibuang.
 - **Deep link (14 Nov 2026, dicek lewat adb):** tautan web `https://indodax.com/market/<PAIR>` membuka BROWSER, bukan aplikasi Indodax. Opsi (1) FR-37 gugur. **Keputusan pengguna (14 Nov 2026): tombol buka pair TIDAK dibuat** (T9.3 dibatalkan; fallback salin pair juga tidak dikerjakan). Pengguna membuka Indodax sendiri.
 - **Uji lapangan Lonjakan (14 Nov 2026):** pengguna mencoba beberapa jam dengan beberapa setelan; fitur berhasil dan sesuai kriteria. Angka default final belum dicatat (isi bila sudah ditetapkan).
-- **Harga global (14 Nov 2026):** fitur penting di Screener: harga koin yang sama di exchange luar. Yang ditampilkan: hanya 3 exchange terbesar dan berpengaruh, ditambah harga rata-rata semua exchange (untuk menilai harga wajar) dan daftar harga tiap exchange. Dibagi dua tahap (disetujui pengguna): T9.5 snapshot harga, T9.6 arah harga global. Hanya informasi pembanding, bukan sinyal; tidak menyentuh perhitungan trading. Mengubah non-tujuan PRD "data bursa lain" (PRD v1.11); ide "ikuti pergerakan whale" tetap ditunda.
-- **Koneksi exchange luar (14 Nov 2026, hasil uji skrip pengguna):** API exchange luar terblokir hanya di tingkat DNS pada jaringan pengguna; berjalan setelah DNS diganti ke `one.one.one.one` atau `dns.google`. Aplikasi harus punya pengecekan koneksi per exchange (FR-40). Cara penanganan (peringatan + petunjuk Private DNS atau DoH sendiri) belum diputuskan: pertanyaan no. 22.
-- **Jawaban pertanyaan Harga global (14 Nov 2026):** (23) pengguna setuju dengan usulan: tampil Binance, Bybit, OKX, dengan median; ditafsirkan ketiganya juga satu-satunya sumber harga wajar (Gate, MEXC, KuCoin tidak diambil); konfirmasi bila yang dimaksud 6 sumber. (24) kurs pembanding USDT/IDR dari Binance saja. (22) pengguna bertanya DoH apa yang cocok dan apakah berpengaruh ke API Indodax; jawaban dan usulan ada di bagian 5 (belum final).
+- **Harga global (14 Nov 2026):** fitur penting di Screener: harga koin yang sama di exchange luar. Yang ditampilkan: hanya 3 exchange terbesar dan berpengaruh, ditambah harga wajar (median) dan daftar harga tiap exchange. Dibagi dua tahap (disetujui pengguna): T9.5 snapshot harga (SELESAI), T9.6 arah harga global. Hanya informasi pembanding, bukan sinyal; tidak menyentuh perhitungan trading. Mengubah non-tujuan PRD "data bursa lain" (PRD v1.11); ide "ikuti pergerakan whale" tetap ditunda.
+- **Koneksi exchange luar (14 Nov 2026, hasil uji skrip pengguna):** API exchange luar terblokir hanya di tingkat DNS pada jaringan pengguna; berjalan setelah DNS diganti ke `one.one.one.one` atau `dns.google`. Aplikasi punya pengecekan koneksi per exchange (FR-40, dikerjakan di T9.5).
+- **Jawaban pertanyaan Harga global (14 Nov 2026):** (23) tiga exchange: Binance, Bybit, OKX, dengan median; ketiganya juga satu-satunya sumber harga wajar (Gate, MEXC, KuCoin tidak diambil). (24) kurs pembanding USDT/IDR dari Binance saja untuk perbandingan; harga wajar tetap memakai kurs `usdt_idr` Indodax, ditambah satu baris selisih kurs (tanda bila > 1%, sementara). (22) DNS: TIDAK membuat DoH sendiri; aplikasi menampilkan status per exchange dan petunjuk Private DNS (`dns.google`). Keputusan (22) dan (24) adalah usulan kerja Claude yang dipakai di T9.5 dan lulus uji HP; bisa diubah. DoH baru dibuat bila terbukti aplikasi tidak mengikuti Private DNS.
+- **T9.5 selesai (14 Nov 2026):** tes, build, dan uji HP lulus sesuai kriteria; sudah di-commit. Detail di catatan T9.5 (bagian 5).
 
 ## 4. Masalah dikenal dan hal yang belum tuntas
 
@@ -88,9 +89,10 @@ Terakhir diperbarui: 14 November 2026 (uji lapangan Lonjakan berhasil; fitur Har
 | Pengunduhan data Screener | Ringkasan pasar ±94,7 KB per request; `trades` ±45 KB per pair. Satu pemindaian layar Screener: sampai 40 pair, ±1,8 MB (+ `depth` bila filter kedalaman aktif). Mode Lonjakan (T9.4): satu ringkasan tiap 15 sampai 30 dtk (±12 sampai 23 MB per jam bila tidak terkompresi) + maksimal 15 `trades` per siklus, hanya saat layar terbuka. Gzip di `ureq` tidak diaktifkan; apakah server mengompresi belum diverifikasi | Terbuka; pantau pemakaian data. `MAKS_KANDIDAT` bisa diubah |
 | Filter "spread terikat TP" (FR-32) | Belum ada di modul T9.1 sehingga tidak ada di layar Screener | Opsional, terbuka |
 | Kedalaman gagal diambil di tahap 2 | Filter kedalaman dilewati untuk pair itu (pair tetap lolos) | Dikenal, diterima |
-| Exchange luar terblokir di DNS | Terjadi pada jaringan pengguna (skrip gagal sampai tahap DNS; berhasil setelah DNS diganti ke `one.one.one.one` atau `dns.google`). Belum diuji apakah resolver aplikasi (Rust di Android) mengikuti pengaturan Private DNS HP, dan belum diketahui apakah semua exchange terblokir atau sebagian | Terbuka; pertanyaan no. 22 (usulan: DoH sendiri hanya untuk host exchange luar, belum final); diuji di HP saat T9.5 |
-| Ukuran respons dan batas laju exchange luar | Skrip pengguna mengunduh daftar harga SEMUA pair USDT dari 6 exchange (kemungkinan beberapa MB sekali ambil, belum diukur). Endpoint per simbol atau daftar simbol dan batas laju tiap exchange belum diverifikasi | Terbuka; ukur di T9.5; rencana: 3 exchange, hanya kandidat, interval 30 sampai 60 dtk |
-| Pembanding kurs USDT/IDR | Harga Indodax dikonversi ke USDT memakai `usdt_idr` Indodax sendiri; bila USDT di Indodax premium atau diskon, selisih semua pair bergeser. Kurs pembanding independen: Binance saja (diputuskan 14 Nov 2026) | Sebagian terjawab: endpoint Binance USDTIDR diuji di T9.5; kurs mana yang dipakai untuk harga wajar masih usulan |
+| Exchange luar terblokir di DNS | Terjadi pada jaringan pengguna; berhasil setelah DNS diganti. T9.5 menampilkan status per exchange dan petunjuk Private DNS bila gagal karena nama host. Belum dicatat apakah resolver aplikasi mengikuti Private DNS HP secara eksplisit (uji HP T9.5 lulus sesuai kriteria) | Sebagian tertutup; DoH sendiri hanya bila terbukti perlu |
+| Ukuran respons dan batas laju exchange luar | T9.5 mengambil daftar harga SEMUA pair dari 3 exchange tiap `interval_detik` (bawaan 60 dtk) saat layar Screener terbuka, dengan cache memori; gzip `ureq` tidak aktif. Ukuran asli belum dicatat di sini (ukur dengan `tools/uji_koneksi_global.sh`); batas laju belum diverifikasi | Terbuka; pantau pemakaian data, naikkan interval atau aktifkan gzip bila besar |
+| Pembanding kurs USDT/IDR | Harga wajar memakai `usdt_idr` Indodax; selisih terhadap USDTIDR Binance ditampilkan di baris status (T9.5). Bila USDT di Indodax premium atau diskon, selisih semua pair bergeser; baris status menandai bila > 1% | Tertutup untuk T9.5 (kurs Indodax dipakai, selisih ditampilkan) |
+| Angka default Harga global | Sebaran 2%, curiga 10%, tanda kurs 1%, interval 60 dtk: sementara, belum dari uji lapangan | Terbuka; tetapkan dari pemakaian harian |
 
 ## 5. Fase 9: Screener (rancangan dan hasil verifikasi, 14 Nov 2026)
 
@@ -145,10 +147,10 @@ Terakhir diperbarui: 14 November 2026 (uji lapangan Lonjakan berhasil; fitur Har
 | T9.1 | `core/src/screener.rs`: parser ringkasan pasar, transaksi, kedalaman; filter dua tahap; skor; Decimal; tanpa UI | **Selesai 14 Nov 2026** (core 119 tes lulus). Lihat catatan T9.1 di bawah |
 | T9.2 | FFI + layar Screener + setelan ambang (tabel `meta`) + isian "Modal trade ini" | **Selesai 14 Nov 2026** (core 125 tes, ffi 29 tes lulus; uji HP lulus). Lihat catatan T9.2 di bawah |
 | T9.3 | Tombol buka pair di Indodax | **DIBATALKAN 14 Nov 2026** (tautan web membuka browser; pengguna tidak memerlukan tombol ini). Tidak ada kode; nomor T9.3 tidak dipakai ulang |
-| T9.4 | **Selesai 14 Nov 2026** (core 142 tes, ffi 32 tes lulus; uji HP lulus). Filter Lonjakan di layar Screener (versi baru): Rust: snapshot harga sebagai masukan, harga dasar rata-rata 60 menit, pemicu, tahap 2 dari `trades`, arah ▲/▼; FFI: fungsi baru di `screener_ffi.rs`; Kotlin: sakelar Lonjakan, polling ringkasan 15 sampai 30 dtk saat layar terbuka, ambang X/M di kartu "Ambang". TANPA `LayananScreener`, manifest, atau notifikasi | Butuh `screener.rs`, `screener_ffi.rs`, `LayarScreener.kt` terbaru; jawab pertanyaan no. 21 dulu |
-| T9.5 | **Rencana (14 Nov 2026).** Harga global tahap 1: `core/src/harga_global.rs` (murni: parser tiap exchange, median, konversi IDR, selisih, label kualitas), pengambilan data mentah di `client.rs`, setelan di tabel `meta`, FFI, tampilan di layar Screener (harga wajar, selisih, 3 exchange, status koneksi). TANPA layanan, notifikasi, atau perubahan manifest | Butuh `client.rs`, `screener.rs`, `screener_setelan.rs`, `lib.rs`, `screener_ffi.rs`, `LayarScreener.kt` terbaru; selesaikan no. 22 dan sisa no. 24 dulu (no. 23 terjawab) |
-| T9.6 | **Rencana.** Harga global tahap 2: arah harga global (perubahan N menit terakhir dibanding Indodax) dari snapshot di memori, memakai pola `lonjakan.rs` | Butuh T9.5 selesai dan teruji, serta `lonjakan.rs` terbaru |
-| Penutup | PRD bila ada perubahan; angka final lonjakan dan harga global dari uji lapangan; rilis 0.9.0-uji | Tidak perlu uji bersamaan dengan pantauan order karena tidak ada layanan baru; tetap cek notifikasi TP/SL normal |
+| T9.4 | **Selesai 14 Nov 2026** (core 142 tes, ffi 32 tes lulus; uji HP lulus). Filter Lonjakan di layar Screener (versi baru): Rust: snapshot harga sebagai masukan, harga dasar rata-rata 60 menit, pemicu, tahap 2 dari `trades`, arah ▲/▼; FFI: fungsi baru di `screener_ffi.rs`; Kotlin: sakelar Lonjakan, polling ringkasan 15 sampai 30 dtk saat layar terbuka, ambang X/M di kartu "Ambang". TANPA `LayananScreener`, manifest, atau notifikasi | Lihat catatan T9.4 di bawah |
+| T9.5 | **Selesai 14 Nov 2026** (tes, build, uji HP lulus sesuai kriteria; sudah di-commit). Harga global tahap 1: `core/src/harga_global.rs` (murni: parser Binance/Bybit/OKX, median, harga wajar, selisih, kualitas, selisih kurs), `core/src/harga_global_setelan.rs` (meta `global_*`), `KlienGlobal` di `client.rs`, `ffi/src/global_ffi.rs` (cache, pengambilan paralel, setelan), kait di `screener_ffi.rs`, tampilan di `LayarScreener.kt`. TANPA layanan, notifikasi, atau perubahan manifest | Tes baru: core +16, ffi +7 (harapan core 158, ffi 39). Lihat catatan T9.5 di bawah |
+| T9.6 | **Rencana.** Harga global tahap 2: arah harga global (perubahan N menit terakhir dibanding Indodax) dari snapshot di memori, memakai pola `lonjakan.rs` | Butuh `lonjakan.rs` terbaru, `harga_global.rs`, `global_ffi.rs`; ditentukan apakah dikerjakan setelah pemakaian harian T9.5 |
+| Penutup | PRD bila ada perubahan (v1.12); angka final lonjakan dan harga global dari uji lapangan; rilis 0.9.0-uji | Tidak perlu uji bersamaan dengan pantauan order karena tidak ada layanan baru; tetap cek notifikasi TP/SL normal |
 
 **Catatan T9.1 (selesai 14 Nov 2026)**
 - Modul `core/src/screener.rs` MURNI: tanpa jaringan dan tanpa database; hanya mengurai teks JSON yang diberikan pemanggil. Pengambilan data publik (summaries, trades, depth) ditambahkan di T9.2 pada sisi klien (`client.rs`, selesai).
@@ -165,10 +167,10 @@ Terakhir diperbarui: 14 November 2026 (uji lapangan Lonjakan berhasil; fitur Har
 - `core/src/screener_setelan.rs` (baru): ambang di tabel `meta`, kunci `screener_<nama>`. Kunci belum ada = bawaan; nilai kosong = filter mati; nilai rusak = bawaan. `periksa_konfig` menolak min > maks, jendela di luar 1..60, jarak kedalaman <= 0, dan nilai negatif. Penyimpanan tidak atomik (satu `atur_meta` per kunci); risiko kecil.
 - `ffi/src/screener_ffi.rs` (modul baru; `ffi/src/lib.rs` hanya ditambah `mod screener_ffi;`): `setelan_screener_bawaan`, `baca_setelan_screener`, `simpan_setelan_screener`, `jalankan_screener(path_db, modal_trade)`.
 - Pemindaian: ringkasan -> tahap 1 -> maksimal 40 kandidat (urut volume 24 jam menurun) -> `trades` dengan 4 pekerja paralel (+ `depth` bila kelipatan kedalaman diatur DAN modal diisi) -> tahap 2 -> urut. Pair gagal dihitung, tidak menggagalkan daftar. Penanda "Dipegang" dari posisi terbuka (hanya baca).
-- Kotlin: `LayarScreener.kt` sebagai tab ke-5; `MainActivity.kt` hanya berubah 3 baris (nama tab, daftar layar, komentar). Penyegaran 45 dtk hanya saat layar terlihat; jeda minimal 40 dtk (otomatis) dan 10 dtk (tombol Segarkan). Baris dua tingkat: nama, penanda (⚠ dominasi, Dipegang), harga; lalu trx/mnt, spread, gerak, buy. Kartu "Ambang" tersembunyi sampai diketuk. Layar jalan tanpa kunci API. Mengetuk baris tidak melakukan apa pun (tombol buka pair dibatalkan); komentar kelas di `LayarScreener.kt` masih menyebut T9.3, rapikan saat berkas itu disentuh lagi.
+- Kotlin: `LayarScreener.kt` sebagai tab ke-5; `MainActivity.kt` hanya berubah 3 baris (nama tab, daftar layar, komentar). Penyegaran 45 dtk hanya saat layar terlihat; jeda minimal 40 dtk (otomatis) dan 10 dtk (tombol Segarkan). Baris dua tingkat: nama, penanda (⚠ dominasi, Dipegang), harga; lalu trx/mnt, spread, gerak, buy. Kartu "Ambang" tersembunyi sampai diketuk. Layar jalan tanpa kunci API. Mengetuk baris tidak melakukan apa pun (tombol buka pair dibatalkan).
 - `tools/terapkan_t9_2.sh` hanya alat pemasangan sekali pakai (menambah baris `mod` dan ekspor); tidak perlu disimpan di repo bila tidak mau.
 - Tes: core 119 -> 125 (+5 setelan, +1 client), ffi 24 -> 29 (+5).
-- Belum ada: filter spread terikat TP (FR-32), filter Lonjakan (T9.4, tanpa layanan). Buka pair di Indodax dibatalkan.
+- Belum ada: filter spread terikat TP (FR-32). Buka pair di Indodax dibatalkan.
 
 **Catatan T9.4 (selesai 14 Nov 2026; tes, build, dan uji HP lulus)**
 - Keputusan pertanyaan no. 21: snapshot tetap di memori selama proses aplikasi hidup (statik di `ffi`, bukan di Kotlin; `core` tetap murni); syarat trx/mnt tahap 2 = M absolut saja (tanpa perbandingan N kali dasar 10 menit).
@@ -181,20 +183,30 @@ Terakhir diperbarui: 14 November 2026 (uji lapangan Lonjakan berhasil; fitur Har
 - Tes: core 125 -> 142 (+12 lonjakan, +5 setelan), ffi 29 -> 32 (+3). Uji HP lulus sesuai kriteria (mode Lonjakan, status pemanasan, baris muncul saat X kecil).
 - Berikutnya: uji lapangan angka default; pertimbangkan cache `trades` bila pemakaian data besar.
 
-**Harga global (rancangan, 14 Nov 2026; bagian "usulan" belum final)**
-- Acuan: skrip pengguna `harga_wajar_indodax.py` (belum ada di repo; salin ke `tools/` bila ingin disimpan). Alurnya: `summaries` -> filter harga dan volume -> `trades` untuk trx/mnt -> harga USDT dari 6 exchange (Tier 1: Binance, Bybit, OKX; Tier 2: Gate, MEXC, KuCoin) lewat endpoint daftar harga semua pair -> harga Indodax dikonversi ke USDT dengan `usdt_idr` -> median, selisih, label kualitas, CSV. Skrip memakai `last` dan berjalan di jaringan pengguna setelah DNS diganti.
-- Hasil diskusi (penilaian skrip): cukup sebagai tahap awal untuk menilai harga wajar, BELUM cukup untuk scalping. Kekurangan, urut kepentingan: (1) hanya satu foto selisih, tanpa arah (global bergerak dulu, Indodax menyusul) -> T9.6; (2) kurs `usdt_idr` Indodax sendiri bisa bias -> pembanding kurs dari Binance (pair USDTIDR); koreksi: usulan awal "selisih dalam USDT" ternyata identik dengan selisih IDR bila memakai kurs Indodax yang sama (harga Indodax ÷ kurs ÷ median = harga Indodax ÷ (median × kurs)), jadi tidak ditampilkan; hanya kurs independen yang menghilangkan bias; (3) `last` tanpa waktu bisa basi di exchange sepi -> usulan harga tengah bid-ask atau bobot lebih rendah; (4) selisih punya bias struktural (fee dan spread) -> beri konteks terhadap biaya round-trip 0,41%; (5) ticker sama bisa koin berbeda atau token berskala -> tanda peringatan bila selisih terlalu besar (usulan > 10%).
-- Tahap 1 (T9.5): harga wajar = median harga dari semua exchange sumber yang punya koin itu x kurs `usdt_idr`; selisih Indodax terhadap harga wajar (%); daftar harga 3 exchange terbesar dan berpengaruh (IDR dan selisih); label kualitas (dengan 3 sumber yang semuanya Tier 1 di skrip; usulan: tinggi bila minimal 2 dari 3 punya koin, rendah bila hanya 1, rendah (sebaran tinggi) bila sebaran antar sumber > 2%, tanpa pembanding bila 0); satu baris kurs: `usdt_idr` Indodax dibanding USDTIDR Binance beserta selisihnya (usulan: harga wajar tetap memakai kurs Indodax; bisa diubah); status koneksi per exchange. Diputuskan 14 Nov (no. 23, "setuju"): Binance, Bybit, OKX; median. Catatan: pencarian web 14 Nov 2026 menunjukkan Binance menyediakan kuotasi USDT/IDR; skrip pengguna hanya mengambil simbol berakhiran USDT, jadi USDTIDR perlu permintaan simbol terpisah dan endpoint API-nya belum diuji.
-- Tahap 2 (T9.6): perubahan harga global dalam N menit terakhir (usulan 10 menit) dibanding perubahan harga Indodax periode yang sama, dari snapshot di memori seperti Lonjakan (tidak masuk database). Angka N dan ambang dari uji lapangan.
-- Arsitektur (usulan): `client.rs` mengambil JSON mentah (tanpa key, tanpa data akun); `core/src/harga_global.rs` murni dan Decimal; ambang dan daftar exchange di tabel `meta` (kunci `global_<nama>`); FFI di `screener_ffi.rs` atau modul FFI baru (diputuskan setelah membaca berkas); Kotlin di `LayarScreener.kt`. Tanpa layanan latar, notifikasi, atau perubahan manifest. Pengambilan hanya untuk kandidat di daftar (maksimal 40 pair) dan hanya saat layar Screener terbuka, interval minimal 30 sampai 60 dtk; gagal satu exchange tidak menggagalkan daftar.
-- Koneksi (FR-40): exchange yang tidak terjangkau dilewati dan statusnya ditampilkan ringkas; sisanya tetap dipakai dan label kualitas turun. Penanganan DNS (usulan 14 Nov 2026, menjawab pertanyaan pengguna tentang DoH; belum final): aplikasi memakai DNS-over-HTTPS sendiri HANYA untuk host exchange luar (Binance, Bybit, OKX); host Indodax tetap memakai resolver sistem, jadi API Indodax tidak terpengaruh. Penyedia: Cloudflare utama (bentuk JSON `application/dns-json`, tanpa parser paket DNS biner), Google cadangan; terhubung lewat alamat IP langsung (1.1.1.1 atau 8.8.8.8) agar tidak butuh DNS biasa, nama host sertifikat tetap diverifikasi; hasil disimpan sesuai TTL. Bila DoH gagal: tampilkan status dan petunjuk Private DNS Android (`dns.google` atau `one.one.one.one`) sebagai cadangan manual. Belum diuji: (a) apakah DoH lewat port 443 ke alamat itu tidak terblokir di jaringan pengguna (yang terbukti baru resolver yang diganti lewat Private DNS), (b) apakah versi `ureq` di `Cargo.toml` mendukung resolver kustom, (c) apakah resolver aplikasi mengikuti Private DNS.
-- Berkas yang diminta untuk T9.5 (jangan menebak isinya): `core/src/client.rs`, `core/src/screener.rs`, `core/src/screener_setelan.rs`, `core/src/lib.rs`, `ffi/src/screener_ffi.rs`, `app/aplikasi/src/main/kotlin/id/catatanscalping/app/LayarScreener.kt`. Untuk T9.6 tambah `core/src/lonjakan.rs`. `core/Cargo.toml` (wajib bila DoH sendiri dikerjakan: cek versi dan fitur `ureq`).
+**Catatan T9.5 (selesai 14 Nov 2026; tes, build, dan uji HP lulus sesuai kriteria; sudah di-commit)**
+- Berkas baru: `core/src/harga_global.rs` (murni, Decimal; 11 tes), `core/src/harga_global_setelan.rs` (meta `global_*`; 4 tes), `ffi/src/global_ffi.rs` (7 tes), `tools/uji_koneksi_global.sh` (opsional, uji endpoint dari Termux). Berkas diubah: `core/src/client.rs` (+`KlienGlobal`, +1 tes), `core/src/lib.rs` (2 `mod` dan ekspor), `ffi/src/screener_ffi.rs` (kait harga global di `jalankan_screener` dan `pindai_lonjakan`, field `global` di baris UI dan `global_status` di hasil UI), `LayarScreener.kt`, dan `ffi/src/lib.rs` (hanya baris `mod global_ffi;`). `Cargo.toml` tidak berubah. Tidak ada layanan, notifikasi, atau perubahan manifest. Tes: core 142 -> 158 (+16), ffi 32 -> 39 (+7) sebagai harapan; pengguna melaporkan semua lulus.
+- Keputusan kerja: (22) tanpa DoH sendiri, petunjuk Private DNS bila gagal karena nama host; (24) harga wajar memakai kurs `usdt_idr` Indodax, selisih terhadap USDTIDR Binance di satu baris status (tanda bila > 1%); (23) sumber hanya Binance, Bybit, OKX.
+- Rumus sama dengan skrip `harga_wajar_indodax.py`: wajar = median(USDT) x kurs; selisih = (Indodax / wajar - 1) x 100; sebaran = (maks - min) / median x 100. Kurs Binance diambil dari daftar harga Binance yang sama (simbol USDTIDR), tanpa request tambahan.
+- Kualitas (satu tingkat sumber): tinggi bila >= 2 exchange punya koin; rendah bila 1 (skrip menyebut "sedang"); sebaran tinggi bila sebaran > 2% (>= 2 exchange); tanpa pembanding bila 0. Tanda curiga ⚠ bila |selisih| > 10% (ticker sama bisa koin lain atau token berskala).
+- Setelan di `meta` (`global_aktif`, `global_sebaran_maks_persen`, `global_curiga_persen`, `global_kurs_tanda_persen`, `global_interval_detik`); bagian "Harga global" di kartu Ambang; "Simpan ambang" menyimpan Screener, Lonjakan, dan Global. Angka awal SEMENTARA: sebaran 2%, curiga 10%, tanda kurs 1%, interval 60 dtk (batas 15 sampai 600). Saklar "Harga global: tidak" = tanpa request exchange luar sama sekali.
+- Pengambilan: satu request daftar semua pair per exchange (sama dengan skrip), 3 exchange paralel di thread terpisah dan paralel dengan `trades` Screener; cache memori selama `interval_detik`; exchange gagal dicoba lagi paling cepat 20 dtk; batas waktu 15 dtk per exchange (klien `KlienGlobal` terpisah dari `IndodaxClient`). Berlaku di mode Daftar dan Lonjakan. Gagal satu exchange tidak menggagalkan daftar; label kualitas turun.
+- Tampilan: baris status `Global: ✓ Binance ✓ Bybit ✓ OKX · kurs ... vs ... (...)` (plus alasan gagal dan petunjuk DNS bila perlu); tiap pair dua baris tambahan: harga wajar, selisih, kualitas; lalu harga dan selisih tiap exchange.
+- Belum tercatat dari uji HP: ukuran data per pengambilan (gzip `ureq` tidak aktif), perilaku saat Private DNS diputus, dan perbandingan angka dengan skrip Python; isi bila sudah diukur.
+- Berikutnya: pakai harian lalu tetapkan angka default final; putuskan T9.6.
+
+**Harga global (rancangan, 14 Nov 2026; tahap 1 sudah dikerjakan sebagai T9.5)**
+- Acuan: skrip pengguna `harga_wajar_indodax.py` (belum ada di repo; salin ke `tools/` bila ingin disimpan). Alurnya: `summaries` -> filter harga dan volume -> `trades` untuk trx/mnt -> harga USDT dari 6 exchange (Tier 1: Binance, Bybit, OKX; Tier 2: Gate, MEXC, KuCoin) lewat endpoint daftar harga semua pair -> harga Indodax dikonversi ke USDT dengan `usdt_idr` -> median, selisih, label kualitas, CSV. Aplikasi hanya memakai 3 exchange Tier 1.
+- Hasil diskusi (penilaian skrip): cukup sebagai tahap awal untuk menilai harga wajar, BELUM cukup untuk scalping. Kekurangan, urut kepentingan: (1) hanya satu foto selisih, tanpa arah (global bergerak dulu, Indodax menyusul) -> T9.6; (2) kurs `usdt_idr` Indodax sendiri bisa bias -> pembanding kurs dari Binance (pair USDTIDR), ditampilkan di T9.5; koreksi: usulan awal "selisih dalam USDT" identik dengan selisih IDR bila memakai kurs Indodax yang sama, jadi tidak ditampilkan; hanya kurs independen yang menghilangkan bias; (3) `last` tanpa waktu bisa basi di exchange sepi -> usulan harga tengah bid-ask atau bobot lebih rendah (belum dikerjakan); (4) selisih punya bias struktural (fee dan spread) -> beri konteks terhadap biaya round-trip 0,41% (belum dikerjakan); (5) ticker sama bisa koin berbeda atau token berskala -> tanda curiga (dikerjakan di T9.5, ambang 10%).
+- Tahap 2 (T9.6): perubahan harga global dalam N menit terakhir (usulan 10 menit) dibanding perubahan harga Indodax periode yang sama, dari snapshot di memori seperti Lonjakan (tidak masuk database). Angka N dan ambang dari uji lapangan. Catatan: cache T9.5 hanya menyimpan snapshot terbaru per exchange, jadi T9.6 perlu riwayat titik harga per simbol (memori saja).
+- Koneksi (FR-40): exchange yang tidak terjangkau dilewati dan statusnya ditampilkan ringkas (dikerjakan di T9.5). DoH sendiri (usulan awal: hanya untuk host exchange luar, Cloudflare utama dan Google cadangan, lewat alamat IP langsung) TIDAK dikerjakan; hanya dibuat bila terbukti aplikasi tidak mengikuti Private DNS HP.
 
 **Berkas yang diminta sebelum T9.4 (diperbarui 14 Nov; jangan menebak isinya):** `core/src/screener.rs`, `ffi/src/screener_ffi.rs`, `app/aplikasi/src/main/kotlin/id/catatanscalping/app/LayarScreener.kt`. Manifest, `LayananLatar.kt`, `PenerimaBoot.kt`, dan `Aplikasi.kt` tidak lagi diperlukan untuk T9.4 (tanpa layanan dan notifikasi).
 
+**Berkas yang diminta untuk T9.6 (jangan menebak isinya):** `core/src/lonjakan.rs`, `core/src/harga_global.rs`, `ffi/src/global_ffi.rs`, `ffi/src/screener_ffi.rs`, `LayarScreener.kt` terbaru.
+
 **Pertanyaan terbuka Fase 9:** (21) TERJAWAB 14 Nov 2026 (keputusan terbaik, bisa diubah): snapshot tetap di memori selama proses hidup; tahap 2 pakai M absolut saja. Angka default lonjakan (X, M, jendela, interval polling, minimal pemanasan, maks pair per siklus) ditentukan dari uji lapangan; WebSocket publik tidak diasumsikan. Terjawab: tab ke-5, arti `jumlah` depth = KOIN, deep link membuka browser (tombol buka pair dibatalkan), notifikasi dan layanan terpisah dibatalkan. PRD v1.9 sudah memperbarui bagian 16 no. 15 sampai 20 dan menghapus FR-35, FR-36, FR-37.
 
-**Pertanyaan Harga global (14 Nov 2026; PRD v1.11 bagian 16, no. 22 sampai 24):** (22) DNS: pengguna bertanya DoH apa dan dampaknya ke Indodax; usulan DoH hanya untuk host exchange luar (lihat rancangan); BELUM final, menunggu konfirmasi. (23) TERJAWAB ("setuju"): Binance, Bybit, OKX, median; ditafsirkan ketiganya juga satu-satunya sumber harga wajar. (24) TERJAWAB sebagian: kurs pembanding dari Binance saja; tersisa: harga wajar memakai kurs Indodax atau Binance (usulan: kurs Indodax, ditambah satu baris selisih kurs) dan ambang tanda selisih kurs. Selesaikan no. 22 dan sisa no. 24 sebelum T9.5.
+**Pertanyaan Harga global (14 Nov 2026; PRD v1.11 bagian 16, no. 22 sampai 24):** (22) TERJAWAB sebagai keputusan kerja: tanpa DoH sendiri; petunjuk Private DNS bila gagal. (23) TERJAWAB ("setuju"): Binance, Bybit, OKX, median; ketiganya juga satu-satunya sumber harga wajar. (24) TERJAWAB sebagai keputusan kerja: kurs `usdt_idr` Indodax untuk harga wajar, selisih terhadap Binance USDTIDR ditampilkan, tanda kurs > 1% (sementara). PRD v1.12 masih perlu menyelaraskan bagian 16 dan FR-38 sampai FR-40 dengan hasil ini.
 
 ---
 
@@ -207,14 +219,14 @@ Kebutuhan: git, Rust (rustup), toolchain Android (lihat bagian 2); Python 3.8+ h
 3. Salin `.env.example` menjadi `.env`, isi `INDODAX_API_KEY` dan `INDODAX_API_SECRET` (untuk skrip dan contoh Rust di komputer; aplikasi Android menyimpan key sendiri di HP).
 
 ```
-cargo test -p scalping-core        # 142 tes
-cargo test -p scalping-ffi         # 32 tes
+cargo test -p scalping-core        # 158 tes (harapan setelah T9.5)
+cargo test -p scalping-ffi         # 39 tes (harapan setelah T9.5)
 bash tools/bangun_android.sh --pasang <serial-adb>
 ```
 
 Uji di HP: tab Setelan, simpan kunci, isi TP/SL, "Sinkron sekarang", mulai pantauan (matikan optimasi baterai, izinkan notifikasi), lakukan transaksi kecil di Indodax: notifikasi beli/jual muncul dan Beranda, Posisi, Riwayat menyegarkan diri. Ekspor cadangan dari Setelan sebelum memasang pembaruan.
 
-Skrip bantu di `tools/`: `fase0_validasi.py`, `fase0_akun.py`, `tes_websocket_token.py`, `fase2_fiat.py`, `cek_lingkungan.py`, `verifikasi_api_publik.py`, `bangun_android.sh`; contoh Rust: `cek_data`, `cek_koneksi`, `pantau`.
+Skrip bantu di `tools/`: `fase0_validasi.py`, `fase0_akun.py`, `tes_websocket_token.py`, `fase2_fiat.py`, `cek_lingkungan.py`, `verifikasi_api_publik.py`, `uji_koneksi_global.sh`, `bangun_android.sh`; contoh Rust: `cek_data`, `cek_koneksi`, `pantau`.
 
 Alur git setiap task:
 ```
@@ -237,9 +249,10 @@ catatan-scalping/
 │   └── src/ lib.rs, error.rs, model.rs, sign.rs, client.rs, account.rs,
 │            harga.rs, calc.rs, store.rs, sync.rs, arus_kas.rs, periode.rs,
 │            posisi.rs, statistik.rs, ws.rs, ws_klien.rs
-│            [Fase 9: screener.rs (T9.1), screener_setelan.rs (T9.2), lonjakan.rs dan lonjakan_setelan.rs (T9.4, selesai); harga_global.rs (T9.5, rencana)]
+│            [Fase 9: screener.rs (T9.1), screener_setelan.rs (T9.2), lonjakan.rs dan lonjakan_setelan.rs (T9.4),
+│             harga_global.rs dan harga_global_setelan.rs (T9.5); semuanya selesai]
 ├── ffi/                                 (scalping-ffi, jembatan UniFFI; src/lib.rs,
-│                                         src/screener_ffi.rs [T9.2])
+│                                         src/screener_ffi.rs [T9.2], src/global_ffi.rs [T9.5])
 ├── uniffi-bindgen/
 ├── app/                                 (proyek Gradle Android, modul :aplikasi)
 │   └── aplikasi/src/main/
@@ -249,15 +262,15 @@ catatan-scalping/
 │           LayarSetelan, Cadangan, PenerimaBoot, Tema, Format, Komponen,
 │           Latar, Sinkron, GrafikView, LayananLatar, LogDiag, Aplikasi,
 │           PenjagaPantauan, KunciAman
-│           [Fase 9: LayarScreener (T9.2, selesai); T9.4 mengubah file ini, tanpa layanan baru]
+│           [Fase 9: LayarScreener (T9.2; diubah T9.4 dan T9.5), tanpa layanan baru]
 ├── docs/
-│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.11)
+│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.11; v1.12 menyusul)
 │   ├── PANDUAN_RELEASE.md
 │   └── prototype/Catatan_trading__prototype_UI.html
 └── tools/
     fase0_validasi.py, fase0_akun.py, tes_websocket_token.py, fase2_fiat.py,
     cek_lingkungan.py, bangun_android.sh
-    [Fase 9: verifikasi_api_publik.py (T9.0, selesai)]
+    [Fase 9: verifikasi_api_publik.py (T9.0, selesai), uji_koneksi_global.sh (T9.5, opsional)]
 ```
 
 Tidak ada berkas layanan baru di Fase 9 (`LayananScreener` dibatalkan 14 Nov 2026).
@@ -275,9 +288,11 @@ Terkonfirmasi dari `git log` (14 Nov 2026):
 - T9.0: verifikasi API publik Indodax (hash: isi dari `git log --oneline -1`)
 - T9.1: modul screener (hash: isi dari `git log --oneline -1`)
 - T9.2: FFI, layar Screener, setelan ambang (hash: isi dari `git log --oneline -1`)
-- T9.4: filter Lonjakan (hash: isi dari `git log --oneline -1` setelah commit)
+- T9.4: filter Lonjakan (hash: isi dari `git log --oneline -1`)
 - Dokumen: PRD v1.9 dan PROGRESS (notifikasi lonjakan dibatalkan; T9.4 jadi filter Lonjakan, dasar rata-rata 1 jam) (hash: isi dari `git log --oneline -1`)
-- Dokumen: PRD v1.11 dan PROGRESS (fitur Harga global exchange luar; T9.5 dan T9.6 direncanakan) (hash: isi dari `git log --oneline -1` setelah commit)
-- Dokumen: PROGRESS (jawaban pertanyaan 22 sampai 24 Harga global; PRD v1.12 menyusul) (hash: isi dari `git log --oneline -1` setelah commit)
+- Dokumen: PRD v1.11 dan PROGRESS (fitur Harga global exchange luar; T9.5 dan T9.6 direncanakan) (hash: isi dari `git log --oneline -1`)
+- Dokumen: PROGRESS (jawaban pertanyaan 22 sampai 24 Harga global; PRD v1.12 menyusul) (hash: isi dari `git log --oneline -1`)
+- T9.5: harga global exchange luar (Binance, Bybit, OKX) (hash: isi dari `git log --oneline -1`; pesan commit sesuai yang dipakai pengguna)
+- Dokumen: PROGRESS (T9.5 selesai) (hash: isi dari `git log --oneline -1` setelah commit)
 
 Titik rollback sebelum Fase 9: tag `v0.8.0-uji`.
