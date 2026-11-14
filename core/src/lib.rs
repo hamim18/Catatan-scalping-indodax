@@ -6,6 +6,8 @@ pub mod calc;
 pub mod client;
 pub mod error;
 pub mod harga;
+pub mod lonjakan;
+pub mod lonjakan_setelan;
 pub mod model;
 pub mod periode;
 pub mod posisi;
@@ -41,3 +43,8 @@ pub use ws::{
 pub use ws_klien::{pantau, KejadianPantau};
 
 pub use screener_setelan::{muat_konfig, periksa_konfig, simpan_konfig};
+pub use lonjakan::{
+    cari_pemicu, nilai_lonjakan, urutkan_lonjakan, BarisLonjakan, DasarHarga, HasilPemicu, KonfigLonjakan,
+    PemicuLonjakan, RiwayatHarga,
+};
+pub use lonjakan_setelan::{muat_konfig_lonjakan, periksa_konfig_lonjakan, simpan_konfig_lonjakan};
