@@ -120,21 +120,29 @@ object Sinkron {
     }
 
     /**
-     * Dipanggil tiap layar dibuka (FR-10). Pantauan mati: sinkron trade (sekalian arus kas).
-     * Pantauan hidup: hanya arus kas, karena pantau sudah merekonsiliasi trade sendiri.
+     * Dipanggil tiap layar dibuka (FR-10). Pantauan BENAR-BENAR berjalan: hanya arus kas, karena pantau
+     * sudah merekonsiliasi trade sendiri. Selain itu: sinkron trade (sekalian arus kas).
+     * T10.5: yang dipakai adalah keadaan nyata (`pemantau.sedangJalan()`), bukan preferensi "aktif".
+     * Preferensi tetap true bila layanan dimatikan sistem atau aplikasi dihentikan paksa, sehingga
+     * sebelumnya trade yang terjadi saat layanan mati (contoh: UAI terjual) tidak ikut tersinkron saat
+     * aplikasi dibuka. Pantau yang sedang menyambung ulang berarti database bisa dipakai bersamaan;
+     * itu aman karena anti-dobel memakai ID trade dan `busy_timeout` menunggu kunci SQLite.
      * Jeda minimal 60 detik supaya tidak berulang saat layar bolak-balik.
      */
     fun otomatis(ctx: Context, selesai: (Hasil) -> Unit) {
         val app = ctx.applicationContext
         if (KunciAman(app).ujungKey() == null || !pernahSinkron(app)) return
         val sekarang = System.currentTimeMillis()
-        if (pantauAktif(app)) {
+        if (PantauBersama.pemantau.sedangJalan()) {
             if (arusKasBerjalan || sekarang - terakhirArusKasMs < 60_000) return
             terakhirArusKasMs = sekarang
             jalankanArusKas(app, selesai)
         } else {
-            if (tradeBerjalan || sekarang - terakhirOtomatisMs < 60_000) return
+            if (tradeBerjalan || imporBerjalan || sekarang - terakhirOtomatisMs < 60_000) return
             terakhirOtomatisMs = sekarang
+            if (prefs(app).getBoolean(PantauBersama.PREF_AKTIF, false)) {
+                PantauBersama.catat("Pantauan seharusnya menyala tetapi tidak berjalan; sinkron trade dijalankan")
+            }
             sinkronTrade(app, true, selesai)
         }
     }
