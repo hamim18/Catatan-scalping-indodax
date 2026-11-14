@@ -1,6 +1,6 @@
 # PRD: Aplikasi Catatan Trading Crypto
 
-Versi 1.10 · 14 November 2026 (T9.4: pertanyaan 21 dijawab, snapshot tetap di memori dan tahap 2 memakai M absolut; kode filter Lonjakan ditulis, menunggu tes. Sebelumnya v1.9: Fase 9 sebagian jalan: T9.0 sampai T9.2 selesai. Notifikasi lonjakan, layanan terpisah, dan tombol buka pair dibatalkan; lonjakan menjadi filter terpisah di layar Screener, dinilai dari harga sekarang dibanding rata-rata 1 jam terakhir. Perhitungan trading, target, dan grafik tidak berubah dari v1.8) · Pemilik produk: Raya Abdullah Ar Rasyid · Status: Fase 0 sampai 8 diimplementasikan; Fase 9: T9.0 sampai T9.2 selesai, T9.4 (filter Lonjakan) masih rancangan (bagian bertanda "usulan" belum final)
+Versi 1.11 · 14 November 2026 (Harga global exchange luar ditambahkan sebagai FR-38 sampai FR-40, masih rancangan; T9.4 filter Lonjakan selesai: lulus tes, uji HP, dan uji lapangan awal. Sebelumnya v1.10: T9.4 pertanyaan 21 dijawab, snapshot tetap di memori dan tahap 2 memakai M absolut. Sebelumnya v1.9: Fase 9 sebagian jalan: T9.0 sampai T9.2 selesai. Notifikasi lonjakan, layanan terpisah, dan tombol buka pair dibatalkan; lonjakan menjadi filter terpisah di layar Screener, dinilai dari harga sekarang dibanding rata-rata 1 jam terakhir. Perhitungan trading, target, dan grafik tidak berubah dari v1.8) · Pemilik produk: Raya Abdullah Ar Rasyid · Status: Fase 0 sampai 8 diimplementasikan; Fase 9: T9.0 sampai T9.2 dan T9.4 selesai, T9.5 dan T9.6 (Harga global) masih rancangan (bagian bertanda "usulan" belum final)
 
 ## 1. Ringkasan
 
@@ -11,7 +11,7 @@ Empat hal yang diselesaikan:
 1. Mengetahui total aset (nilai pasar) dan hasil trading (profit atau loss dari trade yang sudah ditutup), terhadap target harian dan mingguan.
 2. Setiap kali membeli koin, langsung muncul harga Take Profit (TP) dan Stop Loss (SL) sebagai notifikasi.
 3. Open posisi tercatat otomatis dan tertutup otomatis ketika dijual.
-4. (Fase 9) Menyaring pair IDR yang memenuhi kriteria scalping buatan pengguna sendiri dan menandai pair yang harganya melonjak dibanding rata-rata 1 jam terakhir, semuanya di layar Screener. Tanpa notifikasi.
+4. (Fase 9) Menyaring pair IDR yang memenuhi kriteria scalping buatan pengguna sendiri dan menandai pair yang harganya melonjak dibanding rata-rata 1 jam terakhir, semuanya di layar Screener. Tanpa notifikasi. Menampilkan juga harga pair yang sama di exchange luar (3 exchange utama) beserta harga wajar sebagai pembanding.
 
 ## 2. Latar belakang dan masalah
 
@@ -22,6 +22,7 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 - Keputusan SL dan TP dibuat spontan, tanpa perhitungan yang menyertakan fee.
 - Fee beli dan jual berbeda dan menggerus profit trade kecil. Contoh nyata: dari modal ±65 ribu, total fee 340 IDR menggerus hampir separuh profit kotor (±720 IDR), tersisa +380 IDR.
 - (Fase 9) Mencari pair yang layak di-scalping dilakukan manual dengan skrip Python di Termux (`screener_indodax.py`), terpisah dari aplikasi, dan tidak menandai pair yang sedang melonjak.
+- (Fase 9) Tidak ada pembanding harga dengan exchange global. Pengguna mengeceknya manual dengan skrip Python `harga_wajar_indodax.py`, sehingga sulit menilai apakah harga di Indodax sedang wajar, tertinggal, atau menyimpang.
 
 ## 3. Tujuan dan non-tujuan
 
@@ -34,15 +35,16 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 - Logika perhitungan sesederhana mungkin.
 - Tampilan minimalis: pengguna paham trading, jadi layar hanya memuat angka yang dipakai mengambil keputusan, tanpa kalimat penjelas, rumus, atau keterangan teknis (Fase 7).
 - (Fase 9) Screener: daftar pair yang lolos kriteria pengguna, semua ambang bisa diatur di aplikasi, dan filter Lonjakan (naik maupun turun) terhadap rata-rata harga 1 jam. Fitur ini khusus penyaringan, tanpa notifikasi, dan tidak menyentuh perhitungan trading.
+- (Fase 9) Harga global: pembanding harga Indodax dengan harga wajar dari exchange luar (3 exchange utama), dua tahap: snapshot (harga wajar, selisih, daftar harga per exchange) lalu arah harga global. Hanya informasi, tanpa notifikasi, tidak memengaruhi perhitungan trading.
 
 **Non-tujuan (di luar cakupan versi ini)**
 
 - Membuat atau membatalkan order, atau penarikan dana (izin API hanya baca).
-- Grafik harga dan tampilan order book. Harga terakhir (`last`) dipakai untuk Total aset dan floating P/L. Khusus fitur Screener (Fase 9), data pasar publik (ringkasan pasar, riwayat transaksi, kedalaman order book) dipakai untuk menyaring pair dan menandai lonjakan; hanya untuk itu. Notifikasi harga atau lonjakan TIDAK dibuat (diputuskan 14 November 2026: dikhawatirkan terlalu banyak notifikasi).
-- Sinyal atau rekomendasi beli/jual. Screener hanya menyaring berdasarkan kriteria yang diatur pengguna sendiri; bukan saran membeli, tidak memengaruhi profit, target, grafik, atau statistik.
+- Grafik harga dan tampilan order book. Harga terakhir (`last`) dipakai untuk Total aset dan floating P/L. Khusus fitur Screener (Fase 9), data pasar publik (ringkasan pasar, riwayat transaksi, kedalaman order book) dipakai untuk menyaring pair dan menandai lonjakan; hanya untuk itu. Notifikasi harga atau lonjakan TIDAK dibuat (diputuskan 14 November 2026: dikhawatirkan terlalu banyak notifikasi). Harga exchange luar (publik, tanpa key) dipakai hanya sebagai pembanding di layar Screener (FR-38 sampai FR-40).
+- Sinyal atau rekomendasi beli/jual. Screener hanya menyaring berdasarkan kriteria yang diatur pengguna sendiri; bukan saran membeli, tidak memengaruhi profit, target, grafik, atau statistik. Harga wajar dan selisih terhadap exchange luar hanya pembanding informasi.
 - Bursa selain Indodax, pasangan selain IDR.
 - Multi-pengguna, akun cloud, dan platform selain mobile.
-- Data bursa lain (misalnya Binance) untuk ide "ikuti pergerakan whale": ditunda, bukan bagian Fase 9.
+- Data bursa lain untuk ide "ikuti pergerakan whale" (aliran dana besar): ditunda. Pengecualian (14 November 2026): harga exchange luar sebagai pembanding harga wajar masuk Fase 9 (FR-38 sampai FR-40). Tidak ada order book, aliran dana, atau data akun dari exchange luar.
 
 ## 4. Pengguna dan konteks
 
@@ -69,6 +71,9 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 | Menit aktif | Persentase menit dalam jendela yang punya minimal satu transaksi (usulan; menangkap lonjakan sesaat yang tertutup rata-rata). |
 | Harga dasar 1 jam | Rata-rata harga terakhir (`last`) sebuah pair dari snapshot ringkasan pasar dalam 60 menit terakhir, disimpan hanya di memori (usulan; FR-34). |
 | Lonjakan | Harga terakhir menyimpang dari harga dasar 1 jam sebesar X persen atau lebih: naik (▲) atau turun (▼). Ditampilkan di layar Screener sebagai filter terpisah; tanpa notifikasi (definisi di FR-34). |
+| Harga wajar | Median harga USDT sebuah koin dari exchange luar yang memiliki koin itu, dikalikan kurs `usdt_idr` Indodax (usulan memakai median; pengguna menyebut rata-rata; pertanyaan no. 23). Hanya pembanding informasi (FR-38). |
+| Selisih global | (harga Indodax ÷ harga wajar − 1) × 100. Positif berarti Indodax lebih mahal dari harga wajar. Dipengaruhi fee dan spread, jadi selisih kecil normal (FR-38). |
+| Exchange Tier 1 dan Tier 2 | Pengelompokan dari skrip pengguna: Tier 1 = Binance, Bybit, OKX; Tier 2 = Gate, MEXC, KuCoin. Menentukan label kualitas data; daftar yang ditampilkan dan dipakai belum final (pertanyaan no. 23). |
 
 ## 6. Alur utama
 
@@ -77,7 +82,7 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 3. **Posisi terbuka**: tampil di daftar Open Posisi lengkap dengan modal efektif, TP, dan SL.
 4. **Jual di Indodax**: aplikasi mendeteksi order jual, mengurangi atau menutup posisi, menghitung profit atau loss bersih, dan memperbarui profit tertutup dan progress target.
 5. **Pemantauan**: pengguna melihat pencapaian harian dan mingguan, total aset, grafik akumulasi profit, floating, dan riwayat trade.
-6. **Screening (Fase 9)**: pengguna membuka layar Screener untuk melihat pair yang lolos kriteria, dan/atau memakai filter Lonjakan. Layar hanya informasi: pengguna membuka aplikasi Indodax sendiri dan membuat order di sana.
+6. **Screening (Fase 9)**: pengguna membuka layar Screener untuk melihat pair yang lolos kriteria, dan/atau memakai filter Lonjakan, serta membandingkan harga Indodax dengan harga wajar di exchange luar. Layar hanya informasi: pengguna membuka aplikasi Indodax sendiri dan membuat order di sana.
 
 ## 7. Kebutuhan fungsional
 
@@ -137,7 +142,7 @@ Pengguna melakukan trading cepat (scalping) dan hasilnya hanya terlihat sebagai 
 
 Semua butir di bagian ini hanya membaca data pasar publik (tanpa key, tanpa tanda tangan) dan tidak memengaruhi posisi, profit, target, grafik, atau statistik. Angka default dan rumus final ditetapkan setelah verifikasi API (T9.0).
 
-- **FR-29** Layar Screener: satu daftar pair IDR yang lolos kriteria, urut menurut skor (FR-32). Kolom: pair, harga, trx/mnt, spread, gerak 10 menit, buy%. Tanpa teks penjelas (gaya Fase 7). Pair yang sedang menjadi posisi diberi penanda "Dipegang". Layar adalah tab ke-5 di navigasi bawah (T9.2, lulus uji HP 14 November 2026). Mengetuk baris tidak melakukan apa pun.
+- **FR-29** Layar Screener: satu daftar pair IDR yang lolos kriteria, urut menurut skor (FR-32). Kolom: pair, harga, trx/mnt, spread, gerak 10 menit, buy%. Tanpa teks penjelas (gaya Fase 7). Pair yang sedang menjadi posisi diberi penanda "Dipegang". Layar adalah tab ke-5 di navigasi bawah (T9.2, lulus uji HP 14 November 2026). Mengetuk baris tidak melakukan apa pun (dari T9.5, mengetuk baris dapat membuka rincian harga global; bentuk tampilan diputuskan di T9.5).
 - **FR-30** Sumber data dan beban: tahap 1 dari satu request ringkasan pasar (filter murah); tahap 2 hanya untuk kandidat, memakai riwayat transaksi per pair (dan kedalaman order book bila filter kedalaman aktif). Penyegaran tiap 30 sampai 60 detik hanya saat layar terbuka, agar batas 300 permintaan per menit aman. Gagal ambil data satu pair tidak menggagalkan seluruh daftar.
 - **FR-31** Filter dasar (bawaan skrip Python pengguna, semua dapat diatur): harga minimum dan maksimum, volume 24 jam minimum dan maksimum, trx/mnt minimum dalam jendela tertentu, spread maksimum, range 24 jam minimum, usia transaksi terakhir maksimum. Nilai awal: nilai yang dipakai skrip sekarang (harga 10 sampai 70.000; volume 10 juta sampai 10 miliar; trx/mnt ≥ 2 dalam jendela 10 menit; spread ≤ 10%; range ≥ 4%; usia transaksi ≤ 120 detik). Setiap filter dapat dimatikan.
 - **FR-32** Filter dan urutan tambahan (usulan, tiap filter dapat diatur atau dimatikan): spread maksimum terikat TP di Setelan (bawaan ≤ sepertiga TP); gerak 10 menit minimum (≥ 2 × perkiraan biaya round-trip), menggantikan range 24 jam; menit aktif minimum (bawaan ≥ 70%); usia transaksi terakhir lebih ketat (30 sampai 60 detik); kedalaman order book dalam 0,5% dari harga minimum sebesar kelipatan "Modal trade ini"; arah 10 menit minimum agar tidak masuk saat harga jatuh; dominasi satu transaksi (bila satu trade lebih dari 40% volume jendela: tanda peringatan, bukan dibuang). Skor urutan = gerak 10 menit ÷ (spread + biaya round-trip).
@@ -146,6 +151,9 @@ Semua butir di bagian ini hanya membaca data pasar publik (tanpa key, tanpa tand
 - ~~**FR-35** Notifikasi lonjakan~~ **Dihapus (14 November 2026)**: dikhawatirkan terlalu banyak notifikasi. Lonjakan hanya tampil di layar Screener.
 - ~~**FR-36** Layanan terpisah (`LayananScreener`)~~ **Dihapus (14 November 2026)**: tidak ada notifikasi, jadi tidak perlu layanan latar, saluran notifikasi, maupun perubahan manifest. `LayananLatar` tidak disentuh.
 - ~~**FR-37** Tombol buka pair di Indodax~~ **Dihapus (14 November 2026)**: tautan web `https://indodax.com/market/<PAIR>` terbukti membuka browser, bukan aplikasi Indodax (dicek lewat adb), dan pengguna memutuskan tombol tidak diperlukan. Pengguna membuka Indodax sendiri.
+- **FR-38** Harga global, tahap 1 (T9.5; diputuskan 14 November 2026; rancangan, bagian "usulan" belum final). Untuk pair di daftar Screener (dan pair Lonjakan), aplikasi mengambil harga USDT koin yang sama dari exchange luar (data publik, tanpa key, tanpa data akun) dan menampilkan: (a) harga wajar = median harga dari semua exchange sumber yang punya koin itu, dikonversi ke IDR dengan kurs `usdt_idr` Indodax; (b) selisih harga Indodax terhadap harga wajar dalam persen, dan selisih dalam USDT (usulan, untuk membedakan dari bias kurs); (c) daftar harga tiap exchange untuk 3 exchange terbesar dan berpengaruh saja (IDR dan selisih terhadap Indodax); (d) label kualitas data, aturan dari skrip pengguna: tinggi bila minimal 2 exchange Tier 1 punya koin itu, sedang bila 1 Tier 1, rendah bila hanya Tier 2, rendah (sebaran tinggi) bila sebaran antar sumber lebih dari 2%; tanpa pembanding bila tidak ada exchange yang memiliki koin; (e) tanda peringatan bila selisih terhadap Indodax terlalu besar (usulan lebih dari 10%) karena kemungkinan ticker sama untuk koin berbeda atau token berskala. Pengambilan hanya untuk kandidat di daftar (maksimal 40 pair), hanya saat layar Screener terbuka, penyegaran minimal 30 sampai 60 detik (usulan). Daftar 3 exchange yang ditampilkan, jumlah exchange untuk menghitung harga wajar, dan median atau rata-rata belum ditetapkan (usulan: Binance, Bybit, OKX; pertanyaan no. 23). Selisih hanya informasi pembanding, bukan sinyal: fee dan spread membuat selisih kecil normal, jadi dibandingkan dengan perkiraan biaya round-trip.
+- **FR-39** Harga global, tahap 2: arah (T9.6; rancangan). Menampilkan perubahan harga global dalam N menit terakhir (usulan 10 menit) dibanding perubahan harga Indodax pada periode yang sama, agar terlihat bila harga global sudah bergerak sementara Indodax belum. Memakai snapshot di memori seperti Lonjakan; tidak pernah masuk database. Angka N dan ambang ditetapkan lewat uji lapangan. Dikerjakan setelah T9.5 selesai dan teruji.
+- **FR-40** Status dan pemeriksaan koneksi exchange luar (T9.5; rancangan). Pada jaringan pengguna, exchange luar terblokir di tingkat DNS (uji skrip 14 November 2026: gagal sampai tahap DNS; berhasil setelah DNS diganti ke `one.one.one.one` atau `dns.google`). Aplikasi memeriksa jangkauan tiap exchange dan menampilkan status ringkas di layar Screener. Exchange yang tidak terjangkau dilewati, exchange lain tetap dipakai, label kualitas diturunkan sesuai FR-38, dan petunjuk singkat mengganti pengaturan Private DNS Android ditampilkan (usulan). Aplikasi tidak mengubah DNS sendiri; apakah aplikasi memakai DNS-over-HTTPS sendiri belum diputuskan (pertanyaan no. 22). Gagal semua exchange tidak menggagalkan layar Screener: kolom global kosong. Perlu diuji di HP apakah aplikasi mengikuti pengaturan Private DNS.
 
 ## 8. Rumus dan aturan perhitungan
 
@@ -175,6 +183,10 @@ Semua butir di bagian ini hanya membaca data pasar publik (tanpa key, tanpa tand
 | Skor | Gerak 10 menit ÷ (spread + biaya round-trip) |
 | Harga dasar 1 jam | Rata-rata `last` dari snapshot dalam 60 menit terakhir (berbobot waktu). Kosong bila belum cukup data (masa pemanasan). |
 | Lonjakan | (harga terakhir − harga dasar 1 jam) ÷ harga dasar 1 jam × 100 = perubahan; melonjak bila \|perubahan\| ≥ X% dan trx/mnt jendela pendek ≥ M (FR-34); ▲ bila perubahan positif, ▼ bila negatif |
+| Harga wajar (IDR) | Median harga USDT dari exchange sumber yang memiliki koin × kurs `usdt_idr` Indodax (usulan; FR-38) |
+| Selisih global (%) | (harga Indodax ÷ harga wajar − 1) × 100; selisih dalam USDT = (harga Indodax ÷ kurs ÷ median − 1) × 100 (usulan). Peringatan bila nilai mutlak melebihi ambang (usulan 10%) |
+| Sebaran sumber (%) | (harga tertinggi − terendah) ÷ median × 100 di antara exchange sumber; lebih dari 2% menurunkan label kualitas |
+| Arah global (%) | Perubahan harga global dalam N menit terakhir dibanding perubahan harga Indodax periode yang sama, dari snapshot di memori (usulan; T9.6; FR-39) |
 
 **Aturan**
 
@@ -184,8 +196,8 @@ Semua butir di bagian ini hanya membaca data pasar publik (tanpa key, tanpa tand
 - Selisih jual-beli mentah TIDAK dipakai (salah bila ada posisi terbuka); yang dipakai profit per trade tertutup.
 - Estimasi hasil bersih di notifikasi dan layar Posisi memakai fee jual perkiraan 0,31% (limit). Jual market bisa sekitar 0,61%, jadi estimasi bisa terlalu optimistis; hasil nyata selalu memakai `commission` dari API saat jual.
 - Statistik: win rate = trade untung / semua trade; persen profit termakan fee = total fee / profit kotor, dengan profit kotor = hasil bersih + total fee.
-- Seluruh perhitungan uang memakai tipe angka desimal presisi (bukan floating point). Jumlah koin sampai 8 desimal. Hitungan Screener (persen, rasio) juga memakai Decimal di Rust.
-- Hasil Screener dan snapshot harga lonjakan tidak pernah masuk ke profit, target, grafik, statistik, atau database trade; snapshot hanya di memori dan dibuang setelah 60 menit.
+- Seluruh perhitungan uang memakai tipe angka desimal presisi (bukan floating point). Jumlah koin sampai 8 desimal. Hitungan Screener (persen, rasio, termasuk konversi harga exchange luar, median, dan selisih) juga memakai Decimal di Rust.
+- Hasil Screener dan snapshot harga lonjakan tidak pernah masuk ke profit, target, grafik, statistik, atau database trade; snapshot hanya di memori dan dibuang setelah 60 menit. Hal yang sama berlaku untuk harga exchange luar, harga wajar, dan snapshot arah global.
 
 **Contoh nyata (ICNT, 5 November 2026)**
 
@@ -228,6 +240,13 @@ Berdasarkan dokumentasi resmi Indodax (repo btcid/indodax-official-api-docs) per
 - GET `/api/depth/<pair>` (kedalaman order book): kunci `buy` dan `sell`, maksimal 150 level per sisi, level `[harga, jumlah koin]`. Dipakai filter kedalaman (T9.1).
 - Terjawab di T9.0: `vol_idr` kemungkinan besar volume 24 jam bergulir (tidak dipakai sebagai trx/mnt); ringkasan segar tiap beberapa detik; WebSocket publik tidak diuji dan tidak diasumsikan ada. Belum terverifikasi: apakah respons `summaries` dikompresi gzip; pair dengan lebih dari 500 transaksi dalam 10 menit.
 
+**Jalur publik exchange luar (Fase 9, T9.5; rancangan, tanpa key)**
+
+- Sumber, menurut skrip pengguna `harga_wajar_indodax.py` (berjalan di jaringan pengguna setelah DNS diganti): Binance GET `https://api.binance.com/api/v3/ticker/price`; Bybit GET `https://api.bybit.com/v5/market/tickers?category=spot`; OKX GET `https://www.okx.com/api/v5/market/tickers?instType=SPOT`; Gate GET `https://api.gateio.ws/api/v4/spot/tickers`; MEXC GET `https://api.mexc.com/api/v3/ticker/price`; KuCoin GET `https://api.kucoin.com/api/v1/market/allTickers`. Semuanya mengembalikan harga semua pair USDT; simbol koin dipetakan dari nama pair Indodax (misalnya `btc_idr` ke `BTC`).
+- Skrip memakai harga `last`. Harga tengah bid-ask belum diperiksa.
+- Jaringan: pada jaringan pengguna, exchange luar terblokir di tingkat DNS dan berjalan setelah DNS diganti ke `one.one.one.one` atau `dns.google` (14 November 2026). Belum diketahui apakah semua exchange atau sebagian, dan apakah resolver aplikasi mengikuti Private DNS HP.
+- Belum terverifikasi: ukuran respons tiap exchange (daftar semua pair, kemungkinan beberapa MB untuk enam exchange), endpoint per simbol atau daftar simbol, batas laju tiap exchange, dan kurs USDT/IDR pembanding selain Indodax.
+
 **Catatan penting**
 
 - Metode lama tradeHistory dan orderHistory sudah dinonaktifkan sejak 7 April 2026. Jangan memakai library atau contoh yang masih memakainya.
@@ -248,7 +267,8 @@ Berdasarkan dokumentasi resmi Indodax (repo btcid/indodax-official-api-docs) per
 - Jembatan Rust ke Kotlin memakai UniFFI 0.31 (crate `ffi/`, `scalping-ffi`). Penyimpanan: SQLite (rusqlite, bundled) dikelola dari Rust.
 - Kode Rust ada di `core/` (crate `scalping-core`), jembatan di `ffi/`, kode Android di `app/` (tanpa Compose, tampilan dari kode, minSdk 30).
 - Posisi dan profit tertutup tidak disimpan sebagai tabel sendiri: dihitung ulang dari catatan trade setiap kali dibutuhkan. Total aset selalu dari akun (jaringan).
-- Fase 9: modul Rust `core/src/screener.rs` (parser ringkasan pasar, transaksi, dan kedalaman; filter dua tahap; skor; murni, tanpa jaringan dan database) dan `core/src/screener_setelan.rs` (ambang di tabel `meta`), jembatan `ffi/src/screener_ffi.rs`, layar `LayarScreener.kt` sebagai tab ke-5 (T9.1 dan T9.2, selesai). T9.4 (rancangan): deteksi lonjakan di modul Rust yang sama, dengan snapshot harga dikirim dari Kotlin dan polling ringkasan hanya saat layar Screener terbuka. TIDAK ada layanan latar baru, saluran notifikasi, atau perubahan manifest; `LayananLatar.kt` tidak diubah.
+- Fase 9: modul Rust `core/src/screener.rs` (parser ringkasan pasar, transaksi, dan kedalaman; filter dua tahap; skor; murni, tanpa jaringan dan database) dan `core/src/screener_setelan.rs` (ambang di tabel `meta`), jembatan `ffi/src/screener_ffi.rs`, layar `LayarScreener.kt` sebagai tab ke-5 (T9.1 dan T9.2, selesai). T9.4 (selesai): deteksi lonjakan di `core/src/lonjakan.rs` dan `core/src/lonjakan_setelan.rs`, dengan snapshot harga di memori pada sisi `ffi` dan polling ringkasan hanya saat layar Screener terbuka. TIDAK ada layanan latar baru, saluran notifikasi, atau perubahan manifest; `LayananLatar.kt` tidak diubah.
+- Harga global (T9.5 dan T9.6, rancangan): pengambilan JSON mentah di `client.rs`; modul Rust murni baru `core/src/harga_global.rs` (parser tiap exchange, median, konversi IDR, selisih, label kualitas; Decimal); ambang dan daftar exchange di tabel `meta`; jembatan FFI dan tampilan di layar Screener. Sama seperti T9.4: tanpa layanan latar, notifikasi, atau perubahan manifest, dan tanpa key.
 
 ## 11. Model data
 
@@ -263,7 +283,7 @@ Berdasarkan dokumentasi resmi Indodax (repo btcid/indodax-official-api-docs) per
 | Arus kas | jenis (deposit atau withdraw IDR), jumlah, biaya, waktu, ID sumber (unik). Hanya riwayat. |
 | Koreksi saldo | (tabel lama dibiarkan agar cadangan v1.x tetap bisa diimpor; tidak dipakai) |
 | Total aset terakhir | rupiah dan waktu, disimpan di tabel meta oleh Beranda; dipakai notifikasi jual |
-| Setelan Screener (Fase 9) | semua ambang filter, ambang lonjakan (X, M, jendela, interval polling), saklar naik/turun; disimpan di tabel `meta` (tanpa tabel baru). Hasil screening dan snapshot harga (60 menit) hanya di memori, tidak disimpan. |
+| Setelan Screener (Fase 9) | semua ambang filter, ambang lonjakan (X, M, jendela, interval polling), saklar naik/turun; disimpan di tabel `meta` (tanpa tabel baru). Hasil screening dan snapshot harga (60 menit) hanya di memori, tidak disimpan. Harga global (T9.5 dan T9.6, rencana): setelan daftar exchange, interval, dan ambang peringatan di tabel `meta` (kunci `global_<nama>`, usulan); harga exchange luar dan snapshot arah hanya di memori. |
 
 Penyimpanan lokal di perangkat. Data disimpan sebagai catatan, bukan angka saldo mentah, sehingga mengoreksi satu catatan dapat menghitung ulang semuanya.
 
@@ -272,14 +292,15 @@ Penyimpanan lokal di perangkat. Data disimpan sebagai catatan, bukan angka saldo
 - **Keandalan**: koneksi realtime otomatis tersambung kembali, disusul rekonsiliasi REST agar tidak ada trade yang terlewat.
 - **Kecepatan**: target notifikasi muncul dalam beberapa detik setelah order DONE (target awal, perlu diukur).
 - **Baterai dan sistem**: layanan latar dengan satu notifikasi tetap yang bisa disenyapkan. Pengguna perlu mematikan optimasi baterai untuk aplikasi ini dan memberi izin notifikasi (Android 13 ke atas). Screener (Fase 9) tidak menambah layanan latar maupun notifikasi: berjalan hanya saat layarnya terbuka.
-- **Keamanan**: kunci disimpan di penyimpanan aman perangkat, tidak masuk log, tidak masuk cadangan tanpa enkripsi, tidak dikirim ke pihak mana pun selain Indodax. Hanya izin baca. Screener memakai endpoint publik tanpa key.
+- **Keamanan**: kunci disimpan di penyimpanan aman perangkat, tidak masuk log, tidak masuk cadangan tanpa enkripsi, tidak dikirim ke pihak mana pun selain Indodax. Hanya izin baca. Screener memakai endpoint publik tanpa key, termasuk permintaan ke exchange luar (Harga global): permintaan itu tidak membawa kunci, data akun, posisi, atau modal pengguna.
 - **Offline**: data lokal tetap bisa dilihat tanpa internet. Sinkron berjalan ulang saat koneksi kembali. Screener membutuhkan internet.
 - **Cadangan**: ekspor dan impor database ke penyimpanan lokal (FR-26). Kunci API tidak ikut.
 - **Ketepatan**: acuan uji tetap struk Indodax per trade (profit tertutup). Total aset diambil langsung dari akun sehingga tidak perlu dikoreksi.
 - **Zona waktu dan periode**: WIB, minggu dimulai hari Senin (dikonfirmasi 7 November 2026).
 - **Tampilan**: tanpa teks penjelas; log pantauan tersembunyi dan dibuka dengan mengetuk judulnya; tombol optimasi baterai disembunyikan bila sudah dimatikan (Fase 7). Layar Screener mengikuti gaya yang sama.
 - **Diagnostik**: log permanen `diag.log`, tombol Bagikan log, dan penjaga pantauan yang memberi peringatan bila pantauan mati atau terputus lebih dari 5 menit (T8.1).
-- **Beban API Screener**: total permintaan publik dijaga jauh di bawah 300 per menit (bersama permintaan lain). Mode Lonjakan memakai satu request ringkasan (±95 KB) tiap 15 sampai 30 detik hanya saat layar terbuka (±12 sampai 23 MB per jam bila tidak terkompresi) ditambah paling banyak 15 request `trades` per siklus; interval dapat diatur.
+- **Beban API Screener**: total permintaan publik dijaga jauh di bawah 300 per menit (bersama permintaan lain). Mode Lonjakan memakai satu request ringkasan (±95 KB) tiap 15 sampai 30 detik hanya saat layar terbuka (±12 sampai 23 MB per jam bila tidak terkompresi) ditambah paling banyak 15 request `trades` per siklus; interval dapat diatur. Harga global (T9.5) menambah permintaan ke exchange luar hanya untuk kandidat dengan interval minimal 30 sampai 60 detik; ukuran respons dan batas laju tiap exchange belum diukur.
+- **Jangkauan exchange luar**: exchange luar bisa tidak terjangkau (pada jaringan pengguna terblokir di DNS). Aplikasi memeriksa dan menampilkan status tiap exchange, melewati yang gagal, dan tidak pernah menggagalkan layar Screener karenanya (FR-40).
 
 ## 13. Kasus khusus
 
@@ -304,6 +325,11 @@ Penyimpanan lokal di perangkat. Data disimpan sebagai catatan, bukan angka saldo
 | Screener: layar baru dibuka, snapshot belum cukup (masa pemanasan) | Filter Lonjakan belum menilai pair sampai ada snapshot minimal sekitar 10 menit; harga dasar memakai data yang ada sampai 60 menit; layar menunjukkan lama data dasar secara ringkas (usulan) |
 | Screener: layar ditutup lalu dibuka kembali | Usulan: snapshot tetap di memori selama proses aplikasi hidup (titik > 60 menit dibuang); rata-rata berbobot waktu sehingga celah saat layar tertutup tidak membias. Belum dikonfirmasi (pertanyaan terbuka no. 21) |
 | Screener: pair yang sedang dipegang muncul di daftar | Diberi penanda; tidak memengaruhi posisi |
+| Harga global: exchange luar tidak terjangkau (DNS terblokir, timeout, galat) | Exchange itu dilewati dan statusnya ditampilkan; exchange lain tetap dipakai dan label kualitas turun; petunjuk Private DNS ditampilkan (usulan); layar Screener tetap jalan (FR-40) |
+| Harga global: koin tidak ada di exchange mana pun | Kolom global kosong dengan label "tidak ada pembanding"; pair tetap tampil |
+| Harga global: selisih terhadap Indodax sangat besar (usulan lebih dari 10%) | Tanda peringatan: kemungkinan ticker sama untuk koin berbeda atau token berskala; harga wajar tidak dipercaya |
+| Harga global: kurs `usdt_idr` Indodax tidak biasa (premium atau diskon USDT) | Selisih semua pair bergeser sama; selisih dalam USDT ditampilkan agar bias kurs terlihat (usulan; pertanyaan no. 24) |
+| Harga global: harga `last` di exchange sepi basi | Belum diputuskan (usulan: harga tengah bid-ask atau bobot lebih rendah); label kualitas dan sebaran sumber menjadi penanda sementara |
 
 ## 14. Metrik keberhasilan
 
@@ -313,7 +339,7 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 - Tidak ada trade ganda dan tidak ada trade terlewat dalam satu minggu pemakaian.
 - Notifikasi TP/SL muncul untuk setiap pembelian yang terisi.
 - Layanan latar tetap hidup sepanjang jam trading tanpa dimatikan sistem.
-- Screener (Fase 9): daftar pair cocok dengan hasil skrip Python pada kriteria yang sama; pair yang melonjak terlihat di filter Lonjakan dalam satu siklus polling setelah masa pemanasan.
+- Screener (Fase 9): daftar pair cocok dengan hasil skrip Python pada kriteria yang sama; pair yang melonjak terlihat di filter Lonjakan dalam satu siklus polling setelah masa pemanasan (uji lapangan awal 14 November 2026: berhasil dan sesuai kriteria). Harga global (T9.5): harga wajar dan harga per exchange cocok dengan hasil skrip `harga_wajar_indodax.py` untuk koin yang sama pada waktu berdekatan, dan status exchange yang tidak terjangkau terlihat jelas.
 
 ## 15. Rencana rilis bertahap
 
@@ -329,7 +355,7 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 | 6. Total aset tunggal | T6.1 total aset nilai pasar; T6.2 Beranda tunggal, target dan grafik dari profit tertutup; T6.3 floating P/L; T6.4 pembersihan (snapshot periode, modal aktif, setoran bersih, koreksi saldo dihapus; deposit/withdraw jadi riwayat); T6.5 dan T6.6 pembersihan kode grafik dan celah impor cadangan | Satu angka saldo, target stabil | Selesai (lulus uji HP 8 Nov 2026) |
 | 7. Penyederhanaan tampilan | T7.1 Beranda dan Posisi; T7.2 Riwayat dan Setelan (hanya Kotlin, perhitungan tidak berubah) | Informasi minimal dan efektif | Selesai (lulus uji HP 8 Nov 2026) |
 | 8. Uji lapangan | T8.1 log diagnostik permanen dan penjaga pantauan; rilis uji pribadi 0.8.0-uji dipakai harian | Bug dan peningkatan terdeteksi | Selesai (uji lapangan sampai 14 Nov 2026 tanpa kendala; tidak ada perbaikan diperlukan) |
-| 9. Screener | T9.0 verifikasi API publik (selesai); T9.1 modul Rust `screener.rs` dan tes (selesai); T9.2 FFI, layar Screener, setelan ambang (selesai, lulus uji HP); ~~T9.3 tombol buka pair~~ (dibatalkan); T9.4 filter Lonjakan di layar Screener: snapshot harga, harga dasar rata-rata 1 jam, pemicu dan tahap 2 dari `trades` (tanpa notifikasi dan layanan); PRD dan PROGRESS diperbarui tiap task | Pair layak scalping tersaring dan lonjakan terlihat | T9.0 sampai T9.2 selesai; T9.4 kode ditulis, menunggu tes dan uji HP (bagian "usulan" final setelah uji lapangan) |
+| 9. Screener | T9.0 verifikasi API publik (selesai); T9.1 modul Rust `screener.rs` dan tes (selesai); T9.2 FFI, layar Screener, setelan ambang (selesai, lulus uji HP); ~~T9.3 tombol buka pair~~ (dibatalkan); T9.4 filter Lonjakan di layar Screener: snapshot harga, harga dasar rata-rata 1 jam, pemicu dan tahap 2 dari `trades` (tanpa notifikasi dan layanan; selesai, lulus uji HP dan uji lapangan awal); T9.5 Harga global tahap 1 (harga wajar, selisih, 3 exchange, status koneksi); T9.6 Harga global tahap 2 (arah harga global); PRD dan PROGRESS diperbarui tiap task | Pair layak scalping tersaring, lonjakan terlihat, dan harga Indodax bisa dibandingkan dengan exchange luar | T9.0 sampai T9.2 dan T9.4 selesai; T9.5 dan T9.6 rancangan (bagian "usulan" final setelah uji lapangan) |
 
 ## 16. Pertanyaan terbuka
 
@@ -351,9 +377,12 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 16. ~~Layar Screener sebagai tab ke-5 atau kartu di Beranda?~~ **Terjawab (14 Nov 2026): tab ke-5**, dipakai di T9.2 dan lulus uji HP.
 17. ~~Skema deep link Indodax~~ **Terjawab (14 Nov 2026, dicek lewat adb): tautan web membuka browser, bukan aplikasi Indodax.** Tombol buka pair dibatalkan atas keputusan pengguna; FR-37 dihapus.
 18. ~~Bentuk respons API publik~~ **Terjawab (T9.0, 14 Nov 2026):** `trades` selalu 500 transaksi; bentuk `depth` dan arti `vol_idr` terjawab (bagian 9). Masih terbuka: kompresi gzip dan pair dengan lebih dari 500 transaksi dalam 10 menit.
-19. Angka default filter Lonjakan (X persen, M trx/mnt, jendela pendek, interval polling, minimal snapshot pemanasan, maksimal pair per siklus) dan filter tambahan. **Ditetapkan lewat uji lapangan setelah T9.4.**
+19. Angka default filter Lonjakan (X persen, M trx/mnt, jendela pendek, interval polling, minimal snapshot pemanasan, maksimal pair per siklus) dan filter tambahan. **Ditetapkan lewat uji lapangan setelah T9.4.** Uji lapangan awal (14 November 2026): pengguna mencoba beberapa setelan selama beberapa jam; fitur berjalan dan sesuai kriteria; angka final belum dicatat.
 20. WebSocket publik Indodax untuk data pasar: ada atau tidak? Belum diverifikasi; tidak diasumsikan.
 21. ~~Snapshot harga lonjakan: tetap di memori atau dikosongkan tiap layar ditutup? Syarat trx/mnt tahap 2?~~ **Terjawab (14 Nov 2026, keputusan terbaik): tetap di memori selama proses hidup (titik > 60 menit dibuang, rata-rata berbobot waktu, celah tidak dihitung); tahap 2 memakai M absolut saja.**
+22. Bila exchange luar tidak terjangkau (terblokir di DNS pada jaringan pengguna): cukup peringatan dan petunjuk mengganti Private DNS Android (usulan), atau aplikasi memakai DNS-over-HTTPS sendiri? Juga perlu diuji di HP apakah aplikasi mengikuti Private DNS.
+23. Harga global: tiga exchange yang ditampilkan (usulan: Binance, Bybit, OKX); berapa exchange dipakai menghitung harga wajar (3 atau 6; lebih banyak berarti lebih banyak data); median atau rata-rata (pengguna menyebut rata-rata; usulan median).
+24. Harga global: apakah ada kurs pembanding USDT/IDR selain Indodax, dan apakah selisih dalam USDT ditampilkan.
 
 ## 17. Risiko dan asumsi
 
@@ -375,3 +404,9 @@ Aplikasi pribadi, jadi ukurannya sederhana (target awal, bisa disesuaikan):
 | Lonjakan di koin yang tidak bisa dijual (spread besar, sepi) | Penanda lonjakan menyesatkan | Syarat dasar spread dan usia transaksi berlaku untuk filter Lonjakan |
 | Polling ringkasan menambah pemakaian data | ±12 sampai 23 MB per jam bila tidak terkompresi, hanya saat layar Screener terbuka dan mode Lonjakan aktif | Interval dapat diatur; kompresi gzip akan diperiksa; pantau pemakaian data |
 | Ambang default Screener tidak cocok untuk modal yang berubah-ubah | Daftar terlalu longgar atau sempit | Semua ambang bisa diatur; filter kedalaman memakai isian modal opsional; angka default disesuaikan dari uji lapangan |
+| Exchange luar terblokir di DNS pada jaringan pengguna | Harga global kosong | Status per exchange; peringatan dan petunjuk Private DNS; skrip uji menunjukkan jalan setelah DNS diganti; gagal satu tidak menggagalkan Screener (FR-40) |
+| Kurs `usdt_idr` Indodax menyimpang dari kurs wajar | Selisih semua pair bias | Tampilkan selisih dalam USDT; cari kurs pembanding (pertanyaan no. 24) |
+| Harga wajar dianggap rekomendasi | Keputusan trading bergantung pada alat ini | Label netral, tanpa kata "sinyal" atau "rekomendasi"; selisih diberi konteks terhadap fee dan spread; tidak memengaruhi perhitungan trading |
+| Ticker sama untuk koin berbeda, atau token berskala | Harga wajar menyesatkan | Tanda peringatan bila selisih lebih dari ambang (usulan 10%); label kualitas dan sebaran sumber |
+| Pemakaian data exchange luar (daftar semua pair dari banyak exchange) | Data seluler boros | Hanya 3 exchange, hanya kandidat, interval minimal 30 sampai 60 detik, hanya saat layar Screener terbuka; ukur di T9.5 |
+| Ketergantungan pada API pihak ketiga (perubahan, batas laju, pembatasan wilayah) | Harga global gagal atau salah | Tidak ada layanan atau notifikasi bergantung padanya; gagal satu exchange dilewati; parser toleran dan diuji dengan data nyata |
