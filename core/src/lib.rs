@@ -46,8 +46,8 @@ pub use ws_klien::{pantau, KejadianPantau};
 
 pub use screener_setelan::{muat_konfig, periksa_konfig, simpan_konfig};
 pub use harga_global::{
-    bandingkan_kurs, hitung_harga_global, parse_binance, parse_bybit, parse_okx, Exchange, HargaGlobal, HargaUsdt,
-    HasilBinance, KonfigGlobal, Kualitas, RincianExchange, SelisihKurs,
+    bandingkan_kurs, hitung_harga_global, parse_binance, parse_bybit, parse_okx, ArahHarga, Exchange, HargaGlobal,
+    HargaUsdt, HasilBinance, KonfigGlobal, Kualitas, RincianExchange, RiwayatArah, SelisihKurs,
 };
 pub use harga_global_setelan::{muat_konfig_global, periksa_konfig_global, simpan_konfig_global};
 pub use lonjakan::{

@@ -31,12 +31,19 @@ pub fn muat_konfig_global(simpan: &Penyimpanan) -> Hasil<KonfigGlobal> {
         Some(t) => t.trim().parse::<u32>().ok().filter(|x| (15..=600).contains(x)).unwrap_or(b.interval_detik),
         None => b.interval_detik,
     };
+    // T9.6: lebar jendela arah; nilai di luar 5..=30 dianggap rusak (bawaan)
+    let arah_menit = match simpan.meta(&kunci("arah_menit"))? {
+        Some(t) => t.trim().parse::<u32>().ok().filter(|x| (5..=30).contains(x)).unwrap_or(b.arah_menit),
+        None => b.arah_menit,
+    };
     Ok(KonfigGlobal {
         aktif,
         sebaran_maks_persen: baca_dec(simpan, "sebaran_maks_persen", b.sebaran_maks_persen)?,
         curiga_persen: baca_dec(simpan, "curiga_persen", b.curiga_persen)?,
         kurs_tanda_persen: baca_dec(simpan, "kurs_tanda_persen", b.kurs_tanda_persen)?,
         interval_detik,
+        arah_menit,
+        arah_ambang_persen: baca_dec(simpan, "arah_ambang_persen", b.arah_ambang_persen)?,
     })
 }
 
@@ -59,6 +66,10 @@ pub fn periksa_konfig_global(c: &KonfigGlobal) -> Hasil<()> {
     if c.interval_detik < 15 || c.interval_detik > 600 {
         return Err(tidak_valid("Interval harus 15 sampai 600 detik"));
     }
+    di_atas_nol_sampai_seratus("Batas tanda arah", c.arah_ambang_persen)?;
+    if c.arah_menit < 5 || c.arah_menit > 30 {
+        return Err(tidak_valid("Jendela arah harus 5 sampai 30 menit"));
+    }
     Ok(())
 }
 
@@ -69,7 +80,9 @@ pub fn simpan_konfig_global(simpan: &Penyimpanan, c: &KonfigGlobal) -> Hasil<()>
     simpan.atur_meta(&kunci("sebaran_maks_persen"), &c.sebaran_maks_persen.normalize().to_string())?;
     simpan.atur_meta(&kunci("curiga_persen"), &c.curiga_persen.normalize().to_string())?;
     simpan.atur_meta(&kunci("kurs_tanda_persen"), &c.kurs_tanda_persen.normalize().to_string())?;
-    simpan.atur_meta(&kunci("interval_detik"), &c.interval_detik.to_string())
+    simpan.atur_meta(&kunci("interval_detik"), &c.interval_detik.to_string())?;
+    simpan.atur_meta(&kunci("arah_menit"), &c.arah_menit.to_string())?;
+    simpan.atur_meta(&kunci("arah_ambang_persen"), &c.arah_ambang_persen.normalize().to_string())
 }
 
 #[cfg(test)]
@@ -91,6 +104,8 @@ mod tests {
             curiga_persen: Decimal::from(15_i64),
             kurs_tanda_persen: Decimal::new(5, 1), // 0,5
             interval_detik: 90,
+            arah_menit: 15,
+            arah_ambang_persen: Decimal::new(8, 1), // 0,8
         };
         simpan_konfig_global(&s, &c).unwrap();
         assert_eq!(muat_konfig_global(&s).unwrap(), c);
@@ -126,5 +141,26 @@ mod tests {
         assert_eq!(m.aktif, b.aktif);
         assert_eq!(m.curiga_persen, b.curiga_persen);
         assert_eq!(m.interval_detik, b.interval_detik);
+    }
+
+    #[test]
+    fn arah_diperiksa_dan_nilai_rusak_kembali_ke_bawaan() {
+        let b = KonfigGlobal::default();
+        assert_eq!((b.arah_menit, b.arah_ambang_persen), (10, Decimal::new(5, 1)));
+        for menit in [4_u32, 31] {
+            let mut c = KonfigGlobal::default();
+            c.arah_menit = menit;
+            assert!(periksa_konfig_global(&c).is_err());
+        }
+        let mut c = KonfigGlobal::default();
+        c.arah_ambang_persen = Decimal::ZERO;
+        assert!(periksa_konfig_global(&c).is_err());
+
+        let s = Penyimpanan::dalam_memori().unwrap();
+        s.atur_meta("global_arah_menit", "99").unwrap();
+        s.atur_meta("global_arah_ambang_persen", "abc").unwrap();
+        let m = muat_konfig_global(&s).unwrap();
+        assert_eq!(m.arah_menit, b.arah_menit);
+        assert_eq!(m.arah_ambang_persen, b.arah_ambang_persen);
     }
 }

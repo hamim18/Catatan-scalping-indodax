@@ -18,10 +18,11 @@
 //! - OKX GET /api/v5/market/tickers?instType=SPOT: {"code":"0","data":[{"instId":"BTC-USDT","last"}]}
 //!
 //! Semua hitungan memakai Decimal. Pembagian memakai checked_div agar tidak panik.
+use crate::screener::RingkasanPasar;
 use crate::{Error, Hasil};
 use rust_decimal::Decimal;
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::str::FromStr;
 
 // ---------------------------------------------------------------------------
@@ -240,6 +241,10 @@ pub struct KonfigGlobal {
     pub kurs_tanda_persen: Decimal,
     /// jarak minimal antar-pengambilan data exchange luar (detik)
     pub interval_detik: u32,
+    /// T9.6: lebar jendela arah harga, menit (5 sampai 30)
+    pub arah_menit: u32,
+    /// T9.6: |arah global - arah Indodax| (poin persen) di atas atau sama dengan ini = diberi tanda
+    pub arah_ambang_persen: Decimal,
 }
 
 impl Default for KonfigGlobal {
@@ -251,7 +256,19 @@ impl Default for KonfigGlobal {
             curiga_persen: Decimal::from(10_i64),
             kurs_tanda_persen: Decimal::from(1_i64),
             interval_detik: 60,
+            arah_menit: 10,
+            arah_ambang_persen: Decimal::new(5, 1), // 0,5 (sedikit di atas biaya round-trip 0,41%)
         }
+    }
+}
+
+impl KonfigGlobal {
+    /// Toleransi waktu (detik) untuk arah: titik terakhir tidak boleh lebih tua dari ini, dan titik
+    /// acuan N menit lalu dicari paling jauh sejauh ini dari waktu targetnya. Data exchange luar
+    /// masuk paling cepat tiap `interval_detik` (dan layar memolling tiap 20 sampai 45 detik),
+    /// jadi toleransi mengikuti interval, minimal 90 detik.
+    pub fn toleransi_arah_detik(&self) -> i64 {
+        (i64::from(self.interval_detik) * 3 / 2).max(90)
     }
 }
 
@@ -376,6 +393,157 @@ pub fn bandingkan_kurs(k: &KonfigGlobal, indodax: Decimal, binance: Option<Decim
     }
     let selisih = persen(indodax - binance, binance)?;
     Some(SelisihKurs { indodax, binance, selisih_persen: selisih, tanda: selisih.abs() > k.kurs_tanda_persen })
+}
+
+// ---------------------------------------------------------------------------
+// T9.6: arah harga global (perubahan N menit terakhir, global dibanding Indodax)
+// ---------------------------------------------------------------------------
+
+/// Titik yang lebih tua dari ini (detik) dibuang. 45 menit: cukup untuk N maksimum 30 menit
+/// ditambah toleransi pencarian titik acuan.
+pub const MAKS_RIWAYAT_ARAH_DETIK: i64 = 2700;
+
+type Antrean = VecDeque<(i64, Decimal)>;
+
+/// Tambah satu titik (epoch detik, harga). Waktu yang tidak lebih baru dari titik terakhir
+/// dilewati. Titik lebih tua dari `MAKS_RIWAYAT_ARAH_DETIK` dibuang.
+fn tambah_titik(antrean: &mut Antrean, waktu: i64, harga: Decimal) {
+    if let Some(&(w, _)) = antrean.back() {
+        if waktu <= w {
+            return;
+        }
+    }
+    antrean.push_back((waktu, harga));
+    while let Some(&(w, _)) = antrean.front() {
+        if w < waktu - MAKS_RIWAYAT_ARAH_DETIK {
+            antrean.pop_front();
+        } else {
+            break;
+        }
+    }
+}
+
+/// Perubahan (%) dari titik acuan sampai titik terakhir. Titik terakhir tidak boleh basi
+/// (`sekarang - waktu > toleransi`); titik acuan = titik terlama dari titik terakhir yang paling
+/// dekat ke `menit` menit sebelum titik terakhir, dan harus dalam `toleransi` dari waktu target itu.
+/// None bila data tidak cukup (celah, belum lama terkumpul) atau terjadi luapan.
+fn perubahan(antrean: &Antrean, sekarang: i64, menit: u32, toleransi: i64) -> Option<Decimal> {
+    let (w_akhir, h_akhir) = *antrean.back()?;
+    if sekarang - w_akhir > toleransi {
+        return None;
+    }
+    let target = w_akhir - i64::from(menit) * 60;
+    let (w0, h0) = antrean
+        .iter()
+        .copied()
+        .filter(|&(w, _)| w < w_akhir)
+        .min_by_key(|&(w, _)| (w - target).abs())?;
+    if (w0 - target).abs() > toleransi || h0 <= Decimal::ZERO {
+        return None;
+    }
+    persen(h_akhir.checked_sub(h0)?, h0)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArahHarga {
+    /// lebar jendela, menit
+    pub menit: u32,
+    /// median perubahan harga USDT dari exchange luar yang datanya cukup, persen BERTANDA
+    pub global_persen: Decimal,
+    /// perubahan harga Indodax dalam USDT (harga IDR / `usdt_idr` pada tiap titik), persen BERTANDA;
+    /// dihitung dalam USDT agar naik-turun kurs tidak terhitung sebagai gerak harga koin
+    pub indodax_persen: Decimal,
+    /// global - Indodax, poin persen. Positif = global naik lebih banyak (atau turun lebih sedikit)
+    pub selisih_poin: Decimal,
+    /// jumlah exchange luar yang datanya cukup
+    pub jumlah_exchange: usize,
+    /// |selisih_poin| >= `arah_ambang_persen`
+    pub tanda: bool,
+}
+
+/// Riwayat titik harga untuk arah. HANYA di memori (pemanggil menyimpannya di statik; tidak pernah
+/// masuk database). Murni: waktu dan harga diberikan pemanggil. Hanya koin yang dilacak
+/// (koin pasangan IDR Indodax) yang dicatat.
+#[derive(Debug, Default, Clone)]
+pub struct RiwayatArah {
+    indodax: BTreeMap<String, Antrean>,
+    luar: BTreeMap<(Exchange, String), Antrean>,
+}
+
+impl RiwayatArah {
+    pub fn baru() -> Self {
+        Self::default()
+    }
+
+    pub fn kosongkan(&mut self) {
+        self.indodax.clear();
+        self.luar.clear();
+    }
+
+    /// Catat satu titik harga Indodax dalam USDT untuk `simbol` (huruf besar).
+    pub fn catat_titik_indodax(&mut self, simbol: &str, waktu: i64, harga_usdt: Decimal) {
+        if harga_usdt <= Decimal::ZERO {
+            return;
+        }
+        tambah_titik(self.indodax.entry(simbol.to_uppercase()).or_default(), waktu, harga_usdt);
+    }
+
+    /// Catat harga `last` semua pair `*_idr` dari ringkasan pasar, dikonversi ke USDT dengan `kurs`
+    /// (`usdt_idr` Indodax pada ringkasan yang sama). Kurs tidak positif = tidak mencatat apa pun.
+    pub fn catat_indodax(&mut self, waktu: i64, ringkasan: &[RingkasanPasar], kurs: Decimal) {
+        if kurs <= Decimal::ZERO {
+            return;
+        }
+        for r in ringkasan {
+            let Some(simbol) = r.pair.strip_suffix("_idr") else {
+                continue;
+            };
+            if simbol.is_empty() || r.last <= Decimal::ZERO {
+                continue;
+            }
+            if let Some(usdt) = r.last.checked_div(kurs) {
+                self.catat_titik_indodax(simbol, waktu, usdt);
+            }
+        }
+    }
+
+    /// Catat harga USDT satu exchange luar, hanya untuk koin di `dilacak` (huruf besar).
+    pub fn catat_global(&mut self, waktu: i64, ex: Exchange, data: &HargaUsdt, dilacak: &BTreeSet<String>) {
+        for simbol in dilacak {
+            if let Some(&p) = data.get(simbol) {
+                if p > Decimal::ZERO {
+                    tambah_titik(self.luar.entry((ex, simbol.clone())).or_default(), waktu, p);
+                }
+            }
+        }
+    }
+
+    /// Arah satu koin pada waktu `sekarang`. None bila Indodax atau exchange luar belum punya data
+    /// yang cukup (belum terkumpul N menit, ada celah, atau data basi): tidak ditebak.
+    pub fn hitung_arah(&self, k: &KonfigGlobal, simbol: &str, sekarang: i64) -> Option<ArahHarga> {
+        let simbol = simbol.to_uppercase();
+        let tol = k.toleransi_arah_detik();
+        let indodax = perubahan(self.indodax.get(&simbol)?, sekarang, k.arah_menit, tol)?;
+        let mut luar: Vec<Decimal> = Vec::new();
+        for ex in Exchange::SEMUA.iter() {
+            if let Some(a) = self.luar.get(&(*ex, simbol.clone())) {
+                if let Some(p) = perubahan(a, sekarang, k.arah_menit, tol) {
+                    luar.push(p);
+                }
+            }
+        }
+        let jumlah_exchange = luar.len();
+        let global = median(luar)?;
+        let selisih = global.checked_sub(indodax)?;
+        Some(ArahHarga {
+            menit: k.arah_menit,
+            global_persen: global,
+            indodax_persen: indodax,
+            selisih_poin: selisih,
+            jumlah_exchange,
+            tanda: selisih.abs() >= k.arah_ambang_persen,
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -567,5 +735,148 @@ mod tests {
         let nama: Vec<&str> = Exchange::SEMUA.iter().map(|e| e.nama()).collect();
         assert_eq!(nama, vec!["Binance", "Bybit", "OKX"]);
         assert!(Exchange::SEMUA.iter().all(|e| e.url().starts_with("https://")));
+    }
+
+    // ----- T9.6: arah -----
+
+    fn ringkas(pair: &str, last: &str) -> RingkasanPasar {
+        RingkasanPasar {
+            pair: pair.to_string(),
+            last: d(last),
+            bid: d("1"),
+            ask: d("2"),
+            high: d("3"),
+            low: d("1"),
+            vol_idr: d("50000000"),
+            harga_24j: None,
+            server_time: Some(0),
+        }
+    }
+
+    fn dilacak() -> BTreeSet<String> {
+        ["ABC".to_string()].into_iter().collect()
+    }
+
+    /// Dua titik (t=0 dan t=600): Binance dan Bybit naik 1%, OKX datar. Indodax di `last_akhir`.
+    fn riwayat_contoh(last_akhir: &str) -> RiwayatArah {
+        let mut r = RiwayatArah::baru();
+        let dl = dilacak();
+        r.catat_indodax(0, &[ringkas("abc_idr", "3400")], d("17000"));
+        r.catat_indodax(600, &[ringkas("abc_idr", last_akhir)], d("17000"));
+        for (ex, akhir) in [(Exchange::Binance, "0.2020"), (Exchange::Bybit, "0.2020"), (Exchange::Okx, "0.2000")] {
+            r.catat_global(0, ex, &peta(&[("ABC", "0.2000")]), &dl);
+            r.catat_global(600, ex, &peta(&[("ABC", akhir)]), &dl);
+        }
+        r
+    }
+
+    #[test]
+    fn arah_global_naik_indodax_belum_diberi_tanda() {
+        let r = riwayat_contoh("3400"); // Indodax datar, median global +1%
+        let k = KonfigGlobal::default(); // 10 menit, ambang 0,5
+        let a = r.hitung_arah(&k, "abc", 600).unwrap();
+        assert_eq!(a.menit, 10);
+        assert_eq!(a.global_persen, d("1"));
+        assert_eq!(a.indodax_persen, d("0"));
+        assert_eq!(a.selisih_poin, d("1"));
+        assert_eq!(a.jumlah_exchange, 3);
+        assert!(a.tanda);
+    }
+
+    #[test]
+    fn arah_indodax_ikut_naik_tidak_diberi_tanda() {
+        let r = riwayat_contoh("3434"); // 3434 / 17000 = 0,202 -> +1% dalam USDT
+        let a = r.hitung_arah(&KonfigGlobal::default(), "ABC", 600).unwrap();
+        assert_eq!(a.indodax_persen, d("1"));
+        assert_eq!(a.selisih_poin, d("0"));
+        assert!(!a.tanda);
+        // ambang bisa diubah: selisih 0 tetap tidak melewati ambang positif sekecil apa pun
+        let mut k = KonfigGlobal::default();
+        k.arah_ambang_persen = d("0.01");
+        assert!(!r.hitung_arah(&k, "ABC", 600).unwrap().tanda);
+    }
+
+    #[test]
+    fn arah_negatif_global_turun() {
+        let mut r = RiwayatArah::baru();
+        let dl = dilacak();
+        r.catat_titik_indodax("ABC", 0, d("0.2"));
+        r.catat_titik_indodax("ABC", 600, d("0.2"));
+        r.catat_global(0, Exchange::Binance, &peta(&[("ABC", "0.2000")]), &dl);
+        r.catat_global(600, Exchange::Binance, &peta(&[("ABC", "0.1980")]), &dl); // -1%
+        let a = r.hitung_arah(&KonfigGlobal::default(), "ABC", 600).unwrap();
+        assert_eq!(a.global_persen, d("-1"));
+        assert_eq!(a.selisih_poin, d("-1"));
+        assert_eq!(a.jumlah_exchange, 1);
+        assert!(a.tanda); // |-1| >= 0,5
+    }
+
+    #[test]
+    fn arah_kosong_bila_data_kurang_basi_atau_ada_celah() {
+        let k = KonfigGlobal::default(); // toleransi 90 detik
+        assert_eq!(k.toleransi_arah_detik(), 90);
+        let r = riwayat_contoh("3400");
+        assert!(r.hitung_arah(&k, "XYZ", 600).is_none()); // koin tidak dilacak
+        assert!(r.hitung_arah(&k, "ABC", 800).is_none()); // titik terakhir basi (200 detik)
+        assert!(r.hitung_arah(&k, "ABC", 680).is_some()); // masih dalam toleransi
+
+        // baru terkumpul 300 detik: acuan 10 menit lalu tidak ada
+        let mut pendek = RiwayatArah::baru();
+        let dl = dilacak();
+        pendek.catat_titik_indodax("ABC", 300, d("0.2"));
+        pendek.catat_titik_indodax("ABC", 600, d("0.2"));
+        pendek.catat_global(300, Exchange::Binance, &peta(&[("ABC", "0.2")]), &dl);
+        pendek.catat_global(600, Exchange::Binance, &peta(&[("ABC", "0.2")]), &dl);
+        assert!(pendek.hitung_arah(&k, "ABC", 600).is_none());
+
+        // celah: titik di 0 dan 600 saja, tetapi jendela 5 menit tidak punya acuan di t=300
+        let mut k5 = k.clone();
+        k5.arah_menit = 5;
+        assert!(r.hitung_arah(&k5, "ABC", 600).is_none());
+
+        // exchange luar tanpa data sama sekali = tanpa arah
+        let mut hanya_indodax = RiwayatArah::baru();
+        hanya_indodax.catat_titik_indodax("ABC", 0, d("0.2"));
+        hanya_indodax.catat_titik_indodax("ABC", 600, d("0.2"));
+        assert!(hanya_indodax.hitung_arah(&k, "ABC", 600).is_none());
+    }
+
+    #[test]
+    fn riwayat_arah_membuang_titik_tua_melewati_waktu_mundur_dan_kurs_nol() {
+        let mut r = RiwayatArah::baru();
+        r.catat_titik_indodax("ABC", 0, d("1"));
+        r.catat_titik_indodax("ABC", 3000, d("1")); // titik di 0 lebih tua dari 2.700 detik: dibuang
+        assert_eq!(r.indodax["ABC"].len(), 1);
+        r.catat_titik_indodax("ABC", 3000, d("9")); // waktu sama
+        r.catat_titik_indodax("ABC", 2000, d("9")); // waktu mundur
+        r.catat_titik_indodax("ABC", 3100, d("0")); // harga nol
+        assert_eq!(r.indodax["ABC"].len(), 1);
+
+        let mut k = RiwayatArah::baru();
+        k.catat_indodax(10, &[ringkas("abc_idr", "3400")], Decimal::ZERO); // kurs nol: tidak mencatat
+        assert!(k.indodax.is_empty());
+        k.catat_indodax(10, &[ringkas("abc_idr", "3400"), ringkas("btc_usdt", "5"), ringkas("nol_idr", "0")], d("17000"));
+        assert_eq!(k.indodax.len(), 1); // hanya *_idr dengan harga positif
+        assert_eq!(k.indodax["ABC"][0], (10, d("0.2")));
+
+        k.kosongkan();
+        assert!(k.indodax.is_empty() && k.luar.is_empty());
+    }
+
+    #[test]
+    fn catat_global_hanya_koin_dilacak() {
+        let mut r = RiwayatArah::baru();
+        r.catat_global(0, Exchange::Binance, &peta(&[("ABC", "0.2"), ("BTC", "65000")]), &dilacak());
+        assert_eq!(r.luar.len(), 1);
+        assert!(r.luar.contains_key(&(Exchange::Binance, "ABC".to_string())));
+    }
+
+    #[test]
+    fn toleransi_mengikuti_interval() {
+        let mut k = KonfigGlobal::default();
+        k.interval_detik = 600;
+        assert_eq!(k.toleransi_arah_detik(), 900);
+        k.interval_detik = 15;
+        assert_eq!(k.toleransi_arah_detik(), 90); // minimal 90
     }
 }

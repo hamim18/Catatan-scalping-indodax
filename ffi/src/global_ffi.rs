@@ -4,12 +4,14 @@
 //! setelan `global_*` di tabel `meta`). Logika ada di `scalping_core::harga_global`.
 //! Pengambilan data memblokir; dipanggil dari thread latar (dijalankan paralel dengan pengambilan
 //! `trades` Screener). Data di-cache di memori selama proses hidup, selama `interval_detik`.
-use super::{desimal, fmt_harga, gagal, nama_koin, ErrorApp};
+use super::{desimal, fmt_harga, gagal, nama_koin, sekarang_ms, ErrorApp};
 use rust_decimal::Decimal;
 use scalping_core::{
     bandingkan_kurs, hitung_harga_global, muat_konfig_global, parse_binance, parse_bybit, parse_okx,
     simpan_konfig_global, Exchange, Hasil, HargaUsdt, KlienGlobal, KonfigGlobal, Penyimpanan, RingkasanPasar,
+    RiwayatArah,
 };
+use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -32,6 +34,10 @@ pub struct SetelanGlobalUi {
     pub curiga: String,
     pub kurs_tanda: String,
     pub interval_detik: String,
+    /// T9.6: lebar jendela arah harga, menit (5 sampai 30)
+    pub arah_menit: String,
+    /// T9.6: persen, selisih arah global vs Indodax yang diberi tanda
+    pub arah_ambang: String,
 }
 
 fn ke_ui(k: &KonfigGlobal) -> SetelanGlobalUi {
@@ -41,6 +47,8 @@ fn ke_ui(k: &KonfigGlobal) -> SetelanGlobalUi {
         curiga: k.curiga_persen.normalize().to_string(),
         kurs_tanda: k.kurs_tanda_persen.normalize().to_string(),
         interval_detik: k.interval_detik.to_string(),
+        arah_menit: k.arah_menit.to_string(),
+        arah_ambang: k.arah_ambang_persen.normalize().to_string(),
     }
 }
 
@@ -58,12 +66,19 @@ fn dari_ui(s: &SetelanGlobalUi) -> Result<KonfigGlobal, ErrorApp> {
         .trim()
         .parse::<u32>()
         .map_err(|_| ErrorApp::Gagal { pesan: "Interval harus bilangan bulat (detik)".into() })?;
+    let arah_menit = s
+        .arah_menit
+        .trim()
+        .parse::<u32>()
+        .map_err(|_| ErrorApp::Gagal { pesan: "Jendela arah harus bilangan bulat (menit)".into() })?;
     Ok(KonfigGlobal {
         aktif: s.aktif,
         sebaran_maks_persen: wajib_dec("Sebaran maksimum", &s.sebaran_maks)?,
         curiga_persen: wajib_dec("Batas curiga selisih", &s.curiga)?,
         kurs_tanda_persen: wajib_dec("Batas tanda kurs", &s.kurs_tanda)?,
         interval_detik,
+        arah_menit,
+        arah_ambang_persen: wajib_dec("Batas tanda arah", &s.arah_ambang)?,
     })
 }
 
@@ -102,6 +117,22 @@ pub struct HargaExchangeUi {
     pub selisih: String,
 }
 
+/// T9.6: arah harga dalam N menit terakhir. Semua persen BERTANDA ("-1.25"), 2 desimal.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct ArahGlobalUi {
+    pub menit: i32,
+    /// median perubahan harga di exchange luar
+    pub global: String,
+    /// perubahan harga Indodax dalam USDT (kurs tidak ikut terhitung)
+    pub indodax: String,
+    /// global - Indodax (poin persen)
+    pub selisih: String,
+    /// |selisih| melewati ambang
+    pub tanda: bool,
+    /// jumlah exchange luar yang datanya cukup
+    pub jumlah_exchange: i32,
+}
+
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
 pub struct InfoGlobalUi {
     /// harga wajar (median x kurs), berformat Indonesia; kosong bila tanpa pembanding
@@ -114,6 +145,8 @@ pub struct InfoGlobalUi {
     pub curiga: bool,
     /// selalu tiga baris: Binance, Bybit, OKX
     pub rincian: Vec<HargaExchangeUi>,
+    /// T9.6: arah harga; None bila data riwayat belum cukup (belum terkumpul N menit, ada celah)
+    pub arah: Option<ArahGlobalUi>,
 }
 
 #[derive(uniffi::Record, Clone, Debug, PartialEq)]
@@ -175,6 +208,18 @@ struct Entri {
 
 static CACHE: OnceLock<Mutex<Vec<Option<Entri>>>> = OnceLock::new();
 
+/// T9.6: riwayat titik harga untuk arah. Hanya di memori selama proses hidup (titik > 45 menit
+/// dibuang); tidak pernah masuk database.
+static RIWAYAT_ARAH: OnceLock<Arc<Mutex<RiwayatArah>>> = OnceLock::new();
+
+fn riwayat_arah() -> Arc<Mutex<RiwayatArah>> {
+    RIWAYAT_ARAH.get_or_init(|| Arc::new(Mutex::new(RiwayatArah::baru()))).clone()
+}
+
+fn detik_sekarang() -> i64 {
+    sekarang_ms() / 1000
+}
+
 fn cache() -> &'static Mutex<Vec<Option<Entri>>> {
     CACHE.get_or_init(|| Mutex::new((0..Exchange::SEMUA.len()).map(|_| None).collect()))
 }
@@ -193,7 +238,8 @@ fn ambil_satu(klien: &KlienGlobal, ex: Exchange) -> Entri {
 
 /// Ambil (atau pakai cache) harga tiga exchange. Yang perlu diambil dikerjakan paralel.
 /// Kunci cache tidak dipegang saat jaringan berjalan.
-fn ambil_snapshot(interval_detik: u32) -> Vec<(Exchange, Entri)> {
+/// Data yang baru berhasil diambil juga dicatat ke `riwayat` (hanya koin di `dilacak`).
+fn ambil_snapshot(interval_detik: u32, riwayat: &Mutex<RiwayatArah>, dilacak: &BTreeSet<String>) -> Vec<(Exchange, Entri)> {
     let sekarang = Instant::now();
     let ttl_ok = Duration::from_secs(u64::from(interval_detik));
     let ttl_gagal = Duration::from_secs(u64::from(interval_detik).min(TTL_GAGAL_DETIK));
@@ -221,6 +267,16 @@ fn ambil_snapshot(interval_detik: u32) -> Vec<(Exchange, Entri)> {
                 .collect();
             kerja.into_iter().filter_map(|h| h.join().ok()).collect()
         });
+        // Catat titik harga untuk arah SEBELUM kunci cache diambil (kunci tidak pernah bersarang).
+        {
+            let waktu = detik_sekarang();
+            let mut r = riwayat.lock().unwrap_or_else(|e| e.into_inner());
+            for (i, e) in &baru {
+                if let Ok(h) = &e.data {
+                    r.catat_global(waktu, Exchange::SEMUA[*i], &**h, dilacak);
+                }
+            }
+        }
         let mut g = cache().lock().unwrap_or_else(|e| e.into_inner());
         for (i, e) in baru {
             g[i] = Some(e);
@@ -234,6 +290,7 @@ fn ambil_snapshot(interval_detik: u32) -> Vec<(Exchange, Entri)> {
 pub(crate) struct TugasGlobal {
     konfig: KonfigGlobal,
     kurs_indodax: Option<Decimal>,
+    riwayat: Arc<Mutex<RiwayatArah>>,
     handle: Option<JoinHandle<Vec<(Exchange, Entri)>>>,
 }
 
@@ -242,19 +299,35 @@ pub(crate) struct TugasGlobal {
 /// `usdt_idr` pada ringkasan LENGKAP (bukan hanya kandidat yang lolos tahap 1).
 pub(crate) fn mulai_global(konfig: KonfigGlobal, ringkasan: &[RingkasanPasar]) -> TugasGlobal {
     let kurs_indodax = ringkasan.iter().find(|r| r.pair == "usdt_idr").map(|r| r.last);
+    let riwayat = riwayat_arah();
     let handle = if konfig.aktif {
+        // T9.6: harga Indodax semua pair dicatat dari ringkasan yang sama (tanpa request baru),
+        // dalam USDT memakai kurs `usdt_idr` ringkasan itu; berlaku di mode Daftar dan Lonjakan.
+        if let Some(kurs) = kurs_indodax {
+            let mut r = riwayat.lock().unwrap_or_else(|e| e.into_inner());
+            r.catat_indodax(detik_sekarang(), ringkasan, kurs);
+        }
+        let dilacak: BTreeSet<String> =
+            ringkasan.iter().filter(|r| r.pair.ends_with("_idr")).map(|r| nama_koin(&r.pair)).collect();
         let interval = konfig.interval_detik;
-        Some(std::thread::spawn(move || ambil_snapshot(interval)))
+        let untuk_thread = riwayat.clone();
+        Some(std::thread::spawn(move || ambil_snapshot(interval, &untuk_thread, &dilacak)))
     } else {
         None
     };
-    TugasGlobal { konfig, kurs_indodax, handle }
+    TugasGlobal { konfig, kurs_indodax, riwayat, handle }
 }
 
 impl TugasGlobal {
     pub(crate) fn selesai(self) -> HasilGlobal {
         let entri = self.handle.and_then(|h| h.join().ok()).unwrap_or_default();
-        HasilGlobal { konfig: self.konfig, kurs_indodax: self.kurs_indodax, entri }
+        HasilGlobal {
+            konfig: self.konfig,
+            kurs_indodax: self.kurs_indodax,
+            entri,
+            riwayat: self.riwayat,
+            sekarang: detik_sekarang(),
+        }
     }
 }
 
@@ -262,6 +335,9 @@ pub(crate) struct HasilGlobal {
     konfig: KonfigGlobal,
     kurs_indodax: Option<Decimal>,
     entri: Vec<(Exchange, Entri)>,
+    /// T9.6: riwayat titik harga (memori) dan waktu penilaian arah (epoch detik)
+    riwayat: Arc<Mutex<RiwayatArah>>,
+    sekarang: i64,
 }
 
 impl HasilGlobal {
@@ -282,7 +358,20 @@ impl HasilGlobal {
                 (*ex, data)
             })
             .collect();
-        let g = hitung_harga_global(&self.konfig, &nama_koin(pair), harga, kurs, &sumber);
+        let simbol = nama_koin(pair);
+        let g = hitung_harga_global(&self.konfig, &simbol, harga, kurs, &sumber);
+        let arah = {
+            let r = self.riwayat.lock().unwrap_or_else(|e| e.into_inner());
+            r.hitung_arah(&self.konfig, &simbol, self.sekarang)
+        }
+        .map(|a| ArahGlobalUi {
+            menit: a.menit as i32,
+            global: persen_bertanda(a.global_persen),
+            indodax: persen_bertanda(a.indodax_persen),
+            selisih: persen_bertanda(a.selisih_poin),
+            tanda: a.tanda,
+            jumlah_exchange: a.jumlah_exchange as i32,
+        });
         Some(InfoGlobalUi {
             wajar: g.wajar_idr.map(fmt_harga).unwrap_or_default(),
             selisih: opsi_persen(g.selisih_persen),
@@ -297,6 +386,7 @@ impl HasilGlobal {
                     selisih: opsi_persen(r.selisih_persen),
                 })
                 .collect(),
+            arah,
         })
     }
 
@@ -358,7 +448,13 @@ mod tes_global_ffi {
     }
 
     fn hasil(entri: Vec<(Exchange, Entri)>) -> HasilGlobal {
-        HasilGlobal { konfig: KonfigGlobal::default(), kurs_indodax: Some(d("17000")), entri }
+        HasilGlobal {
+            konfig: KonfigGlobal::default(),
+            kurs_indodax: Some(d("17000")),
+            entri,
+            riwayat: Arc::new(Mutex::new(RiwayatArah::baru())),
+            sekarang: 600,
+        }
     }
 
     #[test]
@@ -369,6 +465,8 @@ mod tes_global_ffi {
         assert_eq!(ui.curiga, "10");
         assert_eq!(ui.kurs_tanda, "1");
         assert_eq!(ui.interval_detik, "60");
+        assert_eq!(ui.arah_menit, "10");
+        assert_eq!(ui.arah_ambang, "0.5");
         assert_eq!(dari_ui(&ui).unwrap(), KonfigGlobal::default());
     }
 
@@ -383,6 +481,12 @@ mod tes_global_ffi {
         let mut ui = setelan_global_bawaan();
         ui.interval_detik = "abc".to_string();
         assert!(dari_ui(&ui).is_err());
+        let mut ui = setelan_global_bawaan();
+        ui.arah_menit = "sepuluh".to_string();
+        assert!(dari_ui(&ui).is_err());
+        let mut ui = setelan_global_bawaan();
+        ui.arah_ambang = "0,8".to_string();
+        assert_eq!(dari_ui(&ui).unwrap().arah_ambang_persen, Decimal::new(8, 1));
     }
 
     #[test]
@@ -402,6 +506,31 @@ mod tes_global_ffi {
         assert!(i.rincian[0].selisih == "0"); // Indodax 3.400 = Binance 0,2 x 17.000
         assert!(i.rincian[1].selisih.starts_with('-')); // Indodax lebih murah dari Bybit
         assert!(!i.wajar.is_empty());
+    }
+
+    #[test]
+    fn info_memuat_arah_hanya_bila_riwayat_cukup() {
+        let h = hasil(vec![(Exchange::Binance, ok(&[("ABC", "0.2020")], Some("17300")))]);
+        assert!(h.info("abc_idr", d("3400")).unwrap().arah.is_none()); // riwayat kosong
+        {
+            let mut r = h.riwayat.lock().unwrap();
+            let dl: BTreeSet<String> = ["ABC".to_string()].into_iter().collect();
+            let awal: HargaUsdt = [("ABC".to_string(), d("0.2000"))].into_iter().collect();
+            let akhir: HargaUsdt = [("ABC".to_string(), d("0.2020"))].into_iter().collect();
+            r.catat_titik_indodax("ABC", 0, d("0.2"));
+            r.catat_titik_indodax("ABC", 600, d("0.2"));
+            r.catat_global(0, Exchange::Binance, &awal, &dl);
+            r.catat_global(600, Exchange::Binance, &akhir, &dl);
+        }
+        let a = h.info("abc_idr", d("3400")).unwrap().arah.unwrap();
+        assert_eq!(a.menit, 10);
+        assert_eq!(a.global, "1"); // +1% di Binance
+        assert_eq!(a.indodax, "0"); // Indodax datar dalam USDT
+        assert_eq!(a.selisih, "1");
+        assert!(a.tanda); // 1 >= ambang 0,5
+        assert_eq!(a.jumlah_exchange, 1);
+        // koin lain tidak punya riwayat
+        assert!(h.info("xyz_idr", d("3400")).unwrap().arah.is_none());
     }
 
     #[test]

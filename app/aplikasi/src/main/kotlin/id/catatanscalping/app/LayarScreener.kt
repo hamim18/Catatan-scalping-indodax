@@ -43,6 +43,10 @@ import uniffi.scalping_ffi.simpanSetelanScreener
  * T9.5: harga global. Tiap baris (kedua mode) memuat harga wajar dari Binance, Bybit, OKX dan selisih
  * Indodax; di bawah status ada baris koneksi exchange dan perbandingan kurs. Hanya informasi
  * pembanding; semua hitungan di Rust.
+ *
+ * T9.6: arah harga global. Satu baris tambahan per pair: perubahan N menit terakhir di exchange luar
+ * (median) dibanding Indodax dalam USDT. Kosong sampai data riwayat cukup (hanya terkumpul saat layar
+ * ini terbuka). Hanya informasi; semua hitungan di Rust.
  */
 class LayarScreener(a: MainActivity) : Layar(a) {
     private val isiModal = ui.input("Modal trade ini (Rp)")
@@ -91,6 +95,8 @@ class LayarScreener(a: MainActivity) : Layar(a) {
     private val fGCuriga = ui.input("wajib")
     private val fGKurs = ui.input("wajib")
     private val fGInterval = ui.input("wajib")
+    private val fGArahMenit = ui.input("wajib")
+    private val fGArahAmbang = ui.input("wajib")
     private var gAktif = true
     private lateinit var tombolGlobal: Button
     private val statusGlobal = ui.mute("", 12f)
@@ -204,6 +210,8 @@ class LayarScreener(a: MainActivity) : Layar(a) {
         isiAmbang.tambah(barisIsian("Curiga bila selisih di atas (%)", fGCuriga))
         isiAmbang.tambah(barisIsian("Tanda selisih kurs di atas (%)", fGKurs))
         isiAmbang.tambah(barisIsian("Interval ambil data (detik)", fGInterval))
+        isiAmbang.tambah(barisIsian("Jendela arah harga (menit)", fGArahMenit))
+        isiAmbang.tambah(barisIsian("Tanda arah: selisih minimum (%)", fGArahAmbang))
 
         tombolUrutan = ui.tombol("Urutan: Skor") {
             urutan = if (urutan == "skor") "trx" else "skor"
@@ -391,6 +399,20 @@ class LayarScreener(a: MainActivity) : Layar(a) {
             if (it.harga.isEmpty()) "${it.nama} –" else "${it.nama} ${it.harga} (${persenBertanda(it.selisih)})"
         }
         v.tambah(ui.mute(rincian, 12f), atas = 2)
+        val ar = g.arah
+        if (ar != null) {
+            val teksArah = "${ar.menit} mnt: global ${panah(ar.global)}  ·  Indodax ${panah(ar.indodax)}" +
+                "  ·  selisih ${persenBertanda(ar.selisih)}"
+            v.tambah(if (ar.tanda) ui.teks(teksArah, 12f, t.warn) else ui.mute(teksArah, 12f), atas = 2)
+        }
+    }
+
+    /** Perubahan harga bertanda dari Rust: ▲ bila positif, ▼ bila negatif, tanpa panah bila nol. */
+    private fun panah(s: String): String = when {
+        s.isEmpty() -> "–"
+        s.startsWith("-") -> "▼" + Format.persen(s.substring(1))
+        s == "0" -> Format.persen(s)
+        else -> "▲" + Format.persen(s)
     }
 
     private fun renderStatusLonjakan() {
@@ -507,6 +529,8 @@ class LayarScreener(a: MainActivity) : Layar(a) {
         atur(fGCuriga, s.curiga)
         atur(fGKurs, s.kursTanda)
         atur(fGInterval, s.intervalDetik)
+        atur(fGArahMenit, s.arahMenit)
+        atur(fGArahAmbang, s.arahAmbang)
     }
 
     private fun ambilKolomGlobal(): SetelanGlobalUi {
@@ -517,6 +541,8 @@ class LayarScreener(a: MainActivity) : Layar(a) {
             curiga = teks(fGCuriga),
             kursTanda = teks(fGKurs),
             intervalDetik = teks(fGInterval),
+            arahMenit = teks(fGArahMenit),
+            arahAmbang = teks(fGArahAmbang),
         )
     }
 
