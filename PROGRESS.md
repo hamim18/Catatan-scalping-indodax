@@ -1,10 +1,10 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9 Screener dirancang; PRD v1.8)
+Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9 Screener dirancang; PRD v1.8; T9.0 selesai dan hasilnya dicatat; T9.1 modul screener selesai)
 
-**Status:** Fase 0 sampai 8 SELESAI dan lulus uji HP. Rilis uji pribadi 0.8.0-uji (versionCode 2) dipakai harian; uji lapangan sampai 14 Nov 2026: tidak ada kendala, aplikasi nyaman dipakai, tidak ada perbaikan yang diperlukan. Jumlah tes terakhir: core 99, ffi 24.
+**Status:** Fase 0 sampai 8 SELESAI dan lulus uji HP. Rilis uji pribadi 0.8.0-uji (versionCode 2) dipakai harian; uji lapangan sampai 14 Nov 2026: tidak ada kendala, aplikasi nyaman dipakai, tidak ada perbaikan yang diperlukan. Jumlah tes terakhir: core 119, ffi 24.
 
-**Sekarang:** Fase 9 (Screener) tahap RANCANGAN. Belum ada kode. Langkah berikutnya: T9.0 (verifikasi API publik lewat skrip kecil), lihat bagian 5.
+**Sekarang:** Fase 9 (Screener). T9.0 dan T9.1 SELESAI (14 Nov 2026; core 119 tes lulus, 20 di antaranya modul screener). Belum ada kode Kotlin/FFI untuk Screener. Langkah berikutnya: T9.2 (FFI + layar Screener + setelan ambang + isian "Modal trade ini"), setelah berkas di bagian 5 dikirim.
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`. Setelah tiap task: perbarui file ini, lalu commit.
@@ -29,7 +29,7 @@ Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9
 | 5 (T5.1, T5.2) | Pantauan menyala otomatis setelah HP restart; deposit `amount` sudah bersih, fee hanya informasi | Selesai |
 | 6 (T6.1 sampai T6.6) | Satu angka saldo: Total aset nilai pasar (IDR berlabel "Buying power"); target dan grafik dari profit trade tertutup; floating P/L terpisah; pembersihan saldo lama (snapshot periode, modal aktif, setoran, koreksi saldo dihapus); deposit/withdraw jadi riwayat; notifikasi jual memakai total aset terakhir (Opsi A); impor cadangan ditolak saat sinkron berjalan | Selesai |
 | 7 (T7.1, T7.2) | Tampilan disederhanakan: tanpa teks penjelas, floating digabung ke baris Profit trading, koin tanpa harga IDR disembunyikan, sinkron deposit/withdraw otomatis, log tersembunyi | Selesai |
-| 8 (T8.1) | Log diagnostik permanen `diag.log`, tombol Bagikan log, penjaga pantauan (alarm 5 menit); rilis uji 0.8.0-uji; panduan `docs/PANDUAN_RELEASE.md` | Selesai (uji lapangan lulus 14 Nov 2026) |
+| 8 (T8.1, T8.2) | T8.1: log diagnostik permanen `diag.log`, tombol Bagikan log, penjaga pantauan (alarm 5 menit). T8.2: ikon aplikasi (commit `1edaa1c`; tag `v0.8.0-uji` menunjuk commit ini; detail tidak dirinci di sini). Rilis uji 0.8.0-uji; panduan `docs/PANDUAN_RELEASE.md` | Selesai (uji lapangan lulus 14 Nov 2026) |
 
 ## 2. Kesimpulan teknis yang masih berlaku
 
@@ -62,6 +62,7 @@ Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9
 - Notifikasi jual memakai total aset terakhir yang disimpan Beranda (Opsi A, 8 Nov). Harga memakai `last` saja.
 - Tampilan minimalis (Fase 7, 8 Nov): lihat tabel di atas.
 - **Fase 9 (14 Nov 2026):** fitur Screener khusus penyaringan, tidak menyentuh perhitungan trading; semua parameter bisa diatur di aplikasi; modal per trade berubah-ubah (tidak ada modal tetap; isian opsional "Modal trade ini" tidak disimpan permanen); ada filter lonjakan ▲/▼ dengan trx/mnt tinggi yang langsung masuk notifikasi; notifikasi lonjakan di **layanan terpisah dengan saklar sendiri** (`LayananScreener`, `LayananLatar` tidak diubah); garis besar format notifikasi disetujui.
+- **Deep link (14 Nov 2026, dicek lewat adb):** tautan web `https://indodax.com/market/<PAIR>` membuka BROWSER, bukan aplikasi Indodax. Opsi (1) FR-37 gugur; dipakai opsi (2): salin nama pair ke papan klip lalu buka aplikasi Indodax lewat intent peluncur.
 
 ## 4. Masalah dikenal dan hal yang belum tuntas
 
@@ -77,10 +78,10 @@ Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9
 | Selisih 1 rupiah jual vs modal beli berikutnya, sisa 3 IDR anggaran order | Diduga pembulatan | Tidak berdampak |
 | Clearing fee WebSocket baru teramati bernilai 0 | Sampel kecil; REST selalu menjadi acuan | Pantau |
 | Ukuran halaman `fiat/orders` tidak diketahui | Rentang ≥ 100 baris dibelah | Pantau |
-| Jenis build APK (debug atau release) dari `bangun_android.sh` | Menentukan apakah pembaruan menimpa tanpa uninstall; cek `grep -n "buildTypes\|signingConfig\|isMinify" app/aplikasi/build.gradle.kts` | Belum dikonfirmasi |
-| Commit T8.1, commit dokumen, tag `v0.8.0-uji` | Belum dikonfirmasi sudah dijalankan; jalankan sebelum memulai T9.1 agar ada titik rollback bersih | Menunggu pengguna |
+| Jenis build APK (debug atau release) dari `bangun_android.sh` | Hasil grep 14 Nov: `buildTypes` ada, `isMinifyEnabled = false` (baris 20), tidak ada `signingConfig`. Nama blok di baris 19 dan perintah Gradle di `bangun_android.sh` belum terlihat, jadi debug atau release belum pasti | Menunggu `sed -n 10,35p app/aplikasi/build.gradle.kts` dan `grep -n "assemble" tools/bangun_android.sh` |
+| Pengunduhan data Screener | Ringkasan pasar ±94,7 KB per request; polling 15 dtk = ±23 MB/jam bila tidak terkompresi | Cek gzip di T9.1/T9.4; interval bisa diatur |
 
-## 5. Fase 9: Screener (rancangan, 14 Nov 2026)
+## 5. Fase 9: Screener (rancangan dan hasil verifikasi, 14 Nov 2026)
 
 **Latar:** pengguna sudah punya skrip manual `screener_indodax.py` (Termux, tanpa library). Skrip: tahap 1 dari satu request `/api/summaries` (filter harga, volume IDR, spread, range 24 jam); tahap 2 dari `/api/trades/<pair>` (trx/mnt dalam jendela, buy%, usia transaksi terakhir), diurutkan menurut trx/mnt. Nilai di skrip: harga 10 sampai 70.000; volume 10 juta sampai 10 miliar; trx/mnt ≥ 2 (jendela 10 menit); spread ≤ 10%; range ≥ 4%; usia ≤ 120 detik; 4 pekerja paralel. Komentar di skrip sisa versi lama; nilai yang berlaku adalah nilai di atas.
 
@@ -104,28 +105,51 @@ Terakhir diperbarui: 14 November 2026 (riwayat Fase 0 sampai 8 diringkas; Fase 9
 
 **Layar dan tombol**
 - Layar Screener: satu daftar (pair, harga, trx/mnt, spread, gerak 10m, buy%), tanpa teks penjelas; penanda untuk pair yang sedang dipegang. Penempatan sebagai tab ke-5 adalah USULAN, belum dikonfirmasi.
-- Tombol buka pair di Indodax: urutan rencana (1) tautan web `https://indodax.com/market/<PAIR>` bila terbukti membuka aplikasi di pair itu, (2) fallback salin nama pair ke papan klip lalu buka aplikasi Indodax. Skema deep link BELUM diverifikasi; tidak ditebak.
+- Tombol buka pair di Indodax: urutan rencana (1) tautan web `https://indodax.com/market/<PAIR>` bila terbukti membuka aplikasi di pair itu, (2) fallback salin nama pair ke papan klip lalu buka aplikasi Indodax. Hasil cek 14 Nov 2026: tautan web membuka browser, jadi dipakai fallback (2); skema deep link aplikasi tidak ditebak.
 
-**Yang harus diverifikasi dulu (T9.0, jangan diasumsikan)**
-- Jumlah transaksi yang dikembalikan `/api/trades/<pair>` (apakah jendela 10 menit terjangkau untuk koin ramai).
-- Format `/api/depth/<pair>`.
-- Arti `vol_idr` di `/api/summaries` (volume 24 jam bergulir?) sehingga selisih antar snapshot hanya perkiraan kasar.
-- Seberapa cepat harga di ringkasan pasar diperbarui.
-- Apakah Indodax punya WebSocket publik untuk data pasar (tidak diasumsikan ada).
+**Hasil T9.0 (14 Nov 2026, Sabtu pagi, pasar relatif sepi; skrip `tools/verifikasi_api_publik.py`, data mentah `data/verif_publik_20261114_093323.json`, tidak di-commit)**
+- `/api/summaries`: 438 pair IDR, ±94,7 KB, ±0,2 dtk. Kunci atas `tickers`, `prices_24h`, `prices_7d`. Ticker IDR: `buy` (bid), `sell` (ask), `high`, `low` (24 jam), `last`, `name`, `server_time`, `vol_idr`, plus satu `vol_<koin>` (tidak dipakai). Semua nilai string. `server_time` global (sama di semua pair), berubah di 16 dari 17 polling selang 5 dtk, jadi ringkasan segar tiap beberapa detik. Kunci `tickers` pakai `btc_idr`, `prices_24h` pakai `btcidr` (tanpa garis bawah): parser harus memetakan. `last` sama dengan harga transaksi terbaru di `trades`.
+- `/api/trades/<pair>`: selalu 500 transaksi, terbaru dulu; item `tid`, `type` (buy/sell), `price`, `amount`, `date` (epoch dtk), semua string. Jendela 10 menit terjangkau di 5 pair uji (rentang 122 sampai 20.800 menit). Pair sangat ramai (lebih dari 500 transaksi dalam 10 menit) BELUM teruji; aturan skrip (jendela diperpendek, minimal 1 menit) tetap dipakai.
+- `/api/depth/<pair>`: kunci `buy`, `sell`; maks 150 level per sisi; level `[harga, jumlah]` (string); sisi buy menurun. Sisi sepi bisa kurang dari 150 level dan jangkauan harganya lebar (sampai ratusan persen), jadi kedalaman dalam 0,5% dihitung dengan memotong level. Contoh `fil_idr`: bid dalam 0,5% hanya Rp 196 ribu, dalam 1% Rp 11 juta.
+- `vol_idr`: kemungkinan besar volume 24 jam bergulir (teramati turun 1 kali dari 7 perubahan di usdt_idr; selisih Rp 74,0 juta vs transaksi baru Rp 97,7 juta). Dari satu sesi. Selisih `vol_idr` antar snapshot TIDAK dipakai sebagai trx/mnt; trx/mnt hanya dari `trades`.
+- Latensi rata-rata ringkasan 0,196 dtk; polling 10 sampai 15 dtk aman dari sisi kecepatan.
+- Deep link: lihat bagian 3 (membuka browser).
+
+**Usulan desain dari hasil T9.0 (belum dikonfirmasi pengguna)**
+1. Pemicu lonjakan tahap 1: perubahan `last` terhadap snapshot di memori; pair yang melewati separuh ambang X baru diperiksa lewat `trades`. `vol_idr` bukan pemicu.
+2. Usia transaksi dihitung dari `server_time` ringkasan, bukan jam HP.
+3. Kedalaman: nilai = harga x jumlah (jumlah dianggap koin, BELUM dikonfirmasi), dihitung dari best bid dan best ask sejauh 0,5%.
+4. Interval polling bawaan 15 sampai 30 dtk dan bisa diatur: 94,7 KB tiap 15 dtk = ±23 MB per jam bila tidak terkompresi.
+
+**Masih terbuka setelah T9.0**
+- Arti `jumlah` di depth (koin atau Rupiah): bandingkan best bid usdt_idr (18.266, jumlah 63.997,62) dengan order book di aplikasi Indodax.
+- Ulangi skrip di jam ramai (hari kerja sore), terutama untuk pair sangat ramai dan arah `vol_idr`.
+- Apakah respons `summaries` dikompresi gzip (header `Content-Encoding`).
+- WebSocket publik Indodax: tidak diuji, tidak diasumsikan ada.
 
 **Rencana task (tiap task satu commit; PRD dan PROGRESS diperbarui tiap task)**
 | Task | Isi | Catatan |
 | --- | --- | --- |
-| T9.0 | Skrip Python kecil di `tools/` untuk memverifikasi 4 hal di atas dan cek deep link di HP | Hasil menentukan rumus lonjakan dan default |
-| T9.1 | `core/src/screener.rs`: parser ringkasan pasar, transaksi, kedalaman; filter dua tahap; skor; Decimal; tes dengan data nyata dari T9.0; tanpa UI | Hanya Rust |
+| T9.0 | Skrip Python kecil di `tools/` untuk memverifikasi API publik dan cek deep link di HP | **Selesai 14 Nov 2026** (hasil di atas; deep link web gugur). Dicommit |
+| T9.1 | `core/src/screener.rs`: parser ringkasan pasar, transaksi, kedalaman; filter dua tahap; skor; Decimal; tanpa UI | **Selesai 14 Nov 2026** (core 119 tes lulus). Lihat catatan T9.1 di bawah |
 | T9.2 | FFI + layar Screener + setelan ambang (tabel `meta`) + isian "Modal trade ini" | Kotlin + FFI; butuh melihat `ffi/src/lib.rs`, `MainActivity.kt`, `Layar.kt`, `LayarSetelan.kt`, `Komponen.kt`, `Latar.kt`, `Tema.kt` |
-| T9.3 | Tombol buka pair di Indodax (deep link atau fallback) | Setelah hasil cek deep link |
+| T9.3 | Tombol buka pair: salin nama pair ke papan klip, lalu buka aplikasi Indodax lewat intent peluncur (deep link web gugur) | Tentukan format nama pair yang disalin; beri tahu bila aplikasi Indodax tidak terpasang |
 | T9.4 | Deteksi lonjakan, `LayananScreener` (layanan terpisah, saklar sendiri), saluran dan notifikasi lonjakan | Butuh melihat `LayananLatar.kt` (sebagai acuan, tidak diubah) dan manifest |
 | Penutup | Uji bersamaan dengan pantauan order; PRD v1.9 bila ada perubahan; rilis 0.9.0-uji | Pastikan notifikasi TP/SL tidak terganggu |
 
-**Berkas yang akan diminta sebelum menulis kode (jangan menebak isinya):** sesuai kolom Catatan di atas, ditambah `core/src/client.rs`, `core/src/lib.rs`, `core/src/harga.rs` untuk pola parser publik.
+**Catatan T9.1 (selesai 14 Nov 2026)**
+- Modul `core/src/screener.rs` MURNI: tanpa jaringan dan tanpa database; hanya mengurai teks JSON yang diberikan pemanggil. Pengambilan data publik (summaries, trades, depth) ditambahkan di T9.2 pada sisi klien (`client.rs`).
+- API (diekspor dari `lib.rs`): `parse_ringkasan`, `parse_transaksi`, `parse_kedalaman`, `saring_tahap1`, `nilai_tahap2`, `hitung_metrik`, `hitung_spread`, `urutkan`, `pair_path`; tipe `KonfigScreener`, `UrutanScreener`, `RingkasanPasar`, `KandidatScreener`, `TransaksiPublik`, `JenisTransaksi`, `MetrikPair`, `KedalamanPasar`, `BarisScreener`.
+- `KonfigScreener::default()` = nilai skrip Python (harga 10 sampai 70.000; volume 10 juta sampai 10 miliar; trx/mnt >= 2 jendela 10 menit; spread <= 10%; range 24 jam >= 4%; usia transaksi <= 120 dtk). Filter tambahan (gerak, menit aktif, arah, kedalaman) MATI bawaan; tanda dominasi 40% aktif (hanya peringatan); biaya round-trip 0,41%; urutan bawaan skor (bisa trx/mnt seperti skrip).
+- Aturan jendela trx/mnt sama dengan skrip (jendela diperpendek, minimal 60 dtk). Usia transaksi dihitung dari `server_time` ringkasan, bukan jam HP.
+- Kedalaman: nilai = harga x jumlah koin (jumlah di depth dikonfirmasi pengguna = KOIN), dihitung dari best bid dan best ask sejauh `kedalaman_persen` (bawaan 0,5). Filter aktif hanya bila kelipatan diatur, "Modal trade ini" diisi positif, dan data kedalaman ada; syarat: sisi beli DAN sisi jual masing-masing >= kelipatan x modal.
+- Pembagian memakai `checked_div` (tanpa panik). Lonjakan (FR-34) BELUM ada; dikerjakan di T9.4.
+- Batasan tes: data nyata di `verif_publik_*.json` hanya 2 contoh transaksi per pair, jadi tes memakai potongan nyata `usdt_idr` ditambah data rekaan. Parity penuh dengan skrip Python belum diuji; bandingkan di T9.2 dengan data langsung.
+- Sisi fungsi: `saring_tahap1` dan `nilai_tahap2` belum dipanggil dari mana pun (menunggu FFI T9.2).
 
-**Pertanyaan terbuka Fase 9:** tab ke-5 atau kartu di Beranda; skema deep link; angka default lonjakan dan filter tambahan; WebSocket publik. Lihat PRD bagian 16 (no. 16 sampai 20).
+**Berkas yang diminta sebelum T9.2 (jangan menebak isinya):** `ffi/src/lib.rs`, `app/aplikasi/src/main/kotlin/id/catatanscalping/app/` : `MainActivity.kt`, `Layar.kt`, `LayarSetelan.kt`, `Komponen.kt`, `Latar.kt`, `Tema.kt`; dan `core/src/error.rs` bila fungsi pengambilan data baru perlu varian galat. Klien publik akan memakai pola `ambil_harga_idr` di `client.rs` yang sudah ada.
+
+**Pertanyaan terbuka Fase 9:** tab ke-5 atau kartu di Beranda; angka default lonjakan dan filter tambahan; arti `jumlah` depth; WebSocket publik. Skema deep link terjawab (membuka browser, pakai fallback salin pair). PRD bagian 16 (no. 17 dan 18) belum diperbarui; catat di PRD v1.9.
 
 ---
 
@@ -138,14 +162,14 @@ Kebutuhan: git, Rust (rustup), toolchain Android (lihat bagian 2); Python 3.8+ h
 3. Salin `.env.example` menjadi `.env`, isi `INDODAX_API_KEY` dan `INDODAX_API_SECRET` (untuk skrip dan contoh Rust di komputer; aplikasi Android menyimpan key sendiri di HP).
 
 ```
-cargo test -p scalping-core        # 99 tes
+cargo test -p scalping-core        # 119 tes
 cargo test -p scalping-ffi         # 24 tes
 bash tools/bangun_android.sh --pasang <serial-adb>
 ```
 
 Uji di HP: tab Setelan, simpan kunci, isi TP/SL, "Sinkron sekarang", mulai pantauan (matikan optimasi baterai, izinkan notifikasi), lakukan transaksi kecil di Indodax: notifikasi beli/jual muncul dan Beranda, Posisi, Riwayat menyegarkan diri. Ekspor cadangan dari Setelan sebelum memasang pembaruan.
 
-Skrip bantu di `tools/`: `fase0_validasi.py`, `fase0_akun.py`, `tes_websocket_token.py`, `fase2_fiat.py`, `cek_lingkungan.py`, `bangun_android.sh`; contoh Rust: `cek_data`, `cek_koneksi`, `pantau`.
+Skrip bantu di `tools/`: `fase0_validasi.py`, `fase0_akun.py`, `tes_websocket_token.py`, `fase2_fiat.py`, `cek_lingkungan.py`, `verifikasi_api_publik.py`, `bangun_android.sh`; contoh Rust: `cek_data`, `cek_koneksi`, `pantau`.
 
 Alur git setiap task:
 ```
@@ -168,7 +192,7 @@ catatan-scalping/
 │   └── src/ lib.rs, error.rs, model.rs, sign.rs, client.rs, account.rs,
 │            harga.rs, calc.rs, store.rs, sync.rs, arus_kas.rs, periode.rs,
 │            posisi.rs, statistik.rs, ws.rs, ws_klien.rs
-│            [Fase 9 BARU: screener.rs]
+│            [Fase 9: screener.rs (T9.1, selesai)]
 ├── ffi/                                 (scalping-ffi, jembatan UniFFI; src/lib.rs)
 ├── uniffi-bindgen/
 ├── app/                                 (proyek Gradle Android, modul :aplikasi)
@@ -187,7 +211,7 @@ catatan-scalping/
 └── tools/
     fase0_validasi.py, fase0_akun.py, tes_websocket_token.py, fase2_fiat.py,
     cek_lingkungan.py, bangun_android.sh
-    [Fase 9 BARU: verifikasi_api_publik.py (T9.0)]
+    [Fase 9: verifikasi_api_publik.py (T9.0, selesai)]
 ```
 
 Nama berkas Fase 9 di atas masih rencana; final saat dikerjakan.
@@ -198,8 +222,11 @@ Nama berkas Fase 9 di atas masih rencana; final saat dikerjakan.
 
 Hash per task Fase 0 sampai 7 tidak lagi dirinci (lihat `git log --oneline`). Hash yang tercatat sebelumnya: T6.3 `bb0bfa7`, T6.4 `483cfc8`, T6.5 `3db3e8e`.
 
-Menunggu dijalankan pengguna (isi hash dari `git log --oneline`):
-- T8.1: `T8.1: log diagnostik permanen dan penjaga pantauan`
-- Dokumen: `Dokumen: README, panduan rilis uji, PROGRESS (T8.1 lulus)`
-- Tag: `git tag -a v0.8.0-uji -m "Rilis uji 0.8.0-uji"` (setelah semua commit di atas)
-- Dokumen: `Dokumen: PRD v1.8 dan PROGRESS (Fase 8 selesai, rancangan Fase 9 Screener)` (hash: ...)
+Terkonfirmasi dari `git log` (14 Nov 2026):
+- T8.1: `T8.1: log diagnostik permanen dan penjaga pantauan` (hash: `5679387`)
+- T8.2: `T8.2: ikon aplikasi` (hash: `1edaa1c`, bertanda tag `v0.8.0-uji`)
+- Dokumen: `Dokumen: PRD v1.8 dan PROGRESS (Fase 8 selesai, rancangan Fase 9 Screener)` (hash: `7b83716`)
+- T9.0: verifikasi API publik Indodax (hash: isi dari `git log --oneline -1`)
+- T9.1: modul screener (hash: isi dari `git log --oneline -1`)
+
+Titik rollback sebelum Fase 9: tag `v0.8.0-uji`.
