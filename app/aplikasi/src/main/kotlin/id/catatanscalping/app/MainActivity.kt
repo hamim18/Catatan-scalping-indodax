@@ -16,7 +16,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * Kerangka aplikasi: empat tab (Beranda, Posisi, Riwayat, Setelan) dengan navigasi bawah seperti prototype.
+ * Kerangka aplikasi: lima tab (Beranda, Posisi, Riwayat, Setelan, Screener) dengan navigasi bawah seperti prototype.
  * Hanya tampilan; semua logika ada di Rust.
  */
 class MainActivity : Activity() {
@@ -30,7 +30,7 @@ class MainActivity : Activity() {
     val prefs get() = getSharedPreferences(PantauBersama.PREF, MODE_PRIVATE)
     val pathDb: String get() = Sinkron.pathDb(this)
 
-    private val namaTab = listOf("Beranda", "Posisi", "Riwayat", "Setelan")
+    private val namaTab = listOf("Beranda", "Posisi", "Riwayat", "Setelan", "Screener")
     private lateinit var layar: List<Layar>
     private val tombolNav = ArrayList<TextView>()
     private var aktif = 0
@@ -45,7 +45,7 @@ class MainActivity : Activity() {
         ui = Ui(this, tema)
         kunci = KunciAman(this)
 
-        layar = listOf(LayarBeranda(this), LayarPosisi(this), LayarRiwayat(this), LayarSetelan(this))
+        layar = listOf(LayarBeranda(this), LayarPosisi(this), LayarRiwayat(this), LayarSetelan(this), LayarScreener(this))
         val konten = FrameLayout(this)
         for (l in layar) konten.addView(l.root, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 

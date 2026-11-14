@@ -1,6 +1,7 @@
 //! Klien REST Indodax TAPI v2. HANYA metode GET (baca saja).
 use crate::arus_kas::{parse_fiat_orders, HasilParseFiat, JenisArusKas};
 use crate::harga::{parse_ticker_all, HargaIdr};
+use crate::screener::pair_path;
 use crate::{account::{parse_akun, Akun}, model::parse_my_trades, sign::tanda_tangan, Error, Hasil, Trade};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -125,25 +126,52 @@ impl IndodaxClient {
         parse_fiat_orders(&self.get("/api/v2/fiat/orders", &p)?, jenis)
     }
 
-    /// T6.1: harga terakhir (last) semua pasangan IDR dari endpoint publik GET /api/ticker_all.
-    /// Tanpa key dan tanpa tanda tangan; hanya baca. Satu panggilan untuk semua koin.
-    pub fn ambil_harga_idr(&self) -> Hasil<HargaIdr> {
-        let url = format!("{BASE_PUBLIK}/api/ticker_all");
+    /// GET publik tanpa key dan tanpa tanda tangan (hanya baca). Dipakai harga dan Screener.
+    fn get_publik(&self, url: &str) -> Hasil<String> {
         let res = self
             .agen
-            .get(&url)
+            .get(url)
             .set("User-Agent", USER_AGENT)
             .set("Accept", "application/json")
             .call();
-        let isi = match res {
-            Ok(r) => r.into_string().map_err(|e| Error::Jaringan(e.to_string()))?,
+        match res {
+            Ok(r) => r.into_string().map_err(|e| Error::Jaringan(e.to_string())),
             Err(ureq::Error::Status(kode, r)) => {
                 let isi = r.into_string().unwrap_or_default();
-                return Err(Error::Http { kode, isi_awal: isi.chars().take(400).collect() });
+                Err(Error::Http { kode, isi_awal: isi.chars().take(400).collect() })
             }
-            Err(e) => return Err(Error::Jaringan(e.to_string())),
-        };
-        parse_ticker_all(&isi)
+            Err(e) => Err(Error::Jaringan(e.to_string())),
+        }
+    }
+
+    /// T6.1: harga terakhir (last) semua pasangan IDR dari endpoint publik GET /api/ticker_all.
+    /// Tanpa key dan tanpa tanda tangan; hanya baca. Satu panggilan untuk semua koin.
+    pub fn ambil_harga_idr(&self) -> Hasil<HargaIdr> {
+        parse_ticker_all(&self.get_publik(&format!("{BASE_PUBLIK}/api/ticker_all"))?)
+    }
+
+    /// T9.2: ringkasan pasar publik GET /api/summaries (JSON mentah; diurai `screener::parse_ringkasan`).
+    pub fn ambil_ringkasan_mentah(&self) -> Hasil<String> {
+        self.get_publik(&format!("{BASE_PUBLIK}/api/summaries"))
+    }
+
+    /// T9.2: riwayat transaksi publik GET /api/trades/<pair tanpa garis bawah> (JSON mentah).
+    /// `pair` boleh "abc_idr" atau "abcidr"; simbol tidak valid ditolak sebelum kirim.
+    pub fn ambil_transaksi_mentah(&self, pair: &str) -> Hasil<String> {
+        let p = pair_path(pair);
+        if !simbol_valid(&p) {
+            return Err(Error::SimbolTidakValid(pair.to_string()));
+        }
+        self.get_publik(&format!("{BASE_PUBLIK}/api/trades/{p}"))
+    }
+
+    /// T9.2: kedalaman order book publik GET /api/depth/<pair tanpa garis bawah> (JSON mentah).
+    pub fn ambil_kedalaman_mentah(&self, pair: &str) -> Hasil<String> {
+        let p = pair_path(pair);
+        if !simbol_valid(&p) {
+            return Err(Error::SimbolTidakValid(pair.to_string()));
+        }
+        self.get_publik(&format!("{BASE_PUBLIK}/api/depth/{p}"))
     }
 }
 
@@ -169,5 +197,12 @@ mod tests {
         let c = IndodaxClient::new("KUNCI-RAHASIA", "SECRET-RAHASIA");
         let s = format!("{:?}", c);
         assert!(!s.contains("RAHASIA"));
+    }
+
+    #[test]
+    fn pair_publik_tidak_valid_ditolak_sebelum_kirim() {
+        let c = IndodaxClient::new("", "");
+        assert!(matches!(c.ambil_transaksi_mentah("ABC&x=1"), Err(Error::SimbolTidakValid(_))));
+        assert!(matches!(c.ambil_kedalaman_mentah("a/b_idr"), Err(Error::SimbolTidakValid(_))));
     }
 }
