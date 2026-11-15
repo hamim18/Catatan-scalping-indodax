@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Membangun inti Rust untuk Android, membuat binding Kotlin (UniFFI), lalu APK debug.
+# Membangun inti Rust untuk Android, membuat binding Kotlin (UniFFI), lalu APK RELEASE
+# (sejak 0.9.0-uji; ditandatangani kunci debug AGP, sama dengan APK lama, supaya bisa menimpa).
 #   bash tools/bangun_android.sh                      build saja
 #   bash tools/bangun_android.sh --pasang [SERIAL]    build lalu pasang ke HP
 #   bash tools/bangun_android.sh --hanya-pasang [SERIAL]   pasang APK yang sudah ada (tanpa build)
@@ -14,7 +15,7 @@ cd "$(dirname "$0")/.."
 
 MODE="${1:-}"
 SERIAL="${2:-${ANDROID_SERIAL:-}}"
-APK_DIR="app/aplikasi/build/outputs/apk/debug"
+APK_DIR="app/aplikasi/build/outputs/apk/release"
 JNI_DIR="app/aplikasi/src/main/jniLibs"
 SO_NAMA="libscalping_ffi.so"
 
@@ -72,11 +73,19 @@ SO_BARU="$JNI_DIR/arm64-v8a/$SO_NAMA"
 [ -f "$SO_BARU" ] || { echo "GAGAL: $SO_BARU tidak ada setelah cargo ndk."; exit 1; }
 echo "   $SO_BARU  ($(date -r "$SO_BARU" '+%d %b %H:%M:%S'))  sha256 $(sha "$SO_BARU" | cut -c1-12)"
 
-echo "== 4/4 Build APK debug =="
-( cd app && if [ -x ./gradlew ]; then ./gradlew :aplikasi:assembleDebug; else gradle :aplikasi:assembleDebug; fi )
+echo "== 4/4 Build APK release =="
+( cd app && if [ -x ./gradlew ]; then ./gradlew :aplikasi:assembleRelease; else gradle :aplikasi:assembleRelease; fi )
 APK="$(apk_terbaru)"
 [ -n "$APK" ] || { echo "GAGAL: APK tidak ditemukan di $APK_DIR."; exit 1; }
 echo "APK: $APK"
+
+# Cetak sidik jari tanda tangan (SHA-256). Harus SAMA dengan APK lama agar bisa menimpa tanpa uninstall.
+APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n1 || true)"
+if [ -n "$APKSIGNER" ]; then
+  "$APKSIGNER" verify --print-certs "$APK" 2>&1 | grep -i 'SHA-256' | head -n1 || echo "PERINGATAN: apksigner tidak bisa memverifikasi APK (mungkin tidak bertanda tangan)."
+else
+  echo "PERINGATAN: apksigner tidak ditemukan di $ANDROID_HOME/build-tools; sidik jari tidak dicek."
+fi
 
 # Pastikan kode Rust di dalam APK sama dengan hasil cargo ndk yang baru.
 # Hash seluruh berkas TIDAK bisa dipakai: AGP menjalankan strip pada .so di APK sehingga

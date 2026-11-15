@@ -1,10 +1,10 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 15 November 2026 (PRD v1.12 SELESAI: FR-38 sampai FR-40 diselaraskan dengan hasil akhir T9.5 dan T9.6, FR-41 sampai FR-45 ditambahkan untuk Fase 10, pertanyaan terbuka no. 19 dan 22 sampai 24 ditutup; berikutnya penutup: rilis 0.9.0-uji)
+Terakhir diperbarui: 15 November 2026 (rilis 0.9.0-uji, build release, LULUS uji HP; commit dan tag `v0.9.0-uji` dibuat; uji lapangan beberapa hari dimulai; README diperbarui)
 
-**Status:** Fase 0 sampai 10 (T10.1 sampai T10.6) SELESAI dan lulus uji HP. PRD v1.12 selesai (15 Nov 2026). Rilis uji pribadi 0.8.0-uji (versionCode 2) masih rilis resmi terakhir; 0.9.0-uji belum dibuat. Jumlah tes: harapan core 166 dan ffi 43 (pengguna melaporkan semua tes lulus, angka persis belum dicatat).
+**Status:** Fase 0 sampai 10 (T10.1 sampai T10.6) SELESAI dan lulus uji HP. PRD v1.12 selesai (15 Nov 2026). Rilis uji pribadi 0.9.0-uji (versionCode 3, build release, tanda tangan sama dengan 0.8.0-uji) lulus uji HP 15 Nov 2026 dan menjalani uji lapangan; 0.8.0-uji (versionCode 2) adalah rilis sebelumnya. Jumlah tes: harapan core 166 dan ffi 43 (pengguna melaporkan semua tes lulus, angka persis belum dicatat).
 
-**Sekarang:** Fase 9 (Screener) dan Fase 10 (polish tampilan) SELESAI; PRD v1.12 SELESAI (15 Nov 2026). Angka default Lonjakan dan Harga global TIDAK perlu "final": itu nilai awal, pengguna mengatur sendiri di Ambang. Langkah berikutnya: **rilis 0.9.0-uji** (butuh `app/aplikasi/build.gradle.kts` dan `docs/PANDUAN_RELEASE.md`; kirim isinya, jangan ditebak); tetap cek notifikasi TP/SL normal dan pantau pemakaian data Screener (pertanyaan PRD no. 25).
+**Sekarang:** rilis uji 0.9.0-uji (build release, versionCode 3) lulus uji HP 15 Nov 2026. Langkah: commit dan tag `v0.9.0-uji`, lalu **uji lapangan beberapa hari** untuk mencari bug dan peningkatan (cek harian dan skenario di `docs/PANDUAN_RELEASE.md` bagian 5 dan 6; lapor lewat "Bagikan log"). Selama uji: tetap cek notifikasi TP/SL normal, ukur pemakaian data seluler Screener dan exchange luar (PRD no. 25), dan catat angka Ambang yang terasa pas. Perbaikan menjadi task baru (T11.1 dan seterusnya), versi naik 0.9.1-uji dan versionCode 4.
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`. Setelah tiap task: perbarui file ini, lalu commit.
@@ -32,6 +32,7 @@ Terakhir diperbarui: 15 November 2026 (PRD v1.12 SELESAI: FR-38 sampai FR-40 dis
 | 8 (T8.1, T8.2) | T8.1: log diagnostik permanen `diag.log`, tombol Bagikan log, penjaga pantauan (alarm 5 menit). T8.2: ikon aplikasi (commit `1edaa1c`; tag `v0.8.0-uji` menunjuk commit ini; detail tidak dirinci di sini). Rilis uji 0.8.0-uji; panduan `docs/PANDUAN_RELEASE.md` | Selesai (uji lapangan lulus 14 Nov 2026) |
 | 9 (T9.0 sampai T9.6) | Screener: verifikasi API publik, modul Rust, layar, filter Lonjakan, Harga global (Binance, Bybit, OKX; harga wajar median, selisih, status koneksi), arah harga global; T9.3 dan notifikasi lonjakan dibatalkan | Selesai (lulus uji HP; uji lapangan 14 Nov 2026 berhasil) |
 | 10 (T10.1 sampai T10.6) | Polish tampilan dan perbaikan: 4 tab + menu ☰ (Setelan, Panduan/FAQ); Riwayat (statistik tetap, deposit/withdraw dropdown, harga beli/jual per trade); Screener dengan Lonjakan dan Daftar bersamaan; penyederhanaan informasi; sinkron trade otomatis saat dibuka bila pantauan tidak berjalan (T10.5); titik ribuan di kolom nominal Screener (T10.6) | Selesai (lulus uji HP 14 Nov 2026) |
+| Rilis 0.9.0-uji | Build release (`assembleRelease`, tanda tangan = kunci debug AGP), versionCode 3, panduan rilis dan README diperbarui; tag `v0.9.0-uji` | Lulus uji HP 15 Nov 2026; uji lapangan berjalan |
 
 ## 2. Kesimpulan teknis yang masih berlaku
 
@@ -92,7 +93,7 @@ Terakhir diperbarui: 15 November 2026 (PRD v1.12 SELESAI: FR-38 sampai FR-40 dis
 | Selisih 1 rupiah jual vs modal beli berikutnya, sisa 3 IDR anggaran order | Diduga pembulatan | Tidak berdampak |
 | Clearing fee WebSocket baru teramati bernilai 0 | Sampel kecil; REST selalu menjadi acuan | Pantau |
 | Ukuran halaman `fiat/orders` tidak diketahui | Rentang ≥ 100 baris dibelah | Pantau |
-| Jenis build APK (debug atau release) dari `bangun_android.sh` | Hasil grep 14 Nov: `buildTypes` ada, `isMinifyEnabled = false` (baris 20), tidak ada `signingConfig`. Nama blok di baris 19 dan perintah Gradle di `bangun_android.sh` belum terlihat, jadi debug atau release belum pasti | Menunggu `sed -n 10,35p app/aplikasi/build.gradle.kts` dan `grep -n "assemble" tools/bangun_android.sh` |
+| Jenis build APK (debug atau release) | TERTUTUP 15 Nov 2026: sampai 0.8.0-uji build debug (`assembleDebug`). Sejak 0.9.0-uji: `assembleRelease` dengan `signingConfig = signingConfigs.getByName("debug")` (tanda tangan sama, bisa menimpa tanpa uninstall), `isMinifyEnabled = false` (JNA/UniFFI memakai refleksi). `bangun_android.sh` mencetak sidik jari tanda tangan. Lulus uji HP | Tertutup |
 | Pengunduhan data Screener | Ringkasan pasar ±94,7 KB per request; `trades` ±45 KB per pair. Satu pemindaian layar Screener: sampai 40 pair, ±1,8 MB (+ `depth` bila filter kedalaman aktif). Mode Lonjakan (T9.4): satu ringkasan tiap 15 sampai 30 dtk (±12 sampai 23 MB per jam bila tidak terkompresi) + maksimal 15 `trades` per siklus, hanya saat layar terbuka. Gzip di `ureq` tidak diaktifkan; apakah server mengompresi belum diverifikasi | Terbuka; pantau pemakaian data. `MAKS_KANDIDAT` bisa diubah |
 | Filter "spread terikat TP" (FR-32) | Belum ada di modul T9.1 sehingga tidak ada di layar Screener | Opsional, terbuka |
 | Kedalaman gagal diambil di tahap 2 | Filter kedalaman dilewati untuk pair itu (pair tetap lolos) | Dikenal, diterima |
@@ -244,7 +245,7 @@ Catatan teknis Fase 10:
 
 **Berkas yang diminta sebelum T9.4 (diperbarui 14 Nov; jangan menebak isinya):** `core/src/screener.rs`, `ffi/src/screener_ffi.rs`, `app/aplikasi/src/main/kotlin/id/catatanscalping/app/LayarScreener.kt`. Manifest, `LayananLatar.kt`, `PenerimaBoot.kt`, dan `Aplikasi.kt` tidak lagi diperlukan untuk T9.4 (tanpa layanan dan notifikasi).
 
-**Berkas untuk penutup:** untuk rilis 0.9.0-uji: `app/aplikasi/build.gradle.kts` dan `docs/PANDUAN_RELEASE.md` (jangan menebak isinya); opsional untuk menutup item jenis build: hasil `sed -n 10,35p app/aplikasi/build.gradle.kts` dan `grep -n "assemble" tools/bangun_android.sh`. Untuk optimasi pemakaian data Screener (opsional): `ffi/src/screener_ffi.rs`. PRD v1.12 sudah selesai.
+**Berkas untuk penutup:** tidak ada yang diminta; PRD v1.12 dan rilis 0.9.0-uji sudah selesai. Untuk optimasi pemakaian data Screener (opsional, bila terbukti boros): `ffi/src/screener_ffi.rs`.
 
 **Pertanyaan terbuka Fase 9:** (21) TERJAWAB 14 Nov 2026 (keputusan terbaik, bisa diubah): snapshot tetap di memori selama proses hidup; tahap 2 pakai M absolut saja. Angka default lonjakan (X, M, jendela, interval polling, minimal pemanasan, maks pair per siklus) ditentukan dari uji lapangan; WebSocket publik tidak diasumsikan. Terjawab: tab ke-5, arti `jumlah` depth = KOIN, deep link membuka browser (tombol buka pair dibatalkan), notifikasi dan layanan terpisah dibatalkan. PRD v1.9 sudah memperbarui bagian 16 no. 15 sampai 20 dan menghapus FR-35, FR-36, FR-37.
 
@@ -344,5 +345,6 @@ Terkonfirmasi dari `git log` (14 Nov 2026):
 - T10.6: titik ribuan di kolom nominal Screener (pesan: `T10.6: titik ribuan di kolom nominal Screener`; hash: isi dari `git log --oneline -1`)
 - Dokumen: PROGRESS (T10.5 dan T10.6 selesai) (hash: isi dari `git log --oneline -1` setelah commit)
 - Dokumen: PRD v1.12 dan PROGRESS (penutup Fase 9 dan 10) (usulan pesan: `Dokumen: PRD v1.12 dan PROGRESS (penutup Fase 9 dan 10)`; hash: isi dari `git log --oneline -1` setelah commit)
+- Rilis 0.9.0-uji: build release dan versi 0.9.0-uji (pesan: `Rilis 0.9.0-uji: build release dan versi 0.9.0-uji`; tag `v0.9.0-uji`; hash: isi dari `git log --oneline -1`; commit dibuat setelah build release lulus uji HP)
 
 Titik rollback sebelum Fase 9: tag `v0.8.0-uji`. Titik rollback sebelum Fase 10: commit "Dokumen: PROGRESS (T9.6 selesai)".

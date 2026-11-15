@@ -11,13 +11,17 @@ android {
         applicationId = "id.catatanscalping.app"
         minSdk = 30
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.8.0-uji"
+        versionCode = 3
+        versionName = "0.9.0-uji"
     }
 
     buildTypes {
         release {
+            // R8 sengaja mati: JNA dan UniFFI memakai refleksi.
             isMinifyEnabled = false
+            // Rilis uji pribadi: pakai kunci debug bawaan AGP (sama dengan APK 0.8.0-uji)
+            // supaya APK baru bisa menimpa yang lama tanpa uninstall (data tidak hilang).
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
