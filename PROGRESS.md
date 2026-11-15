@@ -1,10 +1,10 @@
 # PROGRESS: Catatan Scalping
 
-Terakhir diperbarui: 14 November 2026 (Fase 10 polish tampilan T10.1 sampai T10.6 SELESAI: tes, build, dan uji HP lulus; T10.5 sinkron otomatis saat dibuka dan T10.6 titik ribuan kolom nominal ditambahkan; berikutnya penutup: PRD v1.12 dan rilis 0.9.0-uji)
+Terakhir diperbarui: 15 November 2026 (PRD v1.12 SELESAI: FR-38 sampai FR-40 diselaraskan dengan hasil akhir T9.5 dan T9.6, FR-41 sampai FR-45 ditambahkan untuk Fase 10, pertanyaan terbuka no. 19 dan 22 sampai 24 ditutup; berikutnya penutup: rilis 0.9.0-uji)
 
-**Status:** Fase 0 sampai 10 (T10.1 sampai T10.6) SELESAI dan lulus uji HP. Rilis uji pribadi 0.8.0-uji (versionCode 2) masih rilis resmi terakhir; 0.9.0-uji belum dibuat. Jumlah tes: harapan core 166 dan ffi 43 (pengguna melaporkan semua tes lulus, angka persis belum dicatat).
+**Status:** Fase 0 sampai 10 (T10.1 sampai T10.6) SELESAI dan lulus uji HP. PRD v1.12 selesai (15 Nov 2026). Rilis uji pribadi 0.8.0-uji (versionCode 2) masih rilis resmi terakhir; 0.9.0-uji belum dibuat. Jumlah tes: harapan core 166 dan ffi 43 (pengguna melaporkan semua tes lulus, angka persis belum dicatat).
 
-**Sekarang:** Fase 9 (Screener) SELESAI (T9.3 dan notifikasi/`LayananScreener` dibatalkan). Fase 10 (polish tampilan dan perbaikan) T10.1 sampai T10.6 SELESAI dan lulus uji HP (14 Nov 2026). Angka default Lonjakan dan Harga global TIDAK perlu "final": itu nilai awal, pengguna mengatur sendiri di Ambang. Langkah berikutnya: **penutup**: (1) PRD v1.12 (FR-38 sampai FR-40, bagian 16 no. 22 sampai 24, perubahan navigasi 4 tab + menu ☰, Riwayat, Screener ganda, harga beli/jual per trade, sinkron otomatis saat dibuka, titik ribuan); (2) rilis 0.9.0-uji (butuh `app/aplikasi/build.gradle.kts` dan `docs/PANDUAN_RELEASE.md`); (3) tetap cek notifikasi TP/SL normal dan pantau pemakaian data Screener.
+**Sekarang:** Fase 9 (Screener) dan Fase 10 (polish tampilan) SELESAI; PRD v1.12 SELESAI (15 Nov 2026). Angka default Lonjakan dan Harga global TIDAK perlu "final": itu nilai awal, pengguna mengatur sendiri di Ambang. Langkah berikutnya: **rilis 0.9.0-uji** (butuh `app/aplikasi/build.gradle.kts` dan `docs/PANDUAN_RELEASE.md`; kirim isinya, jangan ditebak); tetap cek notifikasi TP/SL normal dan pantau pemakaian data Screener (pertanyaan PRD no. 25).
 
 ## Aturan kerja
 - Satu task selesai = satu `git commit`. Setelah tiap task: perbarui file ini, lalu commit.
@@ -31,7 +31,7 @@ Terakhir diperbarui: 14 November 2026 (Fase 10 polish tampilan T10.1 sampai T10.
 | 7 (T7.1, T7.2) | Tampilan disederhanakan: tanpa teks penjelas, floating digabung ke baris Profit trading, koin tanpa harga IDR disembunyikan, sinkron deposit/withdraw otomatis, log tersembunyi | Selesai |
 | 8 (T8.1, T8.2) | T8.1: log diagnostik permanen `diag.log`, tombol Bagikan log, penjaga pantauan (alarm 5 menit). T8.2: ikon aplikasi (commit `1edaa1c`; tag `v0.8.0-uji` menunjuk commit ini; detail tidak dirinci di sini). Rilis uji 0.8.0-uji; panduan `docs/PANDUAN_RELEASE.md` | Selesai (uji lapangan lulus 14 Nov 2026) |
 | 9 (T9.0 sampai T9.6) | Screener: verifikasi API publik, modul Rust, layar, filter Lonjakan, Harga global (Binance, Bybit, OKX; harga wajar median, selisih, status koneksi), arah harga global; T9.3 dan notifikasi lonjakan dibatalkan | Selesai (lulus uji HP; uji lapangan 14 Nov 2026 berhasil) |
-| 10 (T10.1 sampai T10.6) | Polish tampilan dan perbaikan: 4 tab + menu ☰ (Setelan, Panduan/FAQ); Riwayat (statistik tetap, deposit/withdraw dropdown, harga beli/jual per trade); Screener dengan Lonjakan dan Daftar bersamaan; penyederhanaan informasi; sinkron trade otomatis saat dibuka bila pantauan tidak berjalan (T10.5); titik ribuan di kolom nominal Screener (T10.6) | Selesai (lulus uji HP 14 Nov 2026; lulus uji HP 14 Nov 2026) |
+| 10 (T10.1 sampai T10.6) | Polish tampilan dan perbaikan: 4 tab + menu ☰ (Setelan, Panduan/FAQ); Riwayat (statistik tetap, deposit/withdraw dropdown, harga beli/jual per trade); Screener dengan Lonjakan dan Daftar bersamaan; penyederhanaan informasi; sinkron trade otomatis saat dibuka bila pantauan tidak berjalan (T10.5); titik ribuan di kolom nominal Screener (T10.6) | Selesai (lulus uji HP 14 Nov 2026) |
 
 ## 2. Kesimpulan teknis yang masih berlaku
 
@@ -76,6 +76,7 @@ Terakhir diperbarui: 14 November 2026 (Fase 10 polish tampilan T10.1 sampai T10.
 - **Angka default (14 Nov 2026):** nilai awal di PRD hanya default; angka di layar Ambang hasil uji pengguna sendiri. Tidak ada angka "final": pengguna mengatur sesuai kebutuhan. Pemakaian data sejauh ini tanpa masalah.
 - **Fase 10 polish (14 Nov 2026, disetujui pengguna):** (1) navigasi 4 tab (Beranda, Posisi, Riwayat, Screener); Setelan pindah ke menu ☰ pojok kanan atas bersama Panduan/FAQ; (2) Riwayat: urutan statistik (tetap di atas) -> deposit/withdraw (dropdown) -> trade, dengan harga beli dan jual per trade; (3) Screener: Lonjakan dan Daftar tampil bersamaan, tanpa saklar mode; (4) informasi yang tidak perlu dihilangkan (usulan Claude, disetujui). Harga beli/jual = modal atau IDR diterima dibagi koin, SUDAH termasuk fee (bukan harga order mentah).
 - **Fase 10 tambahan (14 Nov 2026):** T10.5: kasus UAI (terjual saat aplikasi tertutup lalu posisi tidak tersinkron saat dibuka) diperbaiki dengan memakai keadaan nyata pantau (`pemantau.sedangJalan()`) alih-alih preferensi "aktif". T10.6: kolom nominal Screener (harga, volume, modal trade) diberi titik ribuan saat diketik; koma = desimal, titik = ribuan.
+- **PRD v1.12 (15 Nov 2026):** penomoran FR-41 sampai FR-45 (navigasi, Riwayat, Screener ganda, sinkron saat dibuka, titik ribuan) adalah pilihan kerja Claude dan bisa diubah. Keputusan yang dikunci di PRD: median (bukan rata-rata), hanya Binance/Bybit/OKX, selisih dalam USDT tidak ditampilkan (identik dengan selisih IDR bila kurs sama), persen fee dari profit tidak ditampilkan lagi, tidak ada angka "final" untuk Lonjakan dan Harga global. Pertanyaan baru PRD no. 25: ukuran data Screener dan exchange luar belum diukur.
 
 ## 4. Masalah dikenal dan hal yang belum tuntas
 
@@ -161,7 +162,7 @@ Terakhir diperbarui: 14 November 2026 (Fase 10 polish tampilan T10.1 sampai T10.
 | T9.4 | **Selesai 14 Nov 2026** (core 142 tes, ffi 32 tes lulus; uji HP lulus). Filter Lonjakan di layar Screener (versi baru): Rust: snapshot harga sebagai masukan, harga dasar rata-rata 60 menit, pemicu, tahap 2 dari `trades`, arah ▲/▼; FFI: fungsi baru di `screener_ffi.rs`; Kotlin: sakelar Lonjakan, polling ringkasan 15 sampai 30 dtk saat layar terbuka, ambang X/M di kartu "Ambang". TANPA `LayananScreener`, manifest, atau notifikasi | Lihat catatan T9.4 di bawah |
 | T9.5 | **Selesai 14 Nov 2026** (tes, build, uji HP lulus sesuai kriteria; sudah di-commit). Harga global tahap 1: `core/src/harga_global.rs` (murni: parser Binance/Bybit/OKX, median, harga wajar, selisih, kualitas, selisih kurs), `core/src/harga_global_setelan.rs` (meta `global_*`), `KlienGlobal` di `client.rs`, `ffi/src/global_ffi.rs` (cache, pengambilan paralel, setelan), kait di `screener_ffi.rs`, tampilan di `LayarScreener.kt`. TANPA layanan, notifikasi, atau perubahan manifest | Tes baru: core +16, ffi +7 (harapan core 158, ffi 39). Lihat catatan T9.5 di bawah |
 | T9.6 | **Selesai 14 Nov 2026** (tes, build, uji HP lulus sesuai kriteria; commit menyusul). Harga global tahap 2: arah harga global. `harga_global.rs` (+`RiwayatArah`, +`ArahHarga`, +`KonfigGlobal.arah_menit` dan `arah_ambang_persen`, +`toleransi_arah_detik`), `harga_global_setelan.rs` (meta `global_arah_menit`, `global_arah_ambang_persen`), `lib.rs` (ekspor `ArahHarga`, `RiwayatArah`), `global_ffi.rs` (riwayat statik, `ArahGlobalUi`, `InfoGlobalUi.arah`, `SetelanGlobalUi.arah_menit` dan `arah_ambang`), `LayarScreener.kt`. TANPA layanan, notifikasi, request baru, atau perubahan manifest. `screener_ffi.rs`, `lonjakan.rs`, `client.rs` tidak berubah | Tes baru: core +8, ffi +1 (harapan core 166, ffi 40). Lihat catatan T9.6 di bawah |
-| Penutup | PRD bila ada perubahan (v1.12); angka final lonjakan dan harga global dari uji lapangan; rilis 0.9.0-uji | Tidak perlu uji bersamaan dengan pantauan order karena tidak ada layanan baru; tetap cek notifikasi TP/SL normal |
+| Penutup | **PRD v1.12 SELESAI (15 Nov 2026)**; rilis 0.9.0-uji (menunggu `build.gradle.kts` dan `PANDUAN_RELEASE.md`) | Tidak perlu uji bersamaan dengan pantauan order karena tidak ada layanan baru; tetap cek notifikasi TP/SL normal |
 
 **Catatan T9.1 (selesai 14 Nov 2026)**
 - Modul `core/src/screener.rs` MURNI: tanpa jaringan dan tanpa database; hanya mengurai teks JSON yang diberikan pemanggil. Pengambilan data publik (summaries, trades, depth) ditambahkan di T9.2 pada sisi klien (`client.rs`, selesai).
@@ -243,11 +244,11 @@ Catatan teknis Fase 10:
 
 **Berkas yang diminta sebelum T9.4 (diperbarui 14 Nov; jangan menebak isinya):** `core/src/screener.rs`, `ffi/src/screener_ffi.rs`, `app/aplikasi/src/main/kotlin/id/catatanscalping/app/LayarScreener.kt`. Manifest, `LayananLatar.kt`, `PenerimaBoot.kt`, dan `Aplikasi.kt` tidak lagi diperlukan untuk T9.4 (tanpa layanan dan notifikasi).
 
-**Berkas untuk penutup:** untuk rilis 0.9.0-uji: `app/aplikasi/build.gradle.kts` dan `docs/PANDUAN_RELEASE.md` (jangan menebak isinya). Untuk optimasi pemakaian data Screener (opsional): `ffi/src/screener_ffi.rs`. PRD v1.12 tidak butuh berkas kode; cukup PRD dan PROGRESS ini.
+**Berkas untuk penutup:** untuk rilis 0.9.0-uji: `app/aplikasi/build.gradle.kts` dan `docs/PANDUAN_RELEASE.md` (jangan menebak isinya); opsional untuk menutup item jenis build: hasil `sed -n 10,35p app/aplikasi/build.gradle.kts` dan `grep -n "assemble" tools/bangun_android.sh`. Untuk optimasi pemakaian data Screener (opsional): `ffi/src/screener_ffi.rs`. PRD v1.12 sudah selesai.
 
 **Pertanyaan terbuka Fase 9:** (21) TERJAWAB 14 Nov 2026 (keputusan terbaik, bisa diubah): snapshot tetap di memori selama proses hidup; tahap 2 pakai M absolut saja. Angka default lonjakan (X, M, jendela, interval polling, minimal pemanasan, maks pair per siklus) ditentukan dari uji lapangan; WebSocket publik tidak diasumsikan. Terjawab: tab ke-5, arti `jumlah` depth = KOIN, deep link membuka browser (tombol buka pair dibatalkan), notifikasi dan layanan terpisah dibatalkan. PRD v1.9 sudah memperbarui bagian 16 no. 15 sampai 20 dan menghapus FR-35, FR-36, FR-37.
 
-**Pertanyaan Harga global (14 Nov 2026; PRD v1.11 bagian 16, no. 22 sampai 24):** (22) TERJAWAB sebagai keputusan kerja: tanpa DoH sendiri; petunjuk Private DNS bila gagal. (23) TERJAWAB ("setuju"): Binance, Bybit, OKX, median; ketiganya juga satu-satunya sumber harga wajar. (24) TERJAWAB sebagai keputusan kerja: kurs `usdt_idr` Indodax untuk harga wajar, selisih terhadap Binance USDTIDR ditampilkan, tanda kurs > 1% (sementara). PRD v1.12 masih perlu menyelaraskan bagian 16 dan FR-38 sampai FR-40 dengan hasil ini.
+**Pertanyaan Harga global (14 Nov 2026; PRD v1.11 bagian 16, no. 22 sampai 24):** (22) TERJAWAB sebagai keputusan kerja: tanpa DoH sendiri; petunjuk Private DNS bila gagal. (23) TERJAWAB ("setuju"): Binance, Bybit, OKX, median; ketiganya juga satu-satunya sumber harga wajar. (24) TERJAWAB sebagai keputusan kerja: kurs `usdt_idr` Indodax untuk harga wajar, selisih terhadap Binance USDTIDR ditampilkan, tanda kurs > 1% (sementara). PRD v1.12 (15 Nov 2026) sudah menyelaraskan bagian 16 dan FR-38 sampai FR-40 dengan hasil ini.
 
 ---
 
@@ -305,7 +306,7 @@ catatan-scalping/
 │           PenjagaPantauan, KunciAman
 │           [Fase 9: LayarScreener (T9.2; diubah T9.4, T9.5, T10.3, dan T10.6), tanpa layanan baru]
 ├── docs/
-│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.11; v1.12 menyusul)
+│   ├── PRD_Aplikasi_Catatan_Trading_Crypto.md     (v1.12)
 │   ├── PANDUAN_RELEASE.md
 │   └── prototype/Catatan_trading__prototype_UI.html
 └── tools/
@@ -342,5 +343,6 @@ Terkonfirmasi dari `git log` (14 Nov 2026):
 - T10.5: sinkron trade saat dibuka bila pantauan tidak berjalan (pesan: `T10.5: sinkron trade saat dibuka bila pantauan tidak berjalan`; hash: isi dari `git log --oneline -1`)
 - T10.6: titik ribuan di kolom nominal Screener (pesan: `T10.6: titik ribuan di kolom nominal Screener`; hash: isi dari `git log --oneline -1`)
 - Dokumen: PROGRESS (T10.5 dan T10.6 selesai) (hash: isi dari `git log --oneline -1` setelah commit)
+- Dokumen: PRD v1.12 dan PROGRESS (penutup Fase 9 dan 10) (usulan pesan: `Dokumen: PRD v1.12 dan PROGRESS (penutup Fase 9 dan 10)`; hash: isi dari `git log --oneline -1` setelah commit)
 
 Titik rollback sebelum Fase 9: tag `v0.8.0-uji`. Titik rollback sebelum Fase 10: commit "Dokumen: PROGRESS (T9.6 selesai)".
